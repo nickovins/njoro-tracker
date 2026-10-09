@@ -20,7 +20,7 @@ var LOG_ROOT_ID = '1KQgFJwqSnT5e3fR0aS7sNptej30-5Bs9'; // log sheets folder
 var SCRIPTS_ROOT_ID = '1keWRPeybj1YUOr8c6MtPNM-tHS-zmnjZ'; // episode scripts folder
 var SCRIPTS_TAB = 'Scripts';
 var TZ = 'Africa/Nairobi';
-var VERSION = 1;
+var VERSION = 2;
 
 /* ---------- entry points ---------- */
 
@@ -40,7 +40,7 @@ function doPost(e) {
   if (!lock.tryLock(20000)) return json_({ ok: false, error: 'busy' });
   try {
     if (body.action === 'check') return json_({ ok: true });
-    if (body.action === 'save') return json_(save_(String(body.report || ''), String(body.log || '').trim()));
+    if (body.action === 'save') return json_(save_(String(body.report || ''), String(body.log || '').trim(), Number(body.originalDay) || 0));
     if (body.action === 'remove') return json_(remove_(Number(body.day)));
     if (body.action === 'scripts') return json_({ ok: true, count: refreshScripts() });
     return json_({ ok: false, error: 'bad_request' });
@@ -71,8 +71,10 @@ function setup() {
 
 /** Runs by itself every 30 minutes. */
 function everyHalfHour() {
-  linkMissingLogs();
-  refreshScripts();
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(60000)) return;           // a save is running; try again in 30 minutes
+  try { linkMissingLogs(); refreshScripts(); }
+  finally { lock.releaseLock(); }
 }
 
 /** Fills in the log sheet link for any day that does not have one yet. */
@@ -81,14 +83,18 @@ function linkMissingLogs() {
   rows.forEach(function (r) {
     if (r.log || !r.day) return;
     var hit = findLog_(r.day, r.iso);
-    if (hit) { sh.getRange(r.row, 3).setValue(hit.url); found++; }
+    if (!hit) return;
+    // Only write if that row still holds the same day and still has no link.
+    var now = sh.getRange(r.row, 2, 1, 2).getDisplayValues()[0];
+    if (parseHead_(now[0]).day !== r.day || String(now[1] || '').trim()) return;
+    sh.getRange(r.row, 3).setValue(hit.url); found++;
   });
   return found;
 }
 
 /* ---------- actions ---------- */
 
-function save_(report, log) {
+function save_(report, log, originalDay) {
   report = report.replace(/\r/g, '').trim();
   var info = parseHead_(report);
   if (!info.day) return { ok: false, error: 'no_day' };
@@ -113,7 +119,14 @@ function save_(report, log) {
   var range = sh.getRange(row, 1, 1, 3);
   range.setNumberFormat('@');
   range.setValues([[stamp, report, logOut]]);
-  return { ok: true, day: info.day, replaced: same.length > 0, log: logOut, logName: logName, logFound: !!logOut };
+  // An edit that changed the shoot day number: the old day's row goes.
+  var moved = 0;
+  if (originalDay && originalDay !== info.day) {
+    rows_(sh).filter(function (r) { return r.day === originalDay; })
+      .map(function (r) { return r.row; }).sort(function (a, b) { return b - a; })
+      .forEach(function (n) { sh.deleteRow(n); moved++; });
+  }
+  return { ok: true, day: info.day, replaced: same.length > 0 || moved > 0, log: logOut, logName: logName, logFound: !!logOut };
 }
 
 function remove_(day) {
@@ -128,17 +141,13 @@ function remove_(day) {
 /* ---------- passcode ---------- */
 
 function checkPasscode_(given) {
-  var props = PropertiesService.getScriptProperties();
-  var real = props.getProperty('PASSCODE');
+  var real = PropertiesService.getScriptProperties().getProperty('PASSCODE');
   if (!real) return 'not_set_up';
-  var cache = CacheService.getScriptCache();
-  var fails = Number(cache.get('fails') || 0);
-  if (fails >= 10) return 'locked';               // 10 wrong tries locks uploads for 15 minutes
-  if (!same_(String(given || ''), real)) {
-    cache.put('fails', String(fails + 1), 900);
-    return 'wrong_passcode';
-  }
-  return '';
+  if (same_(String(given || ''), real)) return '';
+  // A wrong guess waits 3 seconds before it is answered. That makes guessing a
+  // long passcode hopeless, without ever locking out the people who know it.
+  Utilities.sleep(3000);
+  return 'wrong_passcode';
 }
 
 function same_(a, b) {
@@ -173,7 +182,7 @@ var MONTHS_ = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov'
 function parseHead_(raw) {
   var out = { day: 0, iso: '' };
   String(raw).split('\n').forEach(function (line0) {
-    var line = line0.replace(/[*_~]/g, '').replace(/\s+/g, ' ').trim(), m;
+    var line = line0.replace(/[*_~]/g, '').replace(/[\u231B\u23F3]/g, '').replace(/\s+/g, ' ').trim().replace(/^[^A-Za-z0-9]+(?=[A-Za-z])/, ''), m;
     if (!out.day && (m = /^shoot\s*day\s*[:\-]?\s*(\d+)/i.exec(line))) out.day = Number(m[1]);
     if (!out.iso && (m = /^date\s*[:\-]\s*(.+)$/i.exec(line))) out.iso = inferIso_(m[1]);
   });
@@ -183,7 +192,8 @@ function parseHead_(raw) {
 function inferIso_(t) {
   var m, y, mo, d, now = new Date();
   function guessYear(mo, d) { var yy = now.getFullYear(); if (new Date(yy, mo - 1, d) - now > 60 * 864e5) yy--; return yy; }
-  if ((m = /(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})/.exec(t))) { d = +m[1]; mo = +m[2]; y = +m[3]; if (y < 100) y += 2000; }
+  if ((m = /(\d{4})-(\d{1,2})-(\d{1,2})/.exec(t))) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+  else if ((m = /(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})/.exec(t))) { d = +m[1]; mo = +m[2]; y = +m[3]; if (y < 100) y += 2000; }
   else if ((m = /(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?(?:,?\s+(\d{4}))?/i.exec(t))) {
     d = +m[1]; mo = MONTHS_.indexOf(m[2].toLowerCase()) + 1; y = m[3] ? +m[3] : guessYear(mo, d);
   } else if ((m = /(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?/i.exec(t))) {

@@ -28,7 +28,8 @@
   function fmtDate(iso){var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso||'');return m?m[3]+'.'+m[2]+'.'+m[1]:''}
   function inferIso(text){
     var t=text||'',m,y,mo,d;
-    if((m=/(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})/.exec(t))){d=+m[1];mo=+m[2];y=+m[3];if(y<100)y+=2000}
+    if((m=/(\d{4})-(\d{1,2})-(\d{1,2})/.exec(t))){y=+m[1];mo=+m[2];d=+m[3]}
+    else if((m=/(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})/.exec(t))){d=+m[1];mo=+m[2];y=+m[3];if(y<100)y+=2000}
     else if((m=/(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?(?:,?\s+(\d{4}))?/i.exec(t))){
       d=+m[1];mo=MONTHS.indexOf(m[2].toLowerCase())+1;
       if(m[3])y=+m[3];else{var now=new Date();y=now.getFullYear();if(new Date(y,mo-1,d)-now>60*864e5)y--}
@@ -93,10 +94,10 @@
     var out={day:null,date:'',iso:'',cast:'',location:'',times:[],pages:'',shot:[],ignored:[],raw:raw,warnings:[]};
     var mode=null,secTag='',seen={};
     raw.split(/\r?\n/).forEach(function(line0){
-      var line=line0.replace(/[*_~]/g,'').replace(/[⌛⏳]/g,'').replace(/\s+/g,' ').trim();
+      var line=line0.replace(/[*_~]/g,'').replace(/[⌛⏳]/g,'').replace(/\s+/g,' ').trim().replace(/^[^A-Za-z0-9]+(?=[A-Za-z])/,'');
       if(!line)return;
       var m,hasScene=/\d+\s*\/\s*\d/.test(line);
-      if((m=/^shoot\s*day\s*[:\-]?\s*(\d+)/i.exec(line))){out.day=+m[1];return}
+      if((m=/^shoot\s*day\s*[:\-]?\s*(\d+)/i.exec(line))){if(out.day==null)out.day=+m[1];return}
       if((m=/^date\s*[:\-]\s*(.+)$/i.exec(line))){out.date=m[1].trim();out.iso=inferIso(out.date);return}
       if((m=/^cast\s*[:\-]\s*(.+)$/i.exec(line))){out.cast=m[1].trim();return}
       if((m=/^locations?\s*[:\-]\s*(.+)$/i.exec(line))){out.location=m[1].trim();return}
@@ -329,19 +330,21 @@
   function loadCache(){try{var c=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');if(c&&c.days){state.days=c.days;state.scripts=c.scripts||{};state.fetchedAt=c.fetchedAt}}catch(e){}}
 
   async function refresh(){
-    if(ui.loading)return;ui.loading=true;ui.error='';renderStatus();
+    if(ui.loading){ui.again=true;return}
+    ui.loading=true;ui.error='';renderStatus();
     try{
       var results=await Promise.all(TABS.map(function(t,i){return loadTab(t).catch(function(e){return i===0?Promise.reject(e):null})}));
       if(!results[0]||results[0].status==='error')throw new Error('sheet');
       state.days=buildDays(rowsOf(results[0]),[]);
       /* If the Scripts tab does not exist yet, Google sends the first tab instead; scriptsOf ignores it. */
       if(results[1])state.scripts=scriptsOf(results[1]);state.fetchedAt=Date.now();saveCache();
-      ui.offline=false;
+      ui.offline=false;ui.stale=false;
     }catch(e){
-      ui.offline=!navigator.onLine;
+      ui.offline=!navigator.onLine;ui.stale=true;
       ui.error=state.days.length?'':(ui.offline?'You are offline and nothing has been saved on this phone yet. Open the app once with signal.':'Could not load the reports. Check your connection and tap Refresh.');
     }
     ui.loading=false;renderAll();
+    if(ui.again){ui.again=false;refresh()}
   }
 
   /* ---------- rendering ---------- */
@@ -400,8 +403,9 @@
     var n=state.days.length,parts=[];
     if(ui.loading)parts.push('Checking for new reports…');
     else if(ui.offline&&n)parts.push('<strong>Offline.</strong> Showing reports saved on this phone ('+esc(fmtWhen(state.fetchedAt))+').');
+    else if(ui.stale&&n)parts.push('<strong>Could not reach Google.</strong> Showing the copy saved on this phone ('+esc(fmtWhen(state.fetchedAt))+').');
     else if(state.fetchedAt)parts.push('Up to date, '+esc(fmtWhen(state.fetchedAt))+' · '+n+' shoot day'+(n===1?'':'s'));
-    el.className='sync'+(ui.offline?' off':'')+(ui.error?' err':'');
+    el.className='sync'+((ui.offline||ui.stale)&&!ui.loading?' off':'')+(ui.error?' err':'');
     el.innerHTML=(ui.error?esc(ui.error):parts.join(' '))+(ui.loading?'':' <button type="button" class="linkbtn" data-act="refresh">Refresh</button>');
   }
 
@@ -419,8 +423,8 @@
     if(act==='hide-hint'){try{localStorage.setItem('njw-ios-hint','1')}catch(e){}renderHeader();return}
     if(act==='login'){openLogin();return}
     if(act==='logout'){ed.code='';try{localStorage.removeItem('njw-pass')}catch(e){}ui.confirmDel=null;renderAll();toast('Continuity tools turned off on this phone');return}
-    if(act==='add'){openAdd('');return}
-    if(act==='replace'){var rd=dayByNum(+b.dataset.day);openAdd(rd?rd.raw:'');return}
+    if(act==='add'){openAdd('',null);return}
+    if(act==='replace'){var rd=dayByNum(+b.dataset.day);if(rd)openAdd(rd.raw,rd.day);return}
     if(act==='copy'){var cd=dayByNum(+b.dataset.day);if(cd)copyText(cd.raw).then(function(ok){toast(ok?'Day '+cd.day+' report copied':'Could not copy on this phone')});return}
     if(act==='del'){ui.confirmDel=+b.dataset.day;renderMain();return}
     if(act==='del-no'){ui.confirmDel=null;renderMain();return}
@@ -437,7 +441,7 @@
     return Promise.resolve(legacyCopy(txt));
   }
   function legacyCopy(txt){try{var ta=document.createElement('textarea');ta.value=txt;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();var ok=document.execCommand('copy');ta.remove();return ok}catch(e){return false}}
-  var ERR={wrong_passcode:'That passcode is not right.',locked:'Too many wrong passcodes. Uploads are locked for 15 minutes.',not_set_up:'Uploads are not set up on the Google side yet.',no_day:'No shoot day number found in the report.',no_scenes:'No scenes found in the report. Scenes are written as episode/scene, like 7/4.',bad_link:'The log sheet link must be a Google Drive link.',busy:'Someone else is saving right now. Try again in a moment.',not_found:'That day is not in the tracker any more.',network:'No connection to Google. Check your signal and try again.',server:'Google had a problem saving. Try again in a moment.'};
+  var ERR={wrong_passcode:'That passcode is not right.',not_set_up:'Uploads are not set up on the Google side yet.',no_day:'No shoot day number found in the report.',no_scenes:'No scenes found in the report. Scenes are written as episode/scene, like 7/4.',bad_link:'The log sheet link must be a Google Drive link.',busy:'Someone else is saving right now. Try again in a moment.',not_found:'That day is not in the tracker any more.',network:'No connection to Google. Check your signal and try again.',server:'Google had a problem saving. Try again in a moment.'};
   function errText(r){return ERR[r&&r.error]||ERR.server}
   function callScript(body){
     if(!navigator.onLine)return Promise.resolve({ok:false,error:'network'});
@@ -452,7 +456,11 @@
     if(dlg)return dlg;
     dlg=document.createElement('dialog');dlg.className='sheet';dlg.setAttribute('aria-labelledby','dlg-title');
     document.body.appendChild(dlg);
-    dlg.addEventListener('click',function(e){if(e.target===dlg)closeDlg()});
+    dlg.addEventListener('click',function(e){
+      if(e.target!==dlg)return;
+      var r=dlg.getBoundingClientRect();
+      if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeDlg();
+    });
     dlg.addEventListener('cancel',function(e){e.preventDefault();closeDlg()});
     return dlg;
   }
@@ -478,9 +486,12 @@
     });
   }
 
-  function openAdd(prefill){
+  var editDay=null;
+  function draftKey(){return editDay?'':'njw-draft'}
+  function openAdd(prefill,day){
+    editDay=prefill&&day?day:null;
     if(!isEditor()){openLogin();return}
-    var draft='';try{draft=localStorage.getItem('njw-draft')||''}catch(e){}
+    var draft='';if(!editDay){try{draft=localStorage.getItem('njw-draft')||''}catch(e){}}
     var text=prefill||draft;
     var canPaste=!!(navigator.clipboard&&navigator.clipboard.readText&&window.isSecureContext);
     openDlg('<div class="dlgbody"><div class="dlghead"><h2 id="dlg-title">'+(prefill?'Edit daily report':'Add daily report')+'</h2><button type="button" class="x" data-dlg="close" aria-label="Close">\u2715</button></div>'
@@ -492,7 +503,7 @@
       +'<p class="dlgerr" id="dlgerr" role="alert"></p>'
       +'<div class="dlgacts"><button type="button" class="btn" data-dlg="close">Cancel</button><button type="button" class="btn primary" data-dlg="save" id="savebtn">Save report</button></div></div>');
     var ta=document.getElementById('rep');
-    ta.addEventListener('input',function(){try{localStorage.setItem('njw-draft',ta.value)}catch(e){}preview()});
+    ta.addEventListener('input',function(){if(draftKey()){try{localStorage.setItem(draftKey(),ta.value)}catch(e){}}preview()});
     preview();if(!text&&!canPaste)ta.focus();
   }
 
@@ -509,7 +520,8 @@
     if(!p.shot.length)warn.push('No scenes found. Scenes are written as episode/scene, like <span class="mono">7/4</span>.');
     if(p.day&&!p.iso)warn.push('The date could not be read, so the log sheet cannot be matched automatically.');
     var ex=p.day&&dayByNum(p.day);
-    if(ex)warn.push('Day '+p.day+' is already in the tracker. Saving updates it with this version.');
+    if(editDay&&p.day&&p.day!==editDay)warn.push('You changed the shoot day from '+editDay+' to '+p.day+'. Day '+editDay+' will be removed'+(ex?' and the existing Day '+p.day+' replaced':'')+'.');
+    else if(ex)warn.push('Day '+p.day+' is already in the tracker. Saving updates it with this version.');
     if(p.ignored.length)warn.push('Left out because the report lists them as not shot: '+esc(p.ignored.join(', '))+'.');
     var rep=p.day?earlierRepeats(p):[];
     if(rep.length)warn.push('Already shot on an earlier day, so these will show as <strong>Reshoot</strong>: '+esc(rep.join(', '))+'. If a scene was only finished today, add \u201ccompleted\u201d to its line, like <span class="mono">7/5 - completed</span>.');
@@ -526,10 +538,10 @@
     if(!raw)return;
     if(!navigator.onLine){err.textContent='No signal. Your report is kept on this phone. Tap Save when you have signal.';return}
     ui.busy=true;btn.disabled=true;btn.textContent='Saving…';
-    callScript({action:'save',report:raw,log:log}).then(function(r){
+    callScript({action:'save',report:raw,log:log,originalDay:editDay}).then(function(r){
       ui.busy=false;
       if(!r.ok){btn.disabled=false;preview();err.textContent=errText(r);if(r.error==='wrong_passcode'){closeDlg();openLogin()}return}
-      try{localStorage.removeItem('njw-draft')}catch(e){}
+      if(!editDay){try{localStorage.removeItem('njw-draft')}catch(e){}}
       var logMsg=r.logFound?'Log sheet attached'+(r.logName?': '+esc(r.logName):'.'):'Log sheet not in Drive yet. It will be attached automatically within 30 minutes of being uploaded.';
       openDlg('<div class="dlgbody done"><h2 id="dlg-title">Day '+r.day+' '+(r.replaced?'updated':'saved')+'</h2><p>'+logMsg+'</p><p class="muted">Everyone sees it the next time their app refreshes.</p><div class="dlgacts"><button type="button" class="btn primary" data-dlg="close">Done</button></div></div>');
       setTimeout(refresh,1200);
@@ -550,8 +562,8 @@
     var b=e.target.closest&&e.target.closest('[data-dlg]');if(!b)return;
     var a=b.dataset.dlg;
     if(a==='close'){closeDlg();return}
-    if(a==='clear'){var ta=document.getElementById('rep');ta.value='';try{localStorage.removeItem('njw-draft')}catch(e){}preview();ta.focus();return}
-    if(a==='paste'){navigator.clipboard.readText().then(function(t){var ta=document.getElementById('rep');ta.value=t;try{localStorage.setItem('njw-draft',t)}catch(e){}preview()},function(){var ta=document.getElementById('rep');ta.focus();document.getElementById('dlgerr').textContent='Paste was blocked. Long-press in the box and choose Paste.'});return}
+    if(a==='clear'){var ta=document.getElementById('rep');ta.value='';if(draftKey()){try{localStorage.removeItem(draftKey())}catch(e){}}preview();ta.focus();return}
+    if(a==='paste'){navigator.clipboard.readText().then(function(t){var ta=document.getElementById('rep');ta.value=t;if(draftKey()){try{localStorage.setItem(draftKey(),t)}catch(e){}}preview()},function(){var ta=document.getElementById('rep');ta.focus();document.getElementById('dlgerr').textContent='Paste was blocked. Long-press in the box and choose Paste.'});return}
     if(a==='save'){saveReport();return}
   });
 
