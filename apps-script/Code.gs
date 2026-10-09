@@ -9,7 +9,7 @@
  *   - look at Drive files, never change them (drive.readonly)
  *   - run itself every 30 minutes           (script.scriptapp)
  * It has no access to Gmail, Calendar, Contacts or any other spreadsheet.
- * In Drive it only ever opens the log sheets folder below.
+ * In Drive it only ever opens the log sheets and scripts folders below.
  *
  * Every change needs the continuity passcode, stored in Project Settings >
  * Script Properties as PASSCODE. It is never in this file or in the app.
@@ -17,6 +17,8 @@
 
 var SHEET_NAME = 'Reports';
 var LOG_ROOT_ID = '1KQgFJwqSnT5e3fR0aS7sNptej30-5Bs9'; // log sheets folder
+var SCRIPTS_ROOT_ID = 'PASTE_SCRIPTS_FOLDER_ID';        // episode scripts folder
+var SCRIPTS_TAB = 'Scripts';
 var TZ = 'Africa/Nairobi';
 var VERSION = 1;
 
@@ -40,6 +42,7 @@ function doPost(e) {
     if (body.action === 'check') return json_({ ok: true });
     if (body.action === 'save') return json_(save_(String(body.report || ''), String(body.log || '').trim()));
     if (body.action === 'remove') return json_(remove_(Number(body.day)));
+    if (body.action === 'scripts') return json_({ ok: true, count: refreshScripts() });
     return json_({ ok: false, error: 'bad_request' });
   } catch (err) {
     return json_({ ok: false, error: 'server', message: String(err && err.message || err) });
@@ -51,15 +54,25 @@ function doPost(e) {
 /** Run once from the editor: authorises the script and starts the
  *  every-30-minutes job that attaches log sheets uploaded after the report. */
 function setup() {
-  var exists = ScriptApp.getProjectTriggers().some(function (t) {
-    return t.getHandlerFunction() === 'linkMissingLogs';
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'linkMissingLogs') ScriptApp.deleteTrigger(t);
   });
-  if (!exists) ScriptApp.newTrigger('linkMissingLogs').timeBased().everyMinutes(30).create();
+  var exists = ScriptApp.getProjectTriggers().some(function (t) {
+    return t.getHandlerFunction() === 'everyHalfHour';
+  });
+  if (!exists) ScriptApp.newTrigger('everyHalfHour').timeBased().everyMinutes(30).create();
   sheet_(); DriveApp.getFolderById(LOG_ROOT_ID).getName();
+  refreshScripts();
   if (!PropertiesService.getScriptProperties().getProperty('PASSCODE')) {
     throw new Error('Setup ran, but no PASSCODE is set yet. Add it in Project Settings > Script Properties.');
   }
   return 'Ready';
+}
+
+/** Runs by itself every 30 minutes. */
+function everyHalfHour() {
+  linkMissingLogs();
+  refreshScripts();
 }
 
 /** Fills in the log sheet link for any day that does not have one yet. */
@@ -208,6 +221,57 @@ function findLog_(day, iso) {
     }
   }
   return best;
+}
+
+/* ---------- episode scripts ---------- */
+
+/** Episode number in a file or folder name: "Ep 7", "EP07", "Episode 7", "E7". */
+function episodeOf_(name) {
+  var m = /(?:^|[^a-z0-9])(?:ep(?:isode)?|e)\s*[-_.#:]?\s*0*(\d{1,3})(?!\d)/i.exec(String(name));
+  return m ? Number(m[1]) : 0;
+}
+
+/** Writes the Scripts tab: one row per episode with the newest script found. */
+function refreshScripts() {
+  if (!SCRIPTS_ROOT_ID || /PASTE/.test(SCRIPTS_ROOT_ID)) return 0;
+  var best = {}, queue = [{ folder: DriveApp.getFolderById(SCRIPTS_ROOT_ID), depth: 0, ep: 0 }];
+  /* Best match per episode: a file with the episode in its own name, then the
+     episode's own folder, then any other file inside that folder. Newest wins a tie. */
+  function consider(ep, item) {
+    if (!ep) return;
+    var cur = best[ep];
+    if (!cur || item.rank > cur.rank || (item.rank === cur.rank && item.updated > cur.updated)) best[ep] = item;
+  }
+  while (queue.length) {
+    var q = queue.shift(), files = q.folder.getFiles();
+    while (files.hasNext()) {
+      var f = files.next();
+      if (f.isTrashed()) continue;
+      var own = episodeOf_(f.getName());
+      consider(own || q.ep, { name: f.getName(), url: f.getUrl(), updated: f.getLastUpdated(), rank: own ? 3 : 1 });
+    }
+    if (q.depth < 3) {
+      var subs = q.folder.getFolders();
+      while (subs.hasNext()) {
+        var sub = subs.next();
+        if (sub.isTrashed()) continue;
+        var ep = episodeOf_(sub.getName()) || q.ep;
+        consider(ep, { name: sub.getName(), url: sub.getUrl(), updated: sub.getLastUpdated(), rank: 2 });
+        queue.push({ folder: sub, depth: q.depth + 1, ep: ep });
+      }
+    }
+  }
+  var ss = SpreadsheetApp.getActive(), tab = ss.getSheetByName(SCRIPTS_TAB) || ss.insertSheet(SCRIPTS_TAB);
+  var rows = Object.keys(best).map(Number).sort(function (a, b) { return a - b; }).map(function (ep) {
+    var b = best[ep];
+    return [String(ep), b.name, b.url, Utilities.formatDate(b.updated, TZ, 'yyyy-MM-dd HH:mm')];
+  });
+  tab.clearContents();
+  var out = [['Episode', 'Script', 'Link', 'Updated']].concat(rows);
+  var range = tab.getRange(1, 1, out.length, 4);
+  range.setNumberFormat('@');
+  range.setValues(out);
+  return rows.length;
 }
 
 function json_(o) {

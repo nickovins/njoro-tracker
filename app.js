@@ -4,7 +4,7 @@
 (function(){
   "use strict";
   var SHEET_ID='13mpLW2iFSSqDja--dwxXEEz_jVpjOeDudyWYy0fvT3I';
-  var TABS=['Reports','Form Responses 1'];
+  var TABS=['Reports','Scripts'];
   /* Address of the Apps Script web app attached to the Sheet (apps-script/Code.gs).
      Not secret: every change it makes needs the continuity passcode, which only Google checks. */
   var SCRIPT_URL='';
@@ -12,7 +12,7 @@
   var MONTHS=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
   var CYCLE='Cycle 7 | Season 1-4';
 
-  var state={days:[],fetchedAt:null};
+  var state={days:[],scripts:{},fetchedAt:null};
   var ui={view:'scenes',show:'all',openEp:null,openDay:null,loading:false,offline:!navigator.onLine,error:'',confirmDel:null,busy:false};
   var ed={code:''};try{ed.code=localStorage.getItem('njw-pass')||''}catch(e){}
   function isEditor(){return !!(SCRIPT_URL&&ed.code)}
@@ -40,6 +40,8 @@
     return y+'-'+pad(mo)+'-'+pad(d);
   }
   var LOG_FOLDER='https://drive.google.com/drive/folders/1KQgFJwqSnT5e3fR0aS7sNptej30-5Bs9?usp=sharing';
+  var SCRIPTS_FOLDER='';   /* episode scripts folder link; the Scripts button shows once this is set */
+  function scriptFor(ep){var x=state.scripts&&state.scripts[ep];return x&&safeUrl(x.url)?x:null}
   function safeUrl(u){return /^https:\/\/(drive|docs)\.google\.com\//.test(u||'')?u:''}
   function logLink(d,label){var u=safeUrl(d.log);return u?'<a class="log" href="'+esc(u)+'" target="_blank" rel="noopener">'+(label||'Log sheet')+' \u2197</a>':''}
   function dayRef(d){var f=fmtDate(d.iso);return 'Day '+d.day+(f?' | '+f:(d.date?' | '+d.date:''))}
@@ -194,7 +196,10 @@
     var html='<div class="tablewrap"><table>'+HEAD+'<tbody>';
     eps.forEach(function(ep){
       var g=by[ep],u={};g.forEach(function(x){u[x.key]=1});var n=Object.keys(u).length,rn=g.filter(function(x){return x.ext}).length,open=ui.openEp===ep;
-      html+='<tr class="grp'+(open?' open':'')+'"><td colspan="4"><button type="button" class="grpbtn" data-ep="'+ep+'" aria-expanded="'+open+'">Episode '+ep+'<span class="muted" style="font:600 13px var(--body)">'+n+' scene'+(n===1?'':'s')+(rn?' · '+rn+' reshoot'+(rn===1?'':'s'):'')+'</span><span class="chev" aria-hidden="true">›</span></button></td></tr>';
+      var sc=scriptFor(ep);
+      html+='<tr class="grp'+(open?' open':'')+'"><td colspan="4"><div class="grprow"><button type="button" class="grpbtn" data-ep="'+ep+'" aria-expanded="'+open+'">Episode '+ep+'<span class="muted" style="font:600 13px var(--body)">'+n+' scene'+(n===1?'':'s')+(rn?' · '+rn+' reshoot'+(rn===1?'':'s'):'')+'</span></button>'
+        +(sc?'<a class="scriptlink" href="'+esc(sc.url)+'" target="_blank" rel="noopener" title="'+esc(sc.name)+'">Script \u2197</a>':'')
+        +'<button type="button" class="grpfill" data-ep="'+ep+'" tabindex="-1" aria-hidden="true"><span class="chev">›</span></button></div></td></tr>';
       if(open)html+=g.map(function(t){return row(t,hit)}).join('');
     });
     return html+'</tbody></table></div>';
@@ -226,7 +231,7 @@
           +'<div class="rowacts">'+(d.raw?'<button type="button" class="btn small" data-act="copy" data-day="'+d.day+'">Copy report</button>':'')
           +(isEditor()?(ui.confirmDel===d.day
               ?'<span class="confirm">Remove Day '+d.day+' from the tracker?</span><button type="button" class="btn small danger" data-act="del-yes" data-day="'+d.day+'"'+(ui.busy?' disabled':'')+'>Remove</button><button type="button" class="btn small" data-act="del-no">Keep</button>'
-              :'<button type="button" class="btn small" data-act="replace" data-day="'+d.day+'">Replace report</button><button type="button" class="btn small" data-act="del" data-day="'+d.day+'">Remove day</button>'):'')
+              :'<button type="button" class="btn small" data-act="replace" data-day="'+d.day+'">Edit report</button><button type="button" class="btn small" data-act="del" data-day="'+d.day+'">Remove day</button>'):'')
           +'</div></td></tr>';
       }
     });
@@ -280,6 +285,16 @@
   }
   /* sheetRows: the Reports tab, in sheet order. formRows: Google Form replies, if a form is linked.
      The report that comes last wins: lower rows beat higher rows, form replies beat the sheet. */
+  /* Scripts tab: Episode | Script | Link | Updated, written by the Apps Script. */
+  function scriptsOf(res){
+    var out={};if(!res||res.status==='error'||!res.table)return out;
+    var labels=(res.table.cols||[]).map(function(c){return String(c.label||'').toLowerCase()});
+    var iE=labels.indexOf('episode'),iL=labels.indexOf('link'),iN=labels.indexOf('script');
+    if(iE<0||iL<0)return out;
+    (res.table.rows||[]).forEach(function(r){var c=r.c||[],ep=parseInt(cellText(c[iE]),10),url=cellText(c[iL]).trim();
+      if(ep>0&&safeUrl(url))out[ep]={url:url,name:iN>=0?cellText(c[iN]):''}});
+    return out;
+  }
   function buildDays(sheetRows,formRows){
     var seen={},ordered=[];
     function add(r){var k=r.raw.replace(/\s+/g,' ').trim()+'|'+r.log;if(seen[k])return;seen[k]=1;ordered.push(r)}
@@ -308,18 +323,17 @@
     });
     return days;
   }
-  function saveCache(){try{localStorage.setItem(CACHE_KEY,JSON.stringify({days:state.days,fetchedAt:state.fetchedAt}))}catch(e){}}
-  function loadCache(){try{var c=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');if(c&&c.days){state.days=c.days;state.fetchedAt=c.fetchedAt}}catch(e){}}
+  function saveCache(){try{localStorage.setItem(CACHE_KEY,JSON.stringify({days:state.days,scripts:state.scripts,fetchedAt:state.fetchedAt}))}catch(e){}}
+  function loadCache(){try{var c=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');if(c&&c.days){state.days=c.days;state.scripts=c.scripts||{};state.fetchedAt=c.fetchedAt}}catch(e){}}
 
   async function refresh(){
     if(ui.loading)return;ui.loading=true;ui.error='';renderStatus();
     try{
       var results=await Promise.all(TABS.map(function(t,i){return loadTab(t).catch(function(e){return i===0?Promise.reject(e):null})}));
       if(!results[0]||results[0].status==='error')throw new Error('sheet');
-      var sheetRows=rowsOf(results[0]),formRows=rowsOf(results[1]);
-      /* Google answers a request for a tab that does not exist with the first tab. Spot that and drop it. */
-      if(formRows.length&&sheetRows.length&&formRows.length===sheetRows.length&&formRows[0].raw===sheetRows[0].raw)formRows=[];
-      state.days=buildDays(sheetRows,formRows);state.fetchedAt=Date.now();saveCache();
+      state.days=buildDays(rowsOf(results[0]),[]);
+      /* If the Scripts tab does not exist yet, Google sends the first tab instead; scriptsOf ignores it. */
+      if(results[1])state.scripts=scriptsOf(results[1]);state.fetchedAt=Date.now();saveCache();
       ui.offline=false;
     }catch(e){
       ui.offline=!navigator.onLine;
@@ -367,7 +381,8 @@
     document.getElementById('acts').innerHTML=
       (installPrompt?'<button type="button" class="btn primary" data-act="install">Install app</button>':'')
       +(isEditor()?'<button type="button" class="btn primary" data-act="add">Add daily report</button>':'')
-      +'<a class="btn" href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Log sheets ↗</a>';
+      +'<a class="btn" href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Log sheets ↗</a>'
+      +(SCRIPTS_FOLDER?'<a class="btn" href="'+esc(SCRIPTS_FOLDER)+'" target="_blank" rel="noopener">Scripts ↗</a>':'');
     document.getElementById('foot').innerHTML=!SCRIPT_URL?'Read only. Report uploads are being set up.'
       :isEditor()?'Continuity tools are on for this phone. <button type="button" class="linkbtn" data-act="logout">Turn off</button>'
       :'Read only. <button type="button" class="linkbtn" data-act="login">Continuity sign-in</button>';
@@ -464,7 +479,7 @@
     var draft='';try{draft=localStorage.getItem('njw-draft')||''}catch(e){}
     var text=prefill||draft;
     var canPaste=!!(navigator.clipboard&&navigator.clipboard.readText&&window.isSecureContext);
-    openDlg('<div class="dlgbody"><div class="dlghead"><h2 id="dlg-title">'+(prefill?'Replace daily report':'Add daily report')+'</h2><button type="button" class="x" data-dlg="close" aria-label="Close">\u2715</button></div>'
+    openDlg('<div class="dlgbody"><div class="dlghead"><h2 id="dlg-title">'+(prefill?'Edit daily report':'Add daily report')+'</h2><button type="button" class="x" data-dlg="close" aria-label="Close">\u2715</button></div>'
       +'<p class="muted">Copy the report from the WhatsApp group and paste it here exactly as sent.</p>'
       +'<div class="pasterow">'+(canPaste?'<button type="button" class="btn primary" data-dlg="paste">Paste report</button>':'')+'<button type="button" class="btn" data-dlg="clear">Clear</button></div>'
       +'<textarea id="rep" rows="10" placeholder="Long-press here and choose Paste" spellcheck="false">'+esc(text)+'</textarea>'
@@ -490,7 +505,7 @@
     if(!p.shot.length)warn.push('No scenes found. Scenes are written as episode/scene, like <span class="mono">7/4</span>.');
     if(p.day&&!p.iso)warn.push('The date could not be read, so the log sheet cannot be matched automatically.');
     var ex=p.day&&dayByNum(p.day);
-    if(ex)warn.push('Day '+p.day+' is already in the tracker. Saving replaces it.');
+    if(ex)warn.push('Day '+p.day+' is already in the tracker. Saving updates it with this version.');
     if(p.ignored.length)warn.push('Left out because the report lists them as not shot: '+esc(p.ignored.join(', '))+'.');
     var rep=p.day?earlierRepeats(p):[];
     if(rep.length)warn.push('Already shot on an earlier day, so these will show as <strong>Reshoot</strong>: '+esc(rep.join(', '))+'. If a scene was only finished today, add \u201ccompleted\u201d to its line, like <span class="mono">7/5 - completed</span>.');
@@ -498,7 +513,7 @@
       +(p.shot.length?'<p class="pvsc">'+p.shot.length+' scene'+(p.shot.length===1?'':'s')+': '+p.shot.map(function(s){return '<span class="mono">'+esc(keyOf(s.ep,s.sc))+'</span>'+(s.tags.length?' '+tagsHtml(s.tags):'')}).join(', ')+'</p>':'')
       +'</div>':'')
       +(warn.length?'<ul class="pvwarn">'+warn.map(function(w){return '<li>'+w+'</li>'}).join('')+'</ul>':'');
-    btn.disabled=!ok||ui.busy;btn.textContent=ex?'Replace Day '+p.day:(p.day?'Save Day '+p.day:'Save report');
+    btn.disabled=!ok||ui.busy;btn.textContent=ex?'Update Day '+p.day:(p.day?'Save Day '+p.day:'Save report');
   }
 
   function saveReport(){
@@ -512,7 +527,7 @@
       if(!r.ok){btn.disabled=false;preview();err.textContent=errText(r);if(r.error==='wrong_passcode'){closeDlg();openLogin()}return}
       try{localStorage.removeItem('njw-draft')}catch(e){}
       var logMsg=r.logFound?'Log sheet attached'+(r.logName?': '+esc(r.logName):'.'):'Log sheet not in Drive yet. It will be attached automatically within 30 minutes of being uploaded.';
-      openDlg('<div class="dlgbody done"><h2 id="dlg-title">Day '+r.day+' '+(r.replaced?'replaced':'saved')+'</h2><p>'+logMsg+'</p><p class="muted">Everyone sees it the next time their app refreshes.</p><div class="dlgacts"><button type="button" class="btn primary" data-dlg="close">Done</button></div></div>');
+      openDlg('<div class="dlgbody done"><h2 id="dlg-title">Day '+r.day+' '+(r.replaced?'updated':'saved')+'</h2><p>'+logMsg+'</p><p class="muted">Everyone sees it the next time their app refreshes.</p><div class="dlgacts"><button type="button" class="btn primary" data-dlg="close">Done</button></div></div>');
       setTimeout(refresh,1200);
     });
   }
