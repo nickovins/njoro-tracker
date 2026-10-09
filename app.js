@@ -5,14 +5,17 @@
   "use strict";
   var SHEET_ID='13mpLW2iFSSqDja--dwxXEEz_jVpjOeDudyWYy0fvT3I';
   var TABS=['Reports','Form Responses 1'];
-  var FORM_URL='';   /* set once the Google Form exists; the Add button then opens it */
-  var SHEET_URL='https://docs.google.com/spreadsheets/d/'+SHEET_ID+'/edit';
+  /* Address of the Apps Script web app attached to the Sheet (apps-script/Code.gs).
+     Not secret: every change it makes needs the continuity passcode, which only Google checks. */
+  var SCRIPT_URL='';
   var CACHE_KEY='njw-data-v1';
   var MONTHS=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
   var CYCLE='Cycle 7 | Season 1-4';
 
   var state={days:[],fetchedAt:null};
-  var ui={view:'scenes',show:'all',openEp:null,openDay:null,loading:false,offline:!navigator.onLine,error:''};
+  var ui={view:'scenes',show:'all',openEp:null,openDay:null,loading:false,offline:!navigator.onLine,error:'',confirmDel:null,busy:false};
+  var ed={code:''};try{ed.code=localStorage.getItem('njw-pass')||''}catch(e){}
+  function isEditor(){return !!(SCRIPT_URL&&ed.code)}
   var installPrompt=null;
   try{var v=localStorage.getItem('njw-view');if(v==='scenes'||v==='days')ui.view=v}catch(e){}
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -220,7 +223,11 @@
           +((d.times&&d.times.length)?'<dt>Times</dt><dd>'+d.times.map(function(t){return esc(t.label)+' <span class="mono">'+esc(t.time)+'</span>'}).join(' · ')+'</dd>':'')
           +'<dt>Scenes</dt><dd>'+sceneListText(ents)+'</dd></dl>'
           +(d.raw?'<details><summary>Original continuity report</summary><pre>'+esc(d.raw)+'</pre></details>':'')
-          +'</td></tr>';
+          +'<div class="rowacts">'+(d.raw?'<button type="button" class="btn small" data-act="copy" data-day="'+d.day+'">Copy report</button>':'')
+          +(isEditor()?(ui.confirmDel===d.day
+              ?'<span class="confirm">Remove Day '+d.day+' from the tracker?</span><button type="button" class="btn small danger" data-act="del-yes" data-day="'+d.day+'"'+(ui.busy?' disabled':'')+'>Remove</button><button type="button" class="btn small" data-act="del-no">Keep</button>'
+              :'<button type="button" class="btn small" data-act="replace" data-day="'+d.day+'">Replace report</button><button type="button" class="btn small" data-act="del" data-day="'+d.day+'">Remove day</button>'):'')
+          +'</div></td></tr>';
       }
     });
     return html+'</tbody></table></div>';
@@ -359,9 +366,11 @@
     document.getElementById('stats').innerHTML='<div class="cyc">'+esc(CYCLE)+'</div><div><dt>Last report</dt><dd>'+(last?esc(dayRef(last)):'None')+'</dd></div>';
     document.getElementById('acts').innerHTML=
       (installPrompt?'<button type="button" class="btn primary" data-act="install">Install app</button>':'')
-      +'<a class="btn" href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Log sheets ↗</a>'
-      ;
-    document.getElementById('foot').innerHTML='<strong>Continuity team:</strong> add each day\u2019s report in the <a href="'+esc(FORM_URL||SHEET_URL)+'" target="_blank" rel="noopener">tracker sheet \u2197</a>. The app picks it up on the next refresh.';
+      +(isEditor()?'<button type="button" class="btn primary" data-act="add">Add daily report</button>':'')
+      +'<a class="btn" href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Log sheets ↗</a>';
+    document.getElementById('foot').innerHTML=!SCRIPT_URL?'Read only. Report uploads are being set up.'
+      :isEditor()?'Continuity tools are on for this phone. <button type="button" class="linkbtn" data-act="logout">Turn off</button>'
+      :'Read only. <button type="button" class="linkbtn" data-act="login">Continuity sign-in</button>';
     var hint=document.getElementById('installhint'),dismissed=false;
     try{dismissed=localStorage.getItem('njw-ios-hint')==='1'}catch(e){}
     hint.innerHTML=(isIos()&&!standalone()&&!dismissed)?'<div class="installnote"><span>Install on iPhone: tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</span><button type="button" class="btn small" data-act="hide-hint">OK</button></div>':'';
@@ -389,8 +398,143 @@
     var act=b.dataset.act;
     if(act==='refresh'){refresh();return}
     if(act==='hide-hint'){try{localStorage.setItem('njw-ios-hint','1')}catch(e){}renderHeader();return}
+    if(act==='login'){openLogin();return}
+    if(act==='logout'){ed.code='';try{localStorage.removeItem('njw-pass')}catch(e){}ui.confirmDel=null;renderAll();toast('Continuity tools turned off on this phone');return}
+    if(act==='add'){openAdd('');return}
+    if(act==='replace'){var rd=dayByNum(+b.dataset.day);openAdd(rd?rd.raw:'');return}
+    if(act==='copy'){var cd=dayByNum(+b.dataset.day);if(cd)copyText(cd.raw).then(function(ok){toast(ok?'Day '+cd.day+' report copied':'Could not copy on this phone')});return}
+    if(act==='del'){ui.confirmDel=+b.dataset.day;renderMain();return}
+    if(act==='del-no'){ui.confirmDel=null;renderMain();return}
+    if(act==='del-yes'){removeDay(+b.dataset.day);return}
     if(act==='install'&&installPrompt){var p=installPrompt;installPrompt=null;p.prompt();p.userChoice.finally(renderHeader);return}
   }
+
+
+  /* ---------- continuity tools (need the passcode; Google checks it) ---------- */
+  function dayByNum(n){return state.days.filter(function(d){return d.day===n})[0]}
+  function toast(msg){var t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove()},3200)}
+  function copyText(txt){
+    if(navigator.clipboard&&window.isSecureContext)return navigator.clipboard.writeText(txt).then(function(){return true},function(){return legacyCopy(txt)});
+    return Promise.resolve(legacyCopy(txt));
+  }
+  function legacyCopy(txt){try{var ta=document.createElement('textarea');ta.value=txt;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();var ok=document.execCommand('copy');ta.remove();return ok}catch(e){return false}}
+  var ERR={wrong_passcode:'That passcode is not right.',locked:'Too many wrong passcodes. Uploads are locked for 15 minutes.',not_set_up:'Uploads are not set up on the Google side yet.',no_day:'No shoot day number found in the report.',no_scenes:'No scenes found in the report. Scenes are written as episode/scene, like 7/4.',bad_link:'The log sheet link must be a Google Drive link.',busy:'Someone else is saving right now. Try again in a moment.',not_found:'That day is not in the tracker any more.',network:'No connection to Google. Check your signal and try again.',server:'Google had a problem saving. Try again in a moment.'};
+  function errText(r){return ERR[r&&r.error]||ERR.server}
+  function callScript(body){
+    if(!navigator.onLine)return Promise.resolve({ok:false,error:'network'});
+    body.passcode=body.passcode!=null?body.passcode:ed.code;
+    return fetch(SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body),redirect:'follow'})
+      .then(function(r){return r.json()}).catch(function(){return {ok:false,error:'network'}})
+      .then(function(r){if(r&&r.error==='wrong_passcode'&&body.action!=='check'){ed.code='';try{localStorage.removeItem('njw-pass')}catch(e){}renderHeader()}return r||{ok:false,error:'server'}});
+  }
+
+  var dlg=null;
+  function dialog(){
+    if(dlg)return dlg;
+    dlg=document.createElement('dialog');dlg.className='sheet';dlg.setAttribute('aria-labelledby','dlg-title');
+    document.body.appendChild(dlg);
+    dlg.addEventListener('click',function(e){if(e.target===dlg)closeDlg()});
+    dlg.addEventListener('cancel',function(e){e.preventDefault();closeDlg()});
+    return dlg;
+  }
+  function openDlg(html){var d=dialog();d.innerHTML=html;if(!d.open){if(d.showModal)d.showModal();else d.setAttribute('open','')}document.documentElement.classList.add('modal-open')}
+  function closeDlg(){if(dlg&&dlg.open){if(dlg.close)dlg.close();else dlg.removeAttribute('open')}document.documentElement.classList.remove('modal-open')}
+
+  function openLogin(){
+    openDlg('<form class="dlgbody" id="loginform"><h2 id="dlg-title">Continuity sign-in</h2>'
+      +'<p class="muted">For the continuity team only. This turns on adding, replacing and removing reports on this phone.</p>'
+      +'<label class="fld">Passcode<input id="pass" type="password" autocomplete="current-password" required></label>'
+      +'<p class="dlgerr" id="dlgerr" role="alert"></p>'
+      +'<div class="dlgacts"><button type="button" class="btn" data-dlg="close">Cancel</button><button type="submit" class="btn primary" id="loginbtn">Sign in</button></div></form>');
+    var f=document.getElementById('loginform');document.getElementById('pass').focus();
+    f.addEventListener('submit',function(e){
+      e.preventDefault();var code=document.getElementById('pass').value.trim(),btn=document.getElementById('loginbtn');if(!code)return;
+      btn.disabled=true;btn.textContent='Checking…';
+      callScript({action:'check',passcode:code}).then(function(r){
+        btn.disabled=false;btn.textContent='Sign in';
+        if(!r.ok){document.getElementById('dlgerr').textContent=errText(r);return}
+        ed.code=code;try{localStorage.setItem('njw-pass',code)}catch(e){}
+        closeDlg();renderAll();toast('Continuity tools are on for this phone');
+      });
+    });
+  }
+
+  function openAdd(prefill){
+    if(!isEditor()){openLogin();return}
+    var draft='';try{draft=localStorage.getItem('njw-draft')||''}catch(e){}
+    var text=prefill||draft;
+    var canPaste=!!(navigator.clipboard&&navigator.clipboard.readText&&window.isSecureContext);
+    openDlg('<div class="dlgbody"><div class="dlghead"><h2 id="dlg-title">'+(prefill?'Replace daily report':'Add daily report')+'</h2><button type="button" class="x" data-dlg="close" aria-label="Close">\u2715</button></div>'
+      +'<p class="muted">Copy the report from the WhatsApp group and paste it here exactly as sent.</p>'
+      +'<div class="pasterow">'+(canPaste?'<button type="button" class="btn primary" data-dlg="paste">Paste report</button>':'')+'<button type="button" class="btn" data-dlg="clear">Clear</button></div>'
+      +'<textarea id="rep" rows="10" placeholder="Long-press here and choose Paste" spellcheck="false">'+esc(text)+'</textarea>'
+      +'<div id="preview" aria-live="polite"></div>'
+      +'<details class="loglink"><summary>Log sheet</summary><p class="muted">Attached automatically from the log sheets folder once a PDF named like <span class="mono">Day 9 9.10.2026</span> is uploaded. Only paste a link here if the file is somewhere else.</p><input id="loglink" type="url" inputmode="url" placeholder="https://drive.google.com/file/d/..."></details>'
+      +'<p class="dlgerr" id="dlgerr" role="alert"></p>'
+      +'<div class="dlgacts"><button type="button" class="btn" data-dlg="close">Cancel</button><button type="button" class="btn primary" data-dlg="save" id="savebtn">Save report</button></div></div>');
+    var ta=document.getElementById('rep');
+    ta.addEventListener('input',function(){try{localStorage.setItem('njw-draft',ta.value)}catch(e){}preview()});
+    preview();if(!text&&!canPaste)ta.focus();
+  }
+
+  function earlierRepeats(p){
+    var before={};state.days.forEach(function(d){if(d.day<p.day)d.shot.forEach(function(s){before[keyOf(s.ep,s.sc)]=d.day})});
+    return p.shot.filter(function(s){var k=keyOf(s.ep,s.sc);return before[k]&&s.tags.indexOf('Reshoot')<0&&!/\bcomplet|\bcont(inued)?\b|\bfinish/i.test(s.note)}).map(function(s){var k=keyOf(s.ep,s.sc);return k+' (Day '+before[k]+')'});
+  }
+  function preview(){
+    var ta=document.getElementById('rep'),box=document.getElementById('preview'),btn=document.getElementById('savebtn');if(!ta||!box)return;
+    var raw=ta.value.trim();document.getElementById('dlgerr').textContent='';
+    if(!raw){box.innerHTML='';btn.disabled=true;return}
+    var p=parseReport(raw),warn=[],ok=!!(p.day&&p.shot.length);
+    if(!p.day)warn.push('No shoot day number found. The report needs a line like <span class="mono">Shoot Day: 9</span>.');
+    if(!p.shot.length)warn.push('No scenes found. Scenes are written as episode/scene, like <span class="mono">7/4</span>.');
+    if(p.day&&!p.iso)warn.push('The date could not be read, so the log sheet cannot be matched automatically.');
+    var ex=p.day&&dayByNum(p.day);
+    if(ex)warn.push('Day '+p.day+' is already in the tracker. Saving replaces it.');
+    if(p.ignored.length)warn.push('Left out because the report lists them as not shot: '+esc(p.ignored.join(', '))+'.');
+    var rep=p.day?earlierRepeats(p):[];
+    if(rep.length)warn.push('Already shot on an earlier day, so these will show as <strong>Reshoot</strong>: '+esc(rep.join(', '))+'. If a scene was only finished today, add \u201ccompleted\u201d to its line, like <span class="mono">7/5 - completed</span>.');
+    box.innerHTML=(p.day?'<div class="pv"><div class="pvhead"><strong>'+esc(dayRef({day:p.day,iso:p.iso,date:p.date}))+'</strong>'+(p.location?'<span class="muted">'+esc(p.location)+'</span>':'')+'</div>'
+      +(p.shot.length?'<p class="pvsc">'+p.shot.length+' scene'+(p.shot.length===1?'':'s')+': '+p.shot.map(function(s){return '<span class="mono">'+esc(keyOf(s.ep,s.sc))+'</span>'+(s.tags.length?' '+tagsHtml(s.tags):'')}).join(', ')+'</p>':'')
+      +'</div>':'')
+      +(warn.length?'<ul class="pvwarn">'+warn.map(function(w){return '<li>'+w+'</li>'}).join('')+'</ul>':'');
+    btn.disabled=!ok||ui.busy;btn.textContent=ex?'Replace Day '+p.day:(p.day?'Save Day '+p.day:'Save report');
+  }
+
+  function saveReport(){
+    var ta=document.getElementById('rep'),btn=document.getElementById('savebtn'),err=document.getElementById('dlgerr');
+    var raw=ta.value.trim(),log=(document.getElementById('loglink').value||'').trim();
+    if(!raw)return;
+    if(!navigator.onLine){err.textContent='No signal. Your report is kept on this phone. Tap Save when you have signal.';return}
+    ui.busy=true;btn.disabled=true;btn.textContent='Saving…';
+    callScript({action:'save',report:raw,log:log}).then(function(r){
+      ui.busy=false;
+      if(!r.ok){btn.disabled=false;preview();err.textContent=errText(r);if(r.error==='wrong_passcode'){closeDlg();openLogin()}return}
+      try{localStorage.removeItem('njw-draft')}catch(e){}
+      var logMsg=r.logFound?'Log sheet attached'+(r.logName?': '+esc(r.logName):'.'):'Log sheet not in Drive yet. It will be attached automatically within 30 minutes of being uploaded.';
+      openDlg('<div class="dlgbody done"><h2 id="dlg-title">Day '+r.day+' '+(r.replaced?'replaced':'saved')+'</h2><p>'+logMsg+'</p><p class="muted">Everyone sees it the next time their app refreshes.</p><div class="dlgacts"><button type="button" class="btn primary" data-dlg="close">Done</button></div></div>');
+      setTimeout(refresh,1200);
+    });
+  }
+
+  function removeDay(n){
+    ui.busy=true;renderMain();
+    callScript({action:'remove',day:n}).then(function(r){
+      ui.busy=false;ui.confirmDel=null;
+      if(!r.ok){renderMain();toast(errText(r));return}
+      if(ui.openDay===n)ui.openDay=null;
+      state.days=state.days.filter(function(d){return d.day!==n});saveCache();renderAll();toast('Day '+n+' removed');setTimeout(refresh,1200);
+    });
+  }
+
+  document.addEventListener('click',function(e){
+    var b=e.target.closest&&e.target.closest('[data-dlg]');if(!b)return;
+    var a=b.dataset.dlg;
+    if(a==='close'){closeDlg();return}
+    if(a==='clear'){var ta=document.getElementById('rep');ta.value='';try{localStorage.removeItem('njw-draft')}catch(e){}preview();ta.focus();return}
+    if(a==='paste'){navigator.clipboard.readText().then(function(t){var ta=document.getElementById('rep');ta.value=t;try{localStorage.setItem('njw-draft',t)}catch(e){}preview()},function(){var ta=document.getElementById('rep');ta.focus();document.getElementById('dlgerr').textContent='Paste was blocked. Long-press in the box and choose Paste.'});return}
+    if(a==='save'){saveReport();return}
+  });
 
   window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();installPrompt=e;renderHeader()});
   window.addEventListener('appinstalled',function(){installPrompt=null;renderHeader()});
