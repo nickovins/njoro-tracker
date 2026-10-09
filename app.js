@@ -7,7 +7,7 @@
   var TABS=['Reports','Scripts'];
   /* Address of the Apps Script web app attached to the Sheet (apps-script/Code.gs).
      Not secret: every change it makes needs the continuity passcode, which only Google checks. */
-  var SCRIPT_URL='';
+  var SCRIPT_URL='https://script.google.com/macros/s/AKfycbzts4XJrONLd9LMRi_MgDsfK4_LqBLTRXAv7nuQpKHXOF88zw7x2-hbwTpZa8jZNFbk/exec';
   var CACHE_KEY='njw-data-v1';
   var MONTHS=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
   var CYCLE='Cycle 7 | Season 1-4';
