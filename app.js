@@ -99,6 +99,25 @@
   }
 
   /* ---------- parse a continuity report ---------- */
+  /* Copying several WhatsApp messages adds "[07/10/2026, 19:45] Name: " (iPhone) or
+     "07/10/2026, 19:45 - Name: " (Android) to each message. Those dates would read as scenes, so they go. */
+  var WA_PREFIX=/^\s*(?:\[\d{1,2}[\/.]\d{1,2}[\/.]\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:[ap]\.?m\.?)?\]|\d{1,2}[\/.]\d{1,2}[\/.]\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:[ap]\.?m\.?)?\s+-)\s*[^:\n]{1,40}:\s?/i;
+  function cleanPaste(t){return String(t||'').replace(/\r/g,'').split('\n').map(function(l){return l.replace(WA_PREFIX,'')}).join('\n').trim()}
+  function normLine(l){return l.replace(/[*_~]/g,'').replace(/[\u231B\u23F3]/g,'').replace(/\s+/g,' ').trim().replace(/^[^A-Za-z0-9]+(?=[A-Za-z])/,'')}
+  /* One paste can hold several daily reports. Each starts at its title line
+     ("Njoro wa uba Report") or, without one, at its "Shoot Day" line. */
+  function splitReports(text){
+    var lines=cleanPaste(text).split('\n'),starts=[];
+    lines.forEach(function(l,i){
+      if(!/^shoot\s*day\s*[:\-]?\s*\d/i.test(normLine(l)))return;
+      var st=i,floor=starts.length?starts[starts.length-1]+1:0;
+      for(var j=i-1,seen=0;j>=floor&&seen<4;j--){var n=normLine(lines[j]);if(!n)continue;seen++;if(/report/i.test(n)){st=j;break}}
+      starts.push(st);
+    });
+    if(starts.length<2)return [lines.join('\n').trim()].filter(Boolean);
+    starts[0]=0;
+    return starts.map(function(st,k){return lines.slice(st,k+1<starts.length?starts[k+1]:lines.length).join('\n').trim()}).filter(Boolean);
+  }
   function parseReport(raw){
     var out={day:null,date:'',iso:'',cast:'',location:'',times:[],pages:'',shot:[],ignored:[],raw:raw,warnings:[]};
     var mode=null,secTag='',seen={};
@@ -354,22 +373,37 @@
   function saveCache(){try{localStorage.setItem(CACHE_KEY,JSON.stringify({days:state.days,scripts:state.scripts,fetchedAt:state.fetchedAt}))}catch(e){}}
   function loadCache(){try{var c=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');if(c&&c.days){state.days=c.days;state.scripts=c.scripts||{};state.fetchedAt=c.fetchedAt}}catch(e){}}
 
-  async function refresh(){
+  function sigOf(days){return days.map(function(d){return d.day+':'+d.raw.length+':'+(d.log?1:0)}).join(',')}
+  /* After a save the app shows Google's own copy of the sheet straight away. For a couple of
+     minutes after that, an older copy of the sheet from the normal reader is not allowed to undo it. */
+  var wrote={at:0,sig:''};
+  function applyServerRows(rows){
+    if(!Array.isArray(rows))return false;
+    var list=rows.map(function(v,i){var t=Date.parse(String(v[0]||'').replace(' ','T'));return {raw:String(v[1]||''),log:String(v[2]||'').trim(),time:isNaN(t)?0:t,order:i}});
+    state.days=buildDays(list,[]);state.fetchedAt=Date.now();saveCache();
+    wrote={at:Date.now(),sig:sigOf(state.days)};ui.stale=false;ui.offline=false;ui.error='';
+    renderAll();return true;
+  }
+  async function refresh(quiet){
     if(ui.loading){ui.again=true;return}
-    ui.loading=true;ui.error='';renderStatus();
+    ui.loading=true;ui.error='';if(!quiet)renderStatus();
+    var before=sigOf(state.days)+'|'+JSON.stringify(state.scripts),changed=true;
     try{
       var results=await Promise.all(TABS.map(function(t,i){return loadTab(t).catch(function(e){return i===0?Promise.reject(e):null})}));
       if(!results[0]||results[0].status==='error')throw new Error('sheet');
-      state.days=buildDays(rowsOf(results[0]),[]);
+      var days=buildDays(rowsOf(results[0]),[]);
+      if(!(Date.now()-wrote.at<150000&&sigOf(days)!==wrote.sig))state.days=days;
       /* If the Scripts tab does not exist yet, Google sends the first tab instead; scriptsOf ignores it. */
       if(results[1])state.scripts=scriptsOf(results[1]);state.fetchedAt=Date.now();saveCache();
+      changed=before!==sigOf(state.days)+'|'+JSON.stringify(state.scripts)||ui.stale;
       ui.offline=false;ui.stale=false;
     }catch(e){
       ui.offline=!navigator.onLine;ui.stale=true;
       ui.error=state.days.length?'':(ui.offline?'You are offline and nothing has been saved on this phone yet. Open the app once with signal.':'Could not load the reports. Check your connection and tap Refresh.');
     }
-    ui.loading=false;renderAll();
-    if(ui.again){ui.again=false;refresh()}
+    ui.loading=false;
+    if(changed||!quiet)renderAll();else renderStatus();
+    if(ui.again){ui.again=false;refresh(true)}
   }
 
   /* ---------- rendering ---------- */
@@ -411,7 +445,13 @@
     var signed=isEditor();
     document.getElementById('acts').innerHTML=
       (installPrompt?'<button type="button" class="btn primary wide" data-act="install">Install app</button>':'')
-      +(signed?'<button type="button" class="btn primary wide" data-act="add">+ Add daily report</button>':'')
+      +(signed?'<div class="menuwrap wide"><button type="button" class="btn primary" data-act="menu" aria-haspopup="true" aria-expanded="'+!!ui.menu+'">Daily reports <span class="caret2" aria-hidden="true">\u25BE</span></button>'
+        +(ui.menu?'<div class="menu" role="menu">'
+          +'<button type="button" role="menuitem" data-act="add"><b>Add a day</b><span>Paste one report</span></button>'
+          +'<button type="button" role="menuitem" data-act="add-many"><b>Add several days</b><span>Paste many reports at once</span></button>'
+          +'<button type="button" role="menuitem" data-act="pick-edit"><b>Update a day</b><span>Fix or replace a report</span></button>'
+          +'<button type="button" role="menuitem" data-act="pick-del" class="del"><b>Delete a day</b><span>Take a day out of the tracker</span></button>'
+          +'</div>':'')+'</div>':'')
       +'<a class="btn" href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Log sheets ↗</a>'
       +(SCRIPTS_FOLDER?'<a class="btn" href="'+esc(SCRIPTS_FOLDER)+'" target="_blank" rel="noopener">Scripts ↗</a>':'')
       +(SCRIPT_URL?(signed?'<button type="button" class="btn ghost wide" data-act="logout">Sign out</button>'
@@ -444,7 +484,11 @@
     if(b.dataset.ep){var e=+b.dataset.ep;ui.openEp=ui.openEp===e?null:e;var q=document.getElementById('q');if(q.value){q.value='';renderAnswer()}renderMain();return}
     if(b.dataset.view){ui.view=b.dataset.view;try{localStorage.setItem('njw-view',ui.view)}catch(e){}renderControls();renderMain();return}
     var act=b.dataset.act;
+    if(act==='menu'){ui.menu=!ui.menu;renderHeader();return}
+    if(ui.menu){ui.menu=false;renderHeader()}
     if(act==='refresh'){refresh();return}
+    if(act==='add-many'){openAdd('',null,true);return}
+    if(act==='pick-edit'||act==='pick-del'){openPicker(act==='pick-del');return}
     if(act==='hide-hint'){try{localStorage.setItem('njw-ios-hint','1')}catch(e){}renderHeader();return}
     if(act==='login'){openLogin();return}
     if(act==='logout'){ed.code='';try{localStorage.removeItem('njw-pass')}catch(e){}ui.confirmDel=null;renderAll();toast('Continuity tools turned off on this phone');return}
@@ -513,14 +557,15 @@
 
   var editDay=null;
   function draftKey(){return editDay?'':'njw-draft'}
-  function openAdd(prefill,day){
-    editDay=prefill&&day?day:null;
+  var manyMode=false;
+  function openAdd(prefill,day,many){
+    editDay=prefill&&day?day:null;manyMode=!!many&&!editDay;
     if(!isEditor()){openLogin();return}
     var draft='';if(!editDay){try{draft=localStorage.getItem('njw-draft')||''}catch(e){}}
     var text=prefill||draft;
     var canPaste=!!(navigator.clipboard&&navigator.clipboard.readText&&window.isSecureContext);
-    openDlg('<div class="dlgbody"><div class="dlghead"><h2 id="dlg-title">'+(prefill?'Edit daily report':'Add daily report')+'</h2><button type="button" class="x" data-dlg="close" aria-label="Close">\u2715</button></div>'
-      +'<p class="muted">Copy the report from the WhatsApp group and paste it here exactly as sent.</p>'
+    openDlg('<div class="dlgbody"><div class="dlghead"><h2 id="dlg-title">'+(prefill?'Update Day '+editDay:(manyMode?'Add several days':'Add a day'))+'</h2><button type="button" class="x" data-dlg="close" aria-label="Close">\u2715</button></div>'
+      +'<p class="muted">'+(manyMode?'In WhatsApp, select all the daily reports, copy, and paste them here together. Each day is found and saved on its own.':'Copy the report from the WhatsApp group and paste it here exactly as sent.')+'</p>'
       +'<div class="pasterow">'+(canPaste?'<button type="button" class="btn primary" data-dlg="paste">Paste report</button>':'')+'<button type="button" class="btn" data-dlg="clear">Clear</button></div>'
       +'<textarea id="rep" rows="10" placeholder="Long-press here and choose Paste" spellcheck="false">'+esc(text)+'</textarea>'
       +'<div id="preview" aria-live="polite"></div>'
@@ -532,54 +577,131 @@
     preview();if(!text&&!canPaste)ta.focus();
   }
 
-  function earlierRepeats(p){
-    var before={};state.days.forEach(function(d){if(d.day<p.day)d.shot.forEach(function(s){before[keyOf(s.ep,s.sc)]=d.day})});
+  /* Scenes in this report that were already shot on an earlier day (from the tracker, or from
+     earlier reports in the same paste), so they will show as Reshoot. */
+  function earlierRepeats(p,extra){
+    var before={};state.days.concat(extra||[]).forEach(function(d){if(d.day<p.day)d.shot.forEach(function(s){before[keyOf(s.ep,s.sc)]=d.day})});
     return p.shot.filter(function(s){var k=keyOf(s.ep,s.sc);return before[k]&&s.tags.indexOf('Reshoot')<0&&!/\bcomplet|\bcont(inued)?\b|\bfinish/i.test(s.note)}).map(function(s){var k=keyOf(s.ep,s.sc);return k+' (Day '+before[k]+')'});
+  }
+  /* The reports in the box, parsed. A day pasted twice keeps its last copy. */
+  function pasted(){
+    var ta=document.getElementById('rep');if(!ta)return [];
+    var list=splitReports(ta.value).map(function(t){var p=parseReport(t);p.text=t;return p});
+    var last={};list.forEach(function(p,i){if(p.day)last[p.day]=i});
+    list.forEach(function(p,i){p.dup=!!(p.day&&last[p.day]!==i)});
+    return list;
   }
   function preview(){
     var ta=document.getElementById('rep'),box=document.getElementById('preview'),btn=document.getElementById('savebtn');if(!ta||!box)return;
-    var raw=ta.value.trim();document.getElementById('dlgerr').textContent='';
-    if(!raw){box.innerHTML='';btn.disabled=true;return}
-    var p=parseReport(raw),warn=[],ok=!!(p.day&&p.shot.length);
+    document.getElementById('dlgerr').textContent='';
+    var list=pasted(),lk=document.querySelector('.loglink');
+    if(!list.length){box.innerHTML='';btn.disabled=true;btn.textContent=manyMode?'Save days':'Save report';if(lk)lk.hidden=false;return}
+    if(list.length>1||manyMode){
+      if(lk)lk.hidden=list.length>1;
+      if(editDay){box.innerHTML='<ul class="pvwarn"><li>This box holds '+list.length+' reports. Paste only the Day '+editDay+' report here, or use <strong>Add several days</strong>.</li></ul>';btn.disabled=true;return}
+      var good=list.filter(function(p){return p.day&&p.shot.length&&!p.dup}),seenDays=[];
+      box.innerHTML='<p class="pvcount">'+good.length+' day'+(good.length===1?'':'s')+' found</p><ul class="pvlist">'+list.map(function(p,i){
+        var bad=!p.day?'No shoot day number':(!p.shot.length?'No scenes found':(p.dup?'Pasted twice, the later copy is used':''));
+        var rep=bad?[]:earlierRepeats(p,seenDays);if(!bad)seenDays.push(p);
+        var ex=p.day&&dayByNum(p.day);
+        return '<li class="'+(bad?'skip':'')+'"><div><strong>'+(p.day?esc(dayRef({day:p.day,iso:p.iso,date:p.date})):'Report '+(i+1))+'</strong>'
+          +(bad?'':'<span class="pill'+(ex?' upd':'')+'">'+(ex?'Updates':'New')+'</span>')+'</div>'
+          +'<span class="muted">'+(bad?esc(bad)+'. Skipped.':p.shot.length+' scene'+(p.shot.length===1?'':'s')+(p.location?' · '+esc(p.location):'')+(rep.length?' · '+rep.length+' reshoot'+(rep.length===1?'':'s'):''))+'</span></li>';
+      }).join('')+'</ul>';
+      btn.disabled=!good.length||ui.busy;btn.textContent=good.length?'Save '+good.length+' day'+(good.length===1?'':'s'):'Save days';
+      return;
+    }
+    if(lk)lk.hidden=false;
+    var p=list[0],warn=[],ok=!!(p.day&&p.shot.length);
     if(!p.day)warn.push('No shoot day number found. The report needs a line like <span class="mono">Shoot Day: 9</span>.');
     if(!p.shot.length)warn.push('No scenes found. Scenes are written as episode/scene, like <span class="mono">7/4</span>.');
     if(p.day&&!p.iso)warn.push('The date could not be read, so the log sheet cannot be matched automatically.');
     var ex=p.day&&dayByNum(p.day);
     if(editDay&&p.day&&p.day!==editDay)warn.push('You changed the shoot day from '+editDay+' to '+p.day+'. Day '+editDay+' will be removed'+(ex?' and the existing Day '+p.day+' replaced':'')+'.');
-    else if(ex)warn.push('Day '+p.day+' is already in the tracker. Saving updates it with this version.');
+    else if(ex&&!editDay)warn.push('Day '+p.day+' is already in the tracker. Saving updates it with this version.');
     if(p.ignored.length)warn.push('Left out because the report lists them as not shot: '+esc(p.ignored.join(', '))+'.');
     var rep=p.day?earlierRepeats(p):[];
-    if(rep.length)warn.push('Already shot on an earlier day, so these will show as <strong>Reshoot</strong>: '+esc(rep.join(', '))+'. If a scene was only finished today, add \u201ccompleted\u201d to its line, like <span class="mono">7/5 - completed</span>.');
+    if(rep.length)warn.push('Already shot on an earlier day, so these will show as <strong>Reshoot</strong>: '+esc(rep.join(', '))+'. If a scene was only finished today, add “completed” to its line, like <span class="mono">7/5 - completed</span>.');
     box.innerHTML=(p.day?'<div class="pv"><div class="pvhead"><strong>'+esc(dayRef({day:p.day,iso:p.iso,date:p.date}))+'</strong>'+(p.location?'<span class="muted">'+esc(p.location)+'</span>':'')+'</div>'
       +(p.shot.length?'<p class="pvsc">'+p.shot.length+' scene'+(p.shot.length===1?'':'s')+': '+p.shot.map(function(s){return '<span class="mono">'+esc(keyOf(s.ep,s.sc))+'</span>'+(s.tags.length?' '+tagsHtml(s.tags):'')}).join(', ')+'</p>':'')
       +'</div>':'')
       +(warn.length?'<ul class="pvwarn">'+warn.map(function(w){return '<li>'+w+'</li>'}).join('')+'</ul>':'');
-    btn.disabled=!ok||ui.busy;btn.textContent=ex?'Update Day '+p.day:(p.day?'Save Day '+p.day:'Save report');
+    btn.disabled=!ok||ui.busy;btn.textContent=(ex||editDay)?'Update Day '+p.day:(p.day?'Save Day '+p.day:'Save report');
   }
 
+  function logLine(r){return r.logFound?'Log sheet attached.':'Log sheet not in Drive yet. It attaches by itself within 30 minutes of upload.'}
   function saveReport(){
-    var ta=document.getElementById('rep'),btn=document.getElementById('savebtn'),err=document.getElementById('dlgerr');
-    var raw=ta.value.trim(),log=(document.getElementById('loglink').value||'').trim();
-    if(!raw)return;
+    var btn=document.getElementById('savebtn'),err=document.getElementById('dlgerr');
+    var list=pasted();if(!list.length)return;
+    var log=(document.getElementById('loglink').value||'').trim();
     if(!navigator.onLine){err.textContent='No signal. Your report is kept on this phone. Tap Save when you have signal.';return}
     ui.busy=true;btn.disabled=true;btn.textContent='Saving…';
-    callScript({action:'save',report:raw,log:log,originalDay:editDay}).then(function(r){
+    var many=list.length>1||manyMode;
+    var good=list.filter(function(p){return p.day&&p.shot.length&&!p.dup});
+    var job=many?saveMany(good.map(function(p){return p.text})):callScript({action:'save',report:list[0].text,log:log,originalDay:editDay});
+    job.then(function(r){
       ui.busy=false;
       if(!r.ok){btn.disabled=false;preview();err.textContent=errText(r);if(r.error==='wrong_passcode'){closeDlg();openLogin()}return}
       if(!editDay){try{localStorage.removeItem('njw-draft')}catch(e){}}
-      var logMsg=r.logFound?'Log sheet attached'+(r.logName?': '+esc(r.logName):'.'):'Log sheet not in Drive yet. It will be attached automatically within 30 minutes of being uploaded.';
-      openDlg('<div class="dlgbody done"><h2 id="dlg-title">Day '+r.day+' '+(r.replaced?'updated':'saved')+'</h2><p>'+logMsg+'</p><p class="muted">Everyone sees it the next time their app refreshes.</p><div class="dlgacts"><button type="button" class="btn primary" data-dlg="close">Done</button></div></div>');
-      setTimeout(refresh,1200);
+      if(!applyServerRows(r.rows))refresh();
+      var body;
+      if(many){
+        var res=r.results||[],okd=res.filter(function(x){return x.ok}),bad=res.filter(function(x){return !x.ok});
+        body='<h2 id="dlg-title">'+okd.length+' day'+(okd.length===1?'':'s')+' saved</h2><ul class="donelist">'
+          +okd.map(function(x){return '<li><strong>Day '+x.day+'</strong> '+(x.replaced?'updated':'added')+'<span class="muted">'+(x.logFound?'Log sheet attached':'Log sheet not uploaded yet')+'</span></li>'}).join('')
+          +bad.map(function(x){return '<li class="skip"><strong>'+(x.day?'Day '+x.day:'A report')+'</strong> not saved<span class="muted">'+esc(errText(x))+'</span></li>'}).join('')+'</ul>';
+      }else body='<h2 id="dlg-title">Day '+r.day+' '+(r.replaced?'updated':'saved')+'</h2><p>'+logLine(r)+'</p>';
+      openDlg('<div class="dlgbody done">'+body+'<p class="muted">It is on the tracker now. Other phones pick it up within a minute.</p><div class="dlgacts"><button type="button" class="btn primary" data-dlg="close">Done</button></div></div>');
+    });
+  }
+  /* Several days in one trip to Google. An older Google script without "saveMany" gets them one by one. */
+  function saveMany(texts){
+    return callScript({action:'saveMany',reports:texts}).then(function(r){
+      if(r.ok||r.error!=='bad_request')return r;
+      var results=[],rows=null,i=0;
+      function next(){
+        if(i>=texts.length)return {ok:true,results:results,rows:rows};
+        return callScript({action:'save',report:texts[i++],log:'',originalDay:0}).then(function(x){
+          if(!x.ok&&(x.error==='wrong_passcode'||x.error==='network'))return x;
+          results.push(x);if(x.rows)rows=x.rows;return next();
+        });
+      }
+      return next();
     });
   }
 
-  function removeDay(n){
-    ui.busy=true;renderMain();
+  /* Update a day / Delete a day: pick the day first. */
+  function openPicker(del){
+    if(!isEditor()){openLogin();return}
+    var days=daysAsc().reverse();
+    openDlg('<div class="dlgbody"><div class="dlghead"><h2 id="dlg-title">'+(del?'Delete a day':'Update a day')+'</h2><button type="button" class="x" data-dlg="close" aria-label="Close">✕</button></div>'
+      +'<p class="muted">'+(del?'Pick the day to take out of the tracker. The report stays in WhatsApp and the log sheet stays in Drive.':'Pick the day to fix. You can edit the report or paste a new version.')+'</p>'
+      +(days.length?'<div class="picklist">'+days.map(function(d){return '<button type="button" class="pick'+(del?' del':'')+'" data-dlg="'+(del?'pickdel':'pickedit')+'" data-day="'+d.day+'"><strong>'+esc(dayRef(d))+'</strong><span class="muted">'+esc(d.location||'')+' · '+entriesOf(d).length+' scenes</span></button>'}).join('')+'</div>'
+        :'<p class="empty">No days logged yet.</p>')
+      +'</div>');
+  }
+  function confirmDelete(n){
+    var d=dayByNum(n);if(!d)return;
+    openDlg('<div class="dlgbody"><h2 id="dlg-title">Delete '+esc(dayRef(d))+'?</h2>'
+      +'<p>Its '+entriesOf(d).length+' scenes will no longer count as shot. You can add the day back later by pasting the report again.</p>'
+      +'<p class="dlgerr" id="dlgerr" role="alert"></p>'
+      +'<div class="dlgacts"><button type="button" class="btn" data-dlg="close">Keep it</button><button type="button" class="btn danger" data-dlg="delyes" data-day="'+n+'" id="delbtn">Delete Day '+n+'</button></div></div>');
+  }
+
+  function removeDay(n,fromDlg){
+    ui.busy=true;if(!fromDlg)renderMain();
+    var btn=document.getElementById('delbtn');if(fromDlg&&btn){btn.disabled=true;btn.textContent='Deleting…'}
     callScript({action:'remove',day:n}).then(function(r){
       ui.busy=false;ui.confirmDel=null;
-      if(!r.ok){renderMain();toast(errText(r));return}
+      if(!r.ok){
+        if(fromDlg&&btn){btn.disabled=false;btn.textContent='Delete Day '+n;document.getElementById('dlgerr').textContent=errText(r)}
+        else{renderMain();toast(errText(r))}
+        return;
+      }
+      if(fromDlg)closeDlg();
       if(ui.openDay===n)ui.openDay=null;
-      state.days=state.days.filter(function(d){return d.day!==n});saveCache();renderAll();toast('Day '+n+' removed');setTimeout(refresh,1200);
+      if(!applyServerRows(r.rows)){state.days=state.days.filter(function(d){return d.day!==n});wrote={at:Date.now(),sig:sigOf(state.days)};saveCache();renderAll()}
+      toast('Day '+n+' deleted');
     });
   }
 
@@ -590,13 +712,20 @@
     if(a==='clear'){var ta=document.getElementById('rep');ta.value='';if(draftKey()){try{localStorage.removeItem(draftKey())}catch(e){}}preview();ta.focus();return}
     if(a==='paste'){navigator.clipboard.readText().then(function(t){var ta=document.getElementById('rep');ta.value=t;if(draftKey()){try{localStorage.setItem(draftKey(),t)}catch(e){}}preview()},function(){var ta=document.getElementById('rep');ta.focus();document.getElementById('dlgerr').textContent='Paste was blocked. Long-press in the box and choose Paste.'});return}
     if(a==='save'){saveReport();return}
+    if(a==='pickedit'){var d=dayByNum(+b.dataset.day);if(d)openAdd(d.raw,d.day);return}
+    if(a==='pickdel'){confirmDelete(+b.dataset.day);return}
+    if(a==='delyes'){removeDay(+b.dataset.day,true);return}
   });
 
   window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();installPrompt=e;renderHeader()});
   window.addEventListener('appinstalled',function(){installPrompt=null;renderHeader()});
   window.addEventListener('online',function(){ui.offline=false;refresh()});
   window.addEventListener('offline',function(){ui.offline=true;renderStatus()});
-  document.addEventListener('visibilitychange',function(){if(!document.hidden&&navigator.onLine&&Date.now()-(state.fetchedAt||0)>5*60000)refresh()});
+  /* Stay current while the app is open: check every 30 seconds, and straight away when it comes back to the front. */
+  document.addEventListener('visibilitychange',function(){if(!document.hidden&&navigator.onLine&&Date.now()-(state.fetchedAt||0)>15000)refresh(true)});
+  setInterval(function(){if(!document.hidden&&navigator.onLine)refresh(true)},30000);
+  document.addEventListener('click',function(e){if(ui.menu&&!(e.target.closest&&e.target.closest('.menuwrap'))){ui.menu=false;renderHeader()}});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&ui.menu){ui.menu=false;renderHeader()}});
 
   loadCache();
   renderShell();

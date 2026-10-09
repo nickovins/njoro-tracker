@@ -264,3 +264,41 @@ tr.left .chip{display:inline-block;font:600 13px var(--mono);padding:1px 8px;mar
 :root[data-theme="dark"] tr.grp td span.togo,:root[data-theme="dark"] tr.left .chip,:root[data-theme="dark"] tr.left .lbl{color:#F07A7F}
 .foot{text-align:center}
 @media (max-width:560px){tr.grp td span.prog{display:block;margin-left:0;margin-top:2px}.grprow .grpbtn{flex-direction:column;align-items:flex-start;gap:0}}
+
+/* Daily reports menu (continuity only) */
+.menuwrap{position:relative;display:flex}
+.menuwrap>.btn{width:100%}
+.caret2{font-size:12px;opacity:.85}
+.menu{position:absolute;top:calc(100% + 6px);right:0;z-index:30;min-width:260px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:0 14px 40px rgba(0,0,0,.18);padding:6px;display:grid;gap:2px}
+.menu button{all:unset;box-sizing:border-box;display:grid;gap:1px;padding:10px 12px;border-radius:10px;cursor:pointer;color:var(--ink)}
+.menu button b{font:700 15px var(--body);color:var(--deep)}
+.menu button span{font-size:13px;color:var(--muted)}
+.menu button:hover,.menu button:focus-visible{background:var(--head)}
+.menu button.del b{color:#C11F26}
+.menu button.del{border-top:1px solid var(--line);border-radius:0 0 10px 10px;margin-top:4px}
+@media (max-width:560px){.menu{left:0;right:0;min-width:0}}
+
+/* Several days in one paste */
+.pvcount{font:700 15px var(--body);color:var(--deep)}
+.pvlist,.donelist{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.pvlist li,.donelist li{display:grid;gap:2px;padding:9px 12px;border-bottom:1px solid var(--line);font-size:14px}
+.pvlist li:last-child,.donelist li:last-child{border-bottom:0}
+.pvlist li>div{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.pvlist li.skip,.donelist li.skip{background:var(--pulled-bg)}
+.donelist li{grid-template-columns:auto 1fr;column-gap:8px}
+.donelist li .muted{grid-column:1/-1}
+.pill{font:700 11px var(--body);text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;border-radius:999px;background:var(--head);color:var(--deep);border:1px solid var(--leaf)}
+.pill.upd{border-color:#C9A227;color:#8A6D00;background:rgba(201,162,39,.12)}
+
+/* Pick a day to update or delete */
+.picklist{display:grid;gap:6px;max-height:55vh;overflow:auto}
+.pick{all:unset;box-sizing:border-box;display:grid;gap:2px;padding:11px 14px;border:1.5px solid var(--line);border-radius:12px;cursor:pointer;background:var(--surface)}
+.pick strong{color:var(--deep);font-size:15px}
+.pick span{font-size:13px}
+.pick:hover,.pick:focus-visible{border-color:var(--leaf);background:var(--head)}
+.pick.del:hover,.pick.del:focus-visible{border-color:#C11F26}
+/* Let the menu hang below the masthead instead of being cut off */
+.mast{overflow:visible;position:relative;z-index:5}
+.plate{border-radius:15px 15px 0 0}
+.stats{border-radius:0 0 15px 15px}
+@media (max-width:560px){.picklist{max-height:none}}

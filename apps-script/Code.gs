@@ -20,7 +20,7 @@ var LOG_ROOT_ID = '1KQgFJwqSnT5e3fR0aS7sNptej30-5Bs9'; // log sheets folder
 var SCRIPTS_ROOT_ID = '1keWRPeybj1YUOr8c6MtPNM-tHS-zmnjZ'; // episode scripts folder
 var SCRIPTS_TAB = 'Scripts';
 var TZ = 'Africa/Nairobi';
-var VERSION = 2;
+var VERSION = 3;
 
 /* ---------- entry points ---------- */
 
@@ -40,8 +40,9 @@ function doPost(e) {
   if (!lock.tryLock(20000)) return json_({ ok: false, error: 'busy' });
   try {
     if (body.action === 'check') return json_({ ok: true });
-    if (body.action === 'save') return json_(save_(String(body.report || ''), String(body.log || '').trim(), Number(body.originalDay) || 0));
-    if (body.action === 'remove') return json_(remove_(Number(body.day)));
+    if (body.action === 'save') return json_(withRows_(save_(String(body.report || ''), String(body.log || '').trim(), Number(body.originalDay) || 0)));
+    if (body.action === 'saveMany') return json_(withRows_(saveMany_(body.reports)));
+    if (body.action === 'remove') return json_(withRows_(remove_(Number(body.day))));
     if (body.action === 'scripts') return json_({ ok: true, count: refreshScripts() });
     return json_({ ok: false, error: 'bad_request' });
   } catch (err) {
@@ -127,6 +128,27 @@ function save_(report, log, originalDay) {
       .forEach(function (n) { sh.deleteRow(n); moved++; });
   }
   return { ok: true, day: info.day, replaced: same.length > 0 || moved > 0, log: logOut, logName: logName, logFound: !!logOut };
+}
+
+/** Several daily reports pasted at once. Each is saved like a single one. */
+function saveMany_(reports) {
+  if (!Array.isArray(reports) || !reports.length || reports.length > 60) return { ok: false, error: 'bad_request' };
+  var results = reports.map(function (r) {
+    var out = save_(String(r || ''), '', 0);
+    if (!out.ok) out.day = parseHead_(String(r || '')).day || 0;
+    return out;
+  });
+  return { ok: results.some(function (r) { return r.ok; }), error: results.some(function (r) { return r.ok; }) ? undefined : results[0].error, results: results };
+}
+
+/** Sends the whole Reports tab back with every change, so the phone that made
+ *  the change shows it at once instead of waiting for the next refresh. */
+function withRows_(res) {
+  if (res && res.ok) {
+    var sh = sheet_(), last = sh.getLastRow();
+    res.rows = last < 2 ? [] : sh.getRange(2, 1, last - 1, 3).getDisplayValues();
+  }
+  return res;
 }
 
 function remove_(day) {
