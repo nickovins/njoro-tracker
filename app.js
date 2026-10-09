@@ -256,14 +256,35 @@
     if(iR<0)return [];
     return rows.map(function(r,i){var c=r.c||[];return {raw:cellText(c[iR]),log:iL>=0?cellText(c[iL]).trim():'',time:iT>=0?cellTime(c[iT]):0,order:i}});
   }
-  function buildDays(rows){
+  /* A report pasted into a cell that was only selected (not opened) lands one line per row.
+     Stitch those rows back into whole reports. Rows that already hold a whole report are left alone. */
+  function stitch(rows){
+    var out=[],cur=null;
+    rows.forEach(function(r){
+      var txt=(r.raw||'').replace(/\r/g,'');
+      if(!txt.trim()){if(cur){cur.raw+='\n';if(!cur.log&&r.log)cur.log=r.log}return}
+      if(/\n/.test(txt.trim())){cur=null;out.push({raw:txt,log:r.log,time:r.time});return}
+      var header=/njoro\s*wa\s*uba\s*report/i.test(txt),dayLine=/shoot\s*day/i.test(txt);
+      var start=!cur||header||(dayLine&&/shoot\s*day/i.test(cur.raw));
+      if(start){cur={raw:txt,log:r.log,time:r.time};out.push(cur)}
+      else{cur.raw+='\n'+txt;if(!cur.log&&r.log)cur.log=r.log}
+    });
+    return out;
+  }
+  /* sheetRows: the Reports tab, in sheet order. formRows: Google Form replies, if a form is linked.
+     The report that comes last wins: lower rows beat higher rows, form replies beat the sheet. */
+  function buildDays(sheetRows,formRows){
+    var seen={},ordered=[];
+    function add(r){var k=r.raw.replace(/\s+/g,' ').trim()+'|'+r.log;if(seen[k])return;seen[k]=1;ordered.push(r)}
+    stitch(sheetRows||[]).forEach(add);
+    stitch((formRows||[]).slice().sort(function(a,b){return a.time-b.time})).forEach(add);
     var byDay={};
-    rows.forEach(function(r,i){
+    ordered.forEach(function(r){
       if(!r.raw||!r.raw.trim())return;
       var p=parseReport(r.raw);if(!p.day||!p.shot.length)return;
-      var d={day:p.day,date:p.date,iso:p.iso,cast:p.cast,location:p.location,times:p.times,pages:p.pages,shot:p.shot,pulled:[],raw:r.raw,log:safeUrl(r.log),time:r.time,seq:i};
-      var prev=byDay[p.day];
-      if(!prev||d.time>prev.time||(d.time===prev.time&&d.seq>prev.seq)){if(prev&&!d.log)d.log=prev.log;byDay[p.day]=d}
+      var d={day:p.day,date:p.date,iso:p.iso,cast:p.cast,location:p.location,times:p.times,pages:p.pages,shot:p.shot,pulled:[],raw:r.raw.trim(),log:safeUrl(r.log)};
+      var prev=byDay[p.day];if(prev&&!d.log)d.log=prev.log;
+      byDay[p.day]=d;
     });
     var days=Object.keys(byDay).map(function(k){return byDay[k]}).sort(function(a,b){return a.day-b.day});
     /* A scene that shows up again on a later day is a reshoot, unless the line says it was completed. */
@@ -286,10 +307,12 @@
   async function refresh(){
     if(ui.loading)return;ui.loading=true;ui.error='';renderStatus();
     try{
-      var results=await Promise.all(TABS.map(function(t){return loadTab(t).catch(function(e){return t===TABS[0]?Promise.reject(e):null})}));
-      var rows=[];results.forEach(function(r){rows=rows.concat(rowsOf(r))});
-      if(!rows.length&&results[0]&&results[0].status==='error')throw new Error('sheet');
-      state.days=buildDays(rows);state.fetchedAt=Date.now();saveCache();
+      var results=await Promise.all(TABS.map(function(t,i){return loadTab(t).catch(function(e){return i===0?Promise.reject(e):null})}));
+      if(!results[0]||results[0].status==='error')throw new Error('sheet');
+      var sheetRows=rowsOf(results[0]),formRows=rowsOf(results[1]);
+      /* Google answers a request for a tab that does not exist with the first tab. Spot that and drop it. */
+      if(formRows.length&&sheetRows.length&&formRows.length===sheetRows.length&&formRows[0].raw===sheetRows[0].raw)formRows=[];
+      state.days=buildDays(sheetRows,formRows);state.fetchedAt=Date.now();saveCache();
       ui.offline=false;
     }catch(e){
       ui.offline=!navigator.onLine;
@@ -321,7 +344,8 @@
       +'<p class="hint">Finds the shoot days at a location, even with typos. Use it to track down unlogged establishing shots.</p></div>'
       +'</div><div id="answer"></div></section>'
       +'<div class="bar"><div class="seg" role="group" aria-label="View" id="views"></div><div class="filters" id="filters"></div></div>'
-      +'<div id="main"></div>';
+      +'<div id="main"></div>'
+      +'<p class="foot" id="foot"></p>';
     document.getElementById('q').addEventListener('input',function(){if(this.value){document.getElementById('loc').value='';ui.view='scenes';renderControls()}renderAnswer();renderMain()});
     document.getElementById('loc').addEventListener('input',function(){if(this.value){document.getElementById('q').value='';ui.view='days';var h=locHits(this.value.trim());ui.openDay=h.length===1?h[0].day:null;renderControls()}renderAnswer();renderMain()});
     var app=document.getElementById('app');
@@ -336,7 +360,8 @@
     document.getElementById('acts').innerHTML=
       (installPrompt?'<button type="button" class="btn primary" data-act="install">Install app</button>':'')
       +'<a class="btn" href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Log sheets ↗</a>'
-      +'<a class="btn" href="'+esc(FORM_URL||SHEET_URL)+'" target="_blank" rel="noopener">Add daily report ↗</a>';
+      ;
+    document.getElementById('foot').innerHTML='<strong>Continuity team:</strong> add each day\u2019s report in the <a href="'+esc(FORM_URL||SHEET_URL)+'" target="_blank" rel="noopener">tracker sheet \u2197</a>. The app picks it up on the next refresh.';
     var hint=document.getElementById('installhint'),dismissed=false;
     try{dismissed=localStorage.getItem('njw-ios-hint')==='1'}catch(e){}
     hint.innerHTML=(isIos()&&!standalone()&&!dismissed)?'<div class="installnote"><span>Install on iPhone: tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</span><button type="button" class="btn small" data-act="hide-hint">OK</button></div>':'';

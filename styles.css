@@ -177,3 +177,6 @@ td .sub .tag{margin-top:2px}
   .dl{grid-template-columns:1fr;gap:2px}
   .dl dd{margin-bottom:8px}
 }
+
+.foot{margin:8px 0 0;font-size:13px;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
+.foot a{color:var(--deep);font-weight:700}

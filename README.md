@@ -6,4 +6,6 @@ Installable phone app for the Njoro wa Uba shoot. It shows which scenes have bee
 - **Offline:** the app and the last reports it loaded stay on the phone.
 - **Hosting:** GitHub Pages from the `main` branch.
 
-To point the "Add daily report" button at a Google Form, set `FORM_URL` at the top of `app.js`.
+Reports pasted one line per row (a paste into a cell that was only selected) are stitched back together by the app. A report posted again for the same shoot day replaces the earlier one; lower rows win.
+
+To point the continuity link at a Google Form, set `FORM_URL` at the top of `app.js`. Form replies are read from the "Form Responses 1" tab and win over the sheet rows.
