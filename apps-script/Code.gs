@@ -2,12 +2,17 @@
  * Njoro wa Uba Scene Tracker: the part that writes.
  *
  * Lives inside the "Njoro wa Uba Scene Tracker Data" Google Sheet
- * (Extensions > Apps Script). It runs as the Sheet's owner, so it can write
- * to the Sheet and look through the log sheets folder. The app sends it the
- * continuity passcode with every change; anyone without the passcode is refused.
+ * (Extensions > Apps Script) and runs as the Sheet's owner.
  *
- * The passcode is NOT in this file. Set it in Project Settings > Script
- * Properties as PASSCODE.
+ * What it is allowed to do (fixed in appsscript.json, Google enforces it):
+ *   - edit THIS spreadsheet only            (spreadsheets.currentonly)
+ *   - look at Drive files, never change them (drive.readonly)
+ *   - run itself every 30 minutes           (script.scriptapp)
+ * It has no access to Gmail, Calendar, Contacts or any other spreadsheet.
+ * In Drive it only ever opens the log sheets folder below.
+ *
+ * Every change needs the continuity passcode, stored in Project Settings >
+ * Script Properties as PASSCODE. It is never in this file or in the app.
  */
 
 var SHEET_NAME = 'Reports';

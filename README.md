@@ -15,4 +15,6 @@ Reports pasted one line per row (a paste into a cell that was only selected) are
 - The passcode is checked by the Apps Script in `apps-script/Code.gs`, which runs as the Sheet's owner. It is never in the app's code. Ten wrong tries lock uploads for 15 minutes.
 - Log sheets are attached automatically: on save, and every 30 minutes for days that are still missing one. The PDF must be in the log sheets folder (any subfolder) and named with the day and date, like `Day 9 9.10.2026.pdf`.
 
+The script can edit only this one spreadsheet and can only look at Drive (never change it). It has no Gmail access. See `apps-script/appsscript.json`.
+
 Setup steps: `apps-script/SETUP.md`.

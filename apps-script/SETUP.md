@@ -1,17 +1,17 @@
-# Switching on report uploads (one time, about 5 minutes)
+# Switching on report uploads
 
-1. Open the Google Sheet "Njoro wa Uba Scene Tracker Data".
-2. Extensions > Apps Script. Delete what is in the editor, paste all of `Code.gs`, click Save.
-3. Project Settings (gear icon) > Script Properties > Add script property:
-   Property `PASSCODE`, value: the passcode you give the continuity team. Save.
-4. Back in the editor, choose `setup` in the function menu and click Run.
-   Approve the Google permission screens (it needs your Sheet and Drive).
-5. Deploy > New deployment > type Web app.
-   Execute as: Me. Who has access: Anyone. Deploy.
-6. Copy the Web app URL (ends in /exec) and send it to Claude, or put it in
-   `SCRIPT_URL` at the top of `app.js`.
-7. Lock the Sheet so only the app can change it: in the Sheet, Data > Protect
-   sheets and ranges > Reports tab > Restrict who can edit > Only you.
+The Sheet now lives in the owner's own Drive (not the shared log sheets folder),
+so only the owner can edit it or its script.
 
-To change the passcode later, edit it in Script Properties. Everyone signed in
-with the old one is signed out the next time they try to save.
+1. Sheet > Share > General access: **Anyone with the link**, role **Viewer**.
+   (The app reads the reports through this link.)
+2. Sheet > Extensions > Apps Script.
+3. Project Settings (gear) > tick **Show "appsscript.json" manifest file in editor**.
+4. Editor > `appsscript.json`: replace everything with this folder's `appsscript.json`. Save.
+5. Editor > `Code.gs`: replace everything with this folder's `Code.gs`. Save.
+6. Project Settings > Script Properties > Add: `PASSCODE` = the continuity passcode. Save.
+7. Editor: choose `setup`, Run. On the warning "Google hasn't verified this app":
+   Advanced > Go to project (unsafe). It is your own script. Check the list says
+   only: this spreadsheet, see Drive files, run when you are not present. Allow.
+8. Deploy > New deployment > Web app. Execute as **Me**, access **Anyone**. Deploy.
+9. Send the Web app URL (ends /exec) to Claude. Never send the passcode.
