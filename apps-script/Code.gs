@@ -17,7 +17,7 @@
 
 var SHEET_NAME = 'Reports';
 var LOG_ROOT_ID = '1KQgFJwqSnT5e3fR0aS7sNptej30-5Bs9'; // log sheets folder
-var SCRIPTS_ROOT_ID = 'PASTE_SCRIPTS_FOLDER_ID';        // episode scripts folder
+var SCRIPTS_ROOT_ID = '1keWRPeybj1YUOr8c6MtPNM-tHS-zmnjZ'; // episode scripts folder
 var SCRIPTS_TAB = 'Scripts';
 var TZ = 'Africa/Nairobi';
 var VERSION = 1;
