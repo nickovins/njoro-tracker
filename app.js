@@ -43,17 +43,26 @@
   var LOG_FOLDER='https://drive.google.com/drive/folders/1KQgFJwqSnT5e3fR0aS7sNptej30-5Bs9?usp=sharing';
   var SCRIPTS_FOLDER='https://drive.google.com/drive/folders/1keWRPeybj1YUOr8c6MtPNM-tHS-zmnjZ?usp=sharing';
   /* Scripts found on 09.10.2026. Used until the Apps Script writes the Scripts tab, which then takes over. */
-  var SCRIPT_SEED={"1":{"url":"https://drive.google.com/file/d/1h1cAMNHBmJMRAIrUrWy0MkGey5zmwK5i/view","name":"EPISODE 1.pdf"},"2":{"url":"https://drive.google.com/file/d/1KuVpCzPWDxe7qjauTwRf54n4htM3NNo1/view","name":"EPISODE 2.pdf"},"3":{"url":"https://drive.google.com/file/d/1sMdHvFZx6vyPP-3VWA4wtBdH8OZ1KtTz/view","name":"EPISODE 3.pdf"},"4":{"url":"https://drive.google.com/file/d/15sqGsYtc7PyhxUcPUJjbAwyS0CUN0GUg/view","name":"EPISODE 4.pdf"},"5":{"url":"https://drive.google.com/file/d/1EFwA0n0w2RUkeLPI77hTuCJIL7ZC2C-_/view","name":"EPISODE 5.pdf"},"6":{"url":"https://drive.google.com/file/d/1WR2ASggbojN7txYiNlbpnCKBTmGQ0fB0/view","name":"EPISODE 6.pdf"},"7":{"url":"https://drive.google.com/file/d/1hhq-4FzgDySJv3ZbfZT_gG7VDIcjqyOR/view","name":"EPISODE 7.pdf"},"8":{"url":"https://drive.google.com/file/d/1QecGLJVOesXV61RK_iRqHQFt_3w-3z9Y/view","name":"EPISODE 8.pdf"}};
-  /* Scenes in each episode script (all numbered 1 to N, no lettered or omitted scenes). Read from the Scripts folder on 09.10.2026. */
-  var SCENE_COUNT={1:19,2:32,3:19,4:16,5:25,6:19,7:19,8:23};
+  var SCRIPT_SEED={"1":{"url":"https://drive.google.com/file/d/1h1cAMNHBmJMRAIrUrWy0MkGey5zmwK5i/view","name":"EPISODE 1.pdf"},"2":{"url":"https://drive.google.com/file/d/1KuVpCzPWDxe7qjauTwRf54n4htM3NNo1/view","name":"EPISODE 2.pdf"},"3":{"url":"https://drive.google.com/file/d/1sMdHvFZx6vyPP-3VWA4wtBdH8OZ1KtTz/view","name":"EPISODE 3.pdf"},"4":{"url":"https://drive.google.com/file/d/15sqGsYtc7PyhxUcPUJjbAwyS0CUN0GUg/view","name":"EPISODE 4.pdf"},"5":{"url":"https://drive.google.com/file/d/1EFwA0n0w2RUkeLPI77hTuCJIL7ZC2C-_/view","name":"EPISODE 5.pdf"},"6":{"url":"https://drive.google.com/file/d/1WR2ASggbojN7txYiNlbpnCKBTmGQ0fB0/view","name":"EPISODE 6.pdf"},"7":{"url":"https://drive.google.com/file/d/1hhq-4FzgDySJv3ZbfZT_gG7VDIcjqyOR/view","name":"EPISODE 7.pdf"},"8":{"url":"https://drive.google.com/file/d/1QecGLJVOesXV61RK_iRqHQFt_3w-3z9Y/view","name":"EPISODE 8.pdf"},"9":{"url":"https://drive.google.com/file/d/1SeEoTN0EuRMrPN4-KJlhZZP9zirL--kW/view","name":"EPISODE 9-6.pdf"}};
+  /* Scene numbers per episode. The Google robot reads every script in the Scripts folder and
+     writes them to the Scripts tab (Scenes column). These counts are only a fallback, read by hand
+     on 10.10.2026, for when that tab is missing. */
+  var SCENE_COUNT={1:19,2:32,3:19,4:16,5:25,6:19,7:19,8:23,9:26};
+  function sceneList(ep){
+    var sc=state.scripts&&state.scripts[ep],out=[],seen={};
+    var raw=sc&&sc.scenes&&sc.scenes.length?sc.scenes:null;
+    if(raw&&raw.length>=3)raw.forEach(function(x){var n=scParts(x)[0];if(n<9999&&!seen[n]){seen[n]=1;out.push(n)}});
+    if(!out.length&&SCENE_COUNT[ep])for(var i=1;i<=SCENE_COUNT[ep];i++)out.push(i);
+    return out.sort(function(a,b){return a-b});
+  }
   /* Shot / still-to-shoot per episode. A lettered take (29A) covers scene 29. */
   function progress(ep,rows){
-    var total=SCENE_COUNT[ep];if(!total)return null;
-    var done={};rows.forEach(function(t){if(t.ep===ep){var n=scParts(t.key.split('/')[1])[0];if(n>=1&&n<=total)done[n]=1}});
-    var left=[];for(var i=1;i<=total;i++)if(!done[i])left.push(i);
-    return {total:total,shot:total-left.length,left:left};
+    var list=sceneList(ep);if(!list.length)return null;
+    var done={};rows.forEach(function(t){if(t.ep===ep)done[scParts(t.key.split('/')[1])[0]]=1});
+    var left=list.filter(function(n){return !done[n]});
+    return {total:list.length,shot:list.length-left.length,left:left,last:list[list.length-1]};
   }
-  function scriptFor(ep){var have=state.scripts&&Object.keys(state.scripts).length,x=have?state.scripts[ep]:SCRIPT_SEED[ep];return x&&safeUrl(x.url)?x:null}
+  function scriptFor(ep){var x=(state.scripts&&state.scripts[ep])||SCRIPT_SEED[ep];return x&&safeUrl(x.url)?x:null}
   function safeUrl(u){return /^https:\/\/(drive|docs)\.google\.com\//.test(u||'')?u:''}
   function logLink(d,label){var u=safeUrl(d.log);return u?'<a class="log" href="'+esc(u)+'" target="_blank" rel="noopener">'+(label||'Log sheet')+' \u2197</a>':''}
   function dayRef(d){var f=fmtDate(d.iso);return 'Day '+d.day+(f?' | '+f:(d.date?' | '+d.date:''))}
@@ -192,7 +201,7 @@
       document.getElementById('q').classList.add('miss');
       box.innerHTML='<div class="answer notshot" role="alert"><div class="line"><span class="sc">'+esc(q.key)+'</span><span class="verdict">Not shot</span></div>'
         +'<p>Episode '+esc(parts[0])+', Scene '+esc(parts[1])+' is not in any continuity report logged so far'+(logged.length?' (Day '+logged.join(', ')+')':'')+'.</p>'
-        +(SCENE_COUNT[+parts[0]]&&scParts(parts[1])[0]>SCENE_COUNT[+parts[0]]?'<p><strong>Check the number.</strong> The Episode '+esc(parts[0])+' script has '+SCENE_COUNT[+parts[0]]+' scenes.</p>':'')
+        +(function(){var L=sceneList(+parts[0]);return L.length&&L.indexOf(scParts(parts[1])[0])<0?'<p><strong>Check the number.</strong> Scene '+esc(parts[1])+' is not in the Episode '+esc(parts[0])+' script, which runs from scene '+L[0]+' to '+L[L.length-1]+'.</p>':''})()
         +(nearKeys.length?'<p><strong>Similar scene shot:</strong> '+nearKeys.map(function(k){return esc(k)+' on '+esc(dayRef(near[k]))}).join(', ')+'. Check it is not the same scene under another number.</p>':'')
         +'<div class="tip"><strong>Before you mark it missing,</strong> check whether it was shot as an establishing shot, insert, cutaway, B-roll, VO or pickup and left out of the report. Type the scene\u2019s location in the Location box to find the days the crew was there, then check those days\u2019 log sheets. <a href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Open log sheets \u2197</a></div></div>';
       return;
@@ -224,7 +233,8 @@
     var by={},eps=[];
     rows.forEach(function(t){if(!by[t.ep]){by[t.ep]=[];eps.push(t.ep)}by[t.ep].push(t)});
     /* Every episode with a script is listed, even before anything is shot. */
-    if(ui.show==='all'||notShot)Object.keys(SCENE_COUNT).forEach(function(k){k=+k;if((only==null||only===k)&&!by[k]){by[k]=[];eps.push(k)}});
+    var known={};Object.keys(SCENE_COUNT).concat(Object.keys(state.scripts||{})).forEach(function(k){known[k]=1});
+    if(ui.show==='all'||notShot)Object.keys(known).forEach(function(k){k=+k;if((only==null||only===k)&&!by[k]){by[k]=[];eps.push(k)}});
     if(notShot)eps=eps.filter(function(ep){var pr=progress(ep,all);return pr&&pr.left.length});
     eps.sort(function(a,b){return a-b});
     if(!eps.length){
@@ -336,10 +346,10 @@
   function scriptsOf(res){
     var out={};if(!res||res.status==='error'||!res.table)return out;
     var labels=(res.table.cols||[]).map(function(c){return String(c.label||'').toLowerCase()});
-    var iE=labels.indexOf('episode'),iL=labels.indexOf('link'),iN=labels.indexOf('script');
+    var iE=labels.indexOf('episode'),iL=labels.indexOf('link'),iN=labels.indexOf('script'),iS=labels.indexOf('scenes');
     if(iE<0||iL<0)return out;
     (res.table.rows||[]).forEach(function(r){var c=r.c||[],ep=parseInt(cellText(c[iE]),10),url=cellText(c[iL]).trim();
-      if(ep>0&&safeUrl(url))out[ep]={url:url,name:iN>=0?cellText(c[iN]):''}});
+      if(ep>0&&safeUrl(url))out[ep]={url:url,name:iN>=0?cellText(c[iN]):'',scenes:iS>=0?cellText(c[iS]).split(/[\s,]+/).filter(function(x){return /^\d{1,3}[A-Za-z]?$/.test(x)}):[]}});
     return out;
   }
   function buildDays(sheetRows,formRows){

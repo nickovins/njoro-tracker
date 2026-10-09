@@ -7,6 +7,9 @@
  * What it is allowed to do (fixed in appsscript.json, Google enforces it):
  *   - edit THIS spreadsheet only            (spreadsheets.currentonly)
  *   - look at Drive files, never change them (drive.readonly)
+ *   - make and delete its OWN temporary files  (drive.file): to read the
+ *     scene list in a script PDF, it turns a copy into text, reads it,
+ *     and deletes the copy. It cannot touch any file it did not create.
  *   - run itself every 30 minutes           (script.scriptapp)
  * It has no access to Gmail, Calendar, Contacts or any other spreadsheet.
  * In Drive it only ever opens the log sheets and scripts folders below.
@@ -20,7 +23,7 @@ var LOG_ROOT_ID = '1KQgFJwqSnT5e3fR0aS7sNptej30-5Bs9'; // log sheets folder
 var SCRIPTS_ROOT_ID = '1keWRPeybj1YUOr8c6MtPNM-tHS-zmnjZ'; // episode scripts folder
 var SCRIPTS_TAB = 'Scripts';
 var TZ = 'Africa/Nairobi';
-var VERSION = 3;
+var VERSION = 4;
 
 /* ---------- entry points ---------- */
 
@@ -280,7 +283,7 @@ function refreshScripts() {
       var f = files.next();
       if (f.isTrashed()) continue;
       var own = episodeOf_(f.getName());
-      consider(own || q.ep, { name: f.getName(), url: f.getUrl(), updated: f.getLastUpdated(), rank: own ? 3 : 1 });
+      consider(own || q.ep, { name: f.getName(), url: f.getUrl(), updated: f.getLastUpdated(), rank: own ? 3 : 1, file: f });
     }
     if (q.depth < 3) {
       var subs = q.folder.getFolders();
@@ -294,16 +297,77 @@ function refreshScripts() {
     }
   }
   var ss = SpreadsheetApp.getActive(), tab = ss.getSheetByName(SCRIPTS_TAB) || ss.insertSheet(SCRIPTS_TAB);
+  var started = Date.now();
   var rows = Object.keys(best).map(Number).sort(function (a, b) { return a - b; }).map(function (ep) {
     var b = best[ep];
-    return [String(ep), b.name, b.url, Utilities.formatDate(b.updated, TZ, 'yyyy-MM-dd HH:mm')];
+    // Reading a new script takes a few seconds; stop starting new ones after 3 minutes.
+    var scenes = b.file ? scenesOf_(b.file, Date.now() - started < 180000) : '';
+    return [String(ep), b.name, b.url, Utilities.formatDate(b.updated, TZ, 'yyyy-MM-dd HH:mm'), scenes];
   });
   tab.clearContents();
-  var out = [['Episode', 'Script', 'Link', 'Updated']].concat(rows);
-  var range = tab.getRange(1, 1, out.length, 4);
+  var out = [['Episode', 'Script', 'Link', 'Updated', 'Scenes']].concat(rows);
+  var range = tab.getRange(1, 1, out.length, 5);
   range.setNumberFormat('@');
   range.setValues(out);
   return rows.length;
+}
+
+/* ---------- scene numbers in a script ---------- */
+
+/** Scene numbers in a script file, like "1,2,3,4A". Remembered per file version,
+ *  so each script is only read once (and again when it is replaced or edited). */
+function scenesOf_(file, mayRead) {
+  var props = PropertiesService.getScriptProperties();
+  var key = 'SC_' + file.getId() + '_' + file.getLastUpdated().getTime();
+  var known = props.getProperty(key);
+  if (known != null) return known;
+  if (!mayRead) return '';
+  var text = scriptText_(file);
+  if (text == null) return '';                 // could not read it; try again in 30 minutes
+  var list = sceneNumbers_(text).join(',');
+  // Forget older versions of this file, then remember this one.
+  Object.keys(props.getProperties()).forEach(function (k) {
+    if (k.indexOf('SC_' + file.getId() + '_') === 0) props.deleteProperty(k);
+  });
+  props.setProperty(key, list);
+  return list;
+}
+
+/** The words in a script. A Google Doc is read directly. A PDF is uploaded as a
+ *  temporary Google Doc (Google turns it into text), read, then deleted. */
+function scriptText_(file) {
+  var mime = file.getMimeType();
+  try {
+    if (mime === MimeType.GOOGLE_DOCS) return file.getAs('text/markdown').getDataAsString();
+    if (mime !== MimeType.PDF) return null;
+    var tmp = Drive.Files.create({ name: 'njoro-tracker temp (safe to delete)', mimeType: MimeType.GOOGLE_DOCS }, file.getBlob());
+    try { return DriveApp.getFileById(tmp.id).getAs('text/markdown').getDataAsString(); }
+    finally {
+      try { Drive.Files.remove(tmp.id); } catch (e) { DriveApp.getFileById(tmp.id).setTrashed(true); }
+    }
+  } catch (err) {
+    console.warn('Could not read ' + file.getName() + ': ' + err);
+    return null;
+  }
+}
+
+/** Scene numbers from scene headings: "1 INT. CAB - DAY 1", "INT. CAB - DAY 1 1",
+ *  "12A EXT. ROAD - NIGHT 12A", "4 FLASHBACK - ...", "7 INTERCUT - ...", "17 I/E DOOR 17". */
+var HEAD_ = '(?:INT\\.?\\/EXT|EXT\\.?\\/INT|INT|EXT|I\\/E|INTERCUT|FLASHBACK|FLASH)\\b';
+function sceneNumbers_(text) {
+  var t = String(text).replace(/\\(?=[^\s])/g, '').replace(/[*_#>`]/g, ' ').replace(/[\u00A0\t]/g, ' ');
+  var seen = {}, out = [];
+  function add(n) { n = n.toUpperCase().replace(/^0+(?=\d)/, ''); if (!seen[n] && parseInt(n, 10) <= 300) { seen[n] = 1; out.push(n); } }
+  // Number in front of the heading.
+  var front = new RegExp('(?:^|\\n|[.!?"\u201D)]\\s)\\s*(\\d{1,3}[A-Z]?)\\s+' + HEAD_, 'g'), m;
+  while ((m = front.exec(t))) add(m[1]);
+  // Number only after the heading, written twice: "INT. CAB - EVENING 1 1".
+  var back = new RegExp('(?:^|\\n)\\s*' + HEAD_ + '[^\\n]*?\\s(\\d{1,3}[A-Z]?)\\s+(\\d{1,3}[A-Z]?)\\s*(?=\\n|$)', 'g');
+  while ((m = back.exec(t))) if (m[1] === m[2]) add(m[1]);
+  // Number tucked just after INT./EXT. and repeated at the end: "INT. 1 LIVING ROOM - NIGHT 1".
+  var inside = new RegExp('(?:^|\\n)\\s*' + HEAD_ + '\\.?\\s+(\\d{1,3}[A-Z]?)\\s[^\\n]*\\s(\\d{1,3}[A-Z]?)\\s*(?=\\n|$)', 'g');
+  while ((m = inside.exec(t))) if (m[1] === m[2]) add(m[1]);
+  return out.sort(function (a, b) { return parseInt(a, 10) - parseInt(b, 10) || (a < b ? -1 : a > b ? 1 : 0); });
 }
 
 function json_(o) {

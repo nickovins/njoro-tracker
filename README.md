@@ -10,7 +10,7 @@ Reports pasted one line per row (a paste into a cell that was only selected) are
 
 ## Episode scripts
 
-Put scripts in the scripts folder in Drive, with the episode in the name (`Ep 7`, `EP07`, `Episode 7`) or inside a folder named for the episode. Every 30 minutes the Apps Script writes a **Scripts** tab listing the newest script per episode, and the app shows a **Script** button on that episode. Set the folder in `SCRIPTS_ROOT_ID` (Code.gs) and `SCRIPTS_FOLDER` (app.js).
+Put scripts in the scripts folder in Drive, with the episode in the name (`Ep 7`, `EP07`, `Episode 7`) or inside a folder named for the episode. Every 30 minutes the Apps Script writes a **Scripts** tab listing the newest script per episode, and the app shows a **Script** button on that episode. It also reads each script's scene headings (PDFs are turned into text through a temporary Google Doc that it deletes straight after) and writes the scene numbers to a **Scenes** column, which drives the shot / to shoot count. Each script version is read once. Set the folder in `SCRIPTS_ROOT_ID` (Code.gs) and `SCRIPTS_FOLDER` (app.js).
 
 ## Who can change what
 

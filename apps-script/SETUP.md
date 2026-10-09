@@ -12,6 +12,8 @@ so only the owner can edit it or its script.
 6. Project Settings > Script Properties > Add: `PASSCODE` = the continuity passcode. Save.
 7. Editor: choose `setup`, Run. On the warning "Google hasn't verified this app":
    Advanced > Go to project (unsafe). It is your own script. Check the list says
-   only: this spreadsheet, see Drive files, run when you are not present. Allow.
+   only: this spreadsheet, see Drive files, "see, edit, create and delete only the
+   specific Google Drive files you use with this app" (its own temporary copies of
+   scripts, used to count scenes), run when you are not present. Allow.
 8. Deploy > New deployment > Web app. Execute as **Me**, access **Anyone**. Deploy.
 9. Send the Web app URL (ends /exec) to Claude. Never send the passcode.
