@@ -380,14 +380,16 @@
   function renderHeader(){
     var last=daysAsc().slice(-1)[0];
     document.getElementById('stats').innerHTML='<div class="cyc">'+esc(CYCLE)+'</div><div><dt>Last report</dt><dd>'+(last?esc(dayRef(last)):'None')+'</dd></div>';
+    var signed=isEditor();
     document.getElementById('acts').innerHTML=
-      (installPrompt?'<button type="button" class="btn primary" data-act="install">Install app</button>':'')
-      +(isEditor()?'<button type="button" class="btn primary" data-act="add">Add daily report</button>':'')
+      (installPrompt?'<button type="button" class="btn primary wide" data-act="install">Install app</button>':'')
+      +(signed?'<button type="button" class="btn primary wide" data-act="add">+ Add daily report</button>':'')
       +'<a class="btn" href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Log sheets ↗</a>'
-      +(SCRIPTS_FOLDER?'<a class="btn" href="'+esc(SCRIPTS_FOLDER)+'" target="_blank" rel="noopener">Scripts ↗</a>':'');
-    document.getElementById('foot').innerHTML=!SCRIPT_URL?'Read only. Report uploads are being set up.'
-      :isEditor()?'Continuity tools are on for this phone. <button type="button" class="linkbtn" data-act="logout">Turn off</button>'
-      :'Read only. <button type="button" class="linkbtn" data-act="login">Continuity sign-in</button>';
+      +(SCRIPTS_FOLDER?'<a class="btn" href="'+esc(SCRIPTS_FOLDER)+'" target="_blank" rel="noopener">Scripts ↗</a>':'')
+      +(SCRIPT_URL?(signed?'<button type="button" class="btn ghost wide" data-act="logout">Sign out</button>'
+        :'<button type="button" class="btn ghost wide" data-act="login"><span aria-hidden="true">\uD83D\uDD12</span> Continuity sign-in</button>'):'');
+    document.getElementById('stats').innerHTML+=signed?'<div class="mode">Continuity mode</div>':'';
+    document.getElementById('foot').innerHTML='';
     var hint=document.getElementById('installhint'),dismissed=false;
     try{dismissed=localStorage.getItem('njw-ios-hint')==='1'}catch(e){}
     hint.innerHTML=(isIos()&&!standalone()&&!dismissed)?'<div class="installnote"><span>Install on iPhone: tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</span><button type="button" class="btn small" data-act="hide-hint">OK</button></div>':'';

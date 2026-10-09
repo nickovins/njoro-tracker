@@ -32,7 +32,7 @@ button{font:inherit}
 .mast{border-radius:16px;overflow:hidden;border:1px solid var(--line)}
 .plate{background:var(--plate);display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px 20px;padding:16px 20px}
 .plate img{width:min(230px,58vw);height:auto;display:block}
-.plate .right{display:grid;justify-items:end;gap:10px}
+.plate .right{display:grid;justify-items:end;gap:12px}
 .acts{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
 a.btn{text-decoration:none;display:inline-block}
 a.log{font-weight:700;font-size:13px;color:var(--deep);text-decoration:none;white-space:nowrap;border-bottom:1.5px solid var(--leaf)}
@@ -226,3 +226,26 @@ a.scriptlink{flex:none;font:700 13px var(--body);color:var(--deep);text-decorati
 a.scriptlink:hover{border-color:var(--deep)}
 a.scriptlink:focus-visible{outline:2px solid var(--green);outline-offset:2px}
 @media (max-width:560px){.grprow{gap:8px}.grprow .grpbtn{font-size:16px}a.scriptlink{padding:7px 11px}}
+
+/* Header buttons: a row on computers, an even grid on phones */
+.acts .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;min-height:40px}
+.btn.ghost{background:transparent;border-style:dashed;color:var(--deep)}
+.btn.ghost:hover{border-style:solid}
+.stats .mode{font:700 12px var(--body);text-transform:uppercase;letter-spacing:.08em;color:var(--forest);background:var(--lime);border-radius:999px;padding:4px 10px;align-self:center}
+.foot:empty{display:none}
+@media (max-width:560px){
+  .plate{flex-direction:column;align-items:stretch}
+  .plate img{margin:0 auto;width:min(200px,60vw)}
+  .plate .right{justify-items:stretch}
+  .kicker{text-align:center}
+  .acts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .acts .btn{width:100%;min-height:46px;font-size:15px}
+  .acts .wide{grid-column:1/-1}
+  .stats{justify-content:space-between}
+  .stats .cyc{margin-right:0;width:100%}
+}
+@media (min-width:561px){
+  .plate{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:16px 28px}
+  .plate .right{justify-items:end;min-width:0}
+  .acts{justify-content:flex-end;max-width:520px}
+}
