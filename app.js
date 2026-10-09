@@ -44,6 +44,15 @@
   var SCRIPTS_FOLDER='https://drive.google.com/drive/folders/1keWRPeybj1YUOr8c6MtPNM-tHS-zmnjZ?usp=sharing';
   /* Scripts found on 09.10.2026. Used until the Apps Script writes the Scripts tab, which then takes over. */
   var SCRIPT_SEED={"1":{"url":"https://drive.google.com/file/d/1h1cAMNHBmJMRAIrUrWy0MkGey5zmwK5i/view","name":"EPISODE 1.pdf"},"2":{"url":"https://drive.google.com/file/d/1KuVpCzPWDxe7qjauTwRf54n4htM3NNo1/view","name":"EPISODE 2.pdf"},"3":{"url":"https://drive.google.com/file/d/1sMdHvFZx6vyPP-3VWA4wtBdH8OZ1KtTz/view","name":"EPISODE 3.pdf"},"4":{"url":"https://drive.google.com/file/d/15sqGsYtc7PyhxUcPUJjbAwyS0CUN0GUg/view","name":"EPISODE 4.pdf"},"5":{"url":"https://drive.google.com/file/d/1EFwA0n0w2RUkeLPI77hTuCJIL7ZC2C-_/view","name":"EPISODE 5.pdf"},"6":{"url":"https://drive.google.com/file/d/1WR2ASggbojN7txYiNlbpnCKBTmGQ0fB0/view","name":"EPISODE 6.pdf"},"7":{"url":"https://drive.google.com/file/d/1hhq-4FzgDySJv3ZbfZT_gG7VDIcjqyOR/view","name":"EPISODE 7.pdf"},"8":{"url":"https://drive.google.com/file/d/1QecGLJVOesXV61RK_iRqHQFt_3w-3z9Y/view","name":"EPISODE 8.pdf"}};
+  /* Scenes in each episode script (all numbered 1 to N, no lettered or omitted scenes). Read from the Scripts folder on 09.10.2026. */
+  var SCENE_COUNT={1:19,2:32,3:19,4:16,5:25,6:19,7:19,8:23};
+  /* Shot / still-to-shoot per episode. A lettered take (29A) covers scene 29. */
+  function progress(ep,rows){
+    var total=SCENE_COUNT[ep];if(!total)return null;
+    var done={};rows.forEach(function(t){if(t.ep===ep){var n=scParts(t.key.split('/')[1])[0];if(n>=1&&n<=total)done[n]=1}});
+    var left=[];for(var i=1;i<=total;i++)if(!done[i])left.push(i);
+    return {total:total,shot:total-left.length,left:left};
+  }
   function scriptFor(ep){var have=state.scripts&&Object.keys(state.scripts).length,x=have?state.scripts[ep]:SCRIPT_SEED[ep];return x&&safeUrl(x.url)?x:null}
   function safeUrl(u){return /^https:\/\/(drive|docs)\.google\.com\//.test(u||'')?u:''}
   function logLink(d,label){var u=safeUrl(d.log);return u?'<a class="log" href="'+esc(u)+'" target="_blank" rel="noopener">'+(label||'Log sheet')+' \u2197</a>':''}
@@ -164,6 +173,7 @@
       document.getElementById('q').classList.add('miss');
       box.innerHTML='<div class="answer notshot" role="alert"><div class="line"><span class="sc">'+esc(q.key)+'</span><span class="verdict">Not shot</span></div>'
         +'<p>Episode '+esc(parts[0])+', Scene '+esc(parts[1])+' is not in any continuity report logged so far'+(logged.length?' (Day '+logged.join(', ')+')':'')+'.</p>'
+        +(SCENE_COUNT[+parts[0]]&&scParts(parts[1])[0]>SCENE_COUNT[+parts[0]]?'<p><strong>Check the number.</strong> The Episode '+esc(parts[0])+' script has '+SCENE_COUNT[+parts[0]]+' scenes.</p>':'')
         +(nearKeys.length?'<p><strong>Similar scene shot:</strong> '+nearKeys.map(function(k){return esc(k)+' on '+esc(dayRef(near[k]))}).join(', ')+'. Check it is not the same scene under another number.</p>':'')
         +'<div class="tip"><strong>Before you mark it missing,</strong> check whether it was shot as an establishing shot, insert, cutaway, B-roll, VO or pickup and left out of the report. Type the scene\u2019s location in the Location box to find the days the crew was there, then check those days\u2019 log sheets. <a href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Open log sheets \u2197</a></div></div>';
       return;
@@ -177,7 +187,7 @@
     document.getElementById('views').innerHTML=[['scenes','Scenes'],['days','Daily reports']].map(function(v){return '<button type="button" data-view="'+v[0]+'" aria-pressed="'+(ui.view===v[0])+'">'+v[1]+'</button>'}).join('');
     var f=document.getElementById('filters');
     if(ui.view!=='scenes'){f.innerHTML='';return}
-    f.innerHTML='<label for="f-show">Show</label><select id="f-show"><option value="all">All scenes</option><option value="Pulled"'+(ui.show==='Pulled'?' selected':'')+'>Pulled</option><option value="Reshoot"'+(ui.show==='Reshoot'?' selected':'')+'>Reshoots</option></select>';
+    f.innerHTML='<label for="f-show">Show</label><select id="f-show"><option value="all">All scenes</option><option value="todo"'+(ui.show==='todo'?' selected':'')+'>Not shot yet</option><option value="Pulled"'+(ui.show==='Pulled'?' selected':'')+'>Pulled</option><option value="Reshoot"'+(ui.show==='Reshoot'?' selected':'')+'>Reshoots</option></select>';
   }
 
   function row(t,hit,showEp){
@@ -186,24 +196,39 @@
   }
   var HEAD='<thead><tr><th>Scene</th><th>Shot on</th><th class="hide-sm">Location</th><th class="hide-sm">Notes</th></tr></thead>';
   function renderScenes(){
-    var q=parseQuery(),kw=locQuery(),rows=takes();
-    if(ui.show!=='all')rows=rows.filter(function(t){return t.tags.indexOf(ui.show)>=0});
-    var hit=null;
-    if(q&&q.type==='scene'){var e=+q.key.split('/')[0];rows=rows.filter(function(t){return t.ep===e});ui.openEp=e;hit=q.key;if(!rows.length)return ''}
-    else if(q&&q.type==='ep'){rows=rows.filter(function(t){return t.ep===q.ep});ui.openEp=q.ep}
-    if(!rows.length){
-      var msg=state.days.length?(q&&q.type==='ep'?'Nothing from Episode '+q.ep+' is in the reports logged so far.':'No scenes match this filter.'):'No reports logged yet. Add the first daily report to start the list.';
+    var q=parseQuery(),all=takes(),rows=all,notShot=ui.show==='todo';
+    if(ui.show!=='all'&&!notShot)rows=rows.filter(function(t){return t.tags.indexOf(ui.show)>=0});
+    var hit=null,only=null;
+    if(q&&q.type==='scene'){only=+q.key.split('/')[0];ui.openEp=only;hit=q.key;if(!all.some(function(t){return t.key===q.key}))return ''}
+    else if(q&&q.type==='ep'){only=q.ep;ui.openEp=q.ep}
+    if(only!=null)rows=rows.filter(function(t){return t.ep===only});
+    var by={},eps=[];
+    rows.forEach(function(t){if(!by[t.ep]){by[t.ep]=[];eps.push(t.ep)}by[t.ep].push(t)});
+    /* Every episode with a script is listed, even before anything is shot. */
+    if(ui.show==='all'||notShot)Object.keys(SCENE_COUNT).forEach(function(k){k=+k;if((only==null||only===k)&&!by[k]){by[k]=[];eps.push(k)}});
+    if(notShot)eps=eps.filter(function(ep){var pr=progress(ep,all);return pr&&pr.left.length});
+    eps.sort(function(a,b){return a-b});
+    if(!eps.length){
+      var msg=notShot?'Every scene in the scripts has been shot.':(state.days.length?'No scenes match this filter.':'No reports logged yet. Add the first daily report to start the list.');
       return '<div class="tablewrap"><p class="empty">'+esc(msg)+'</p></div>';
     }
-    var eps=[],by={};rows.forEach(function(t){if(!by[t.ep]){by[t.ep]=[];eps.push(t.ep)}by[t.ep].push(t)});
-    var html='<div class="tablewrap"><table>'+HEAD+'<tbody>';
+    var html='<div class="tablewrap"><table>'+(notShot?'':HEAD)+'<tbody>';
     eps.forEach(function(ep){
-      var g=by[ep],u={};g.forEach(function(x){u[x.key]=1});var n=Object.keys(u).length,rn=g.filter(function(x){return x.ext}).length,open=ui.openEp===ep;
-      var sc=scriptFor(ep);
-      html+='<tr class="grp'+(open?' open':'')+'"><td colspan="4"><div class="grprow"><button type="button" class="grpbtn" data-ep="'+ep+'" aria-expanded="'+open+'">Episode '+ep+'<span class="muted" style="font:600 13px var(--body)">'+n+' scene'+(n===1?'':'s')+(rn?' · '+rn+' reshoot'+(rn===1?'':'s'):'')+'</span></button>'
-        +(sc?'<a class="scriptlink" href="'+esc(sc.url)+'" target="_blank" rel="noopener" title="'+esc(sc.name)+'">Script \u2197</a>':'')
-        +'<button type="button" class="grpfill" data-ep="'+ep+'" tabindex="-1" aria-hidden="true"><span class="chev">›</span></button></div></td></tr>';
-      if(open)html+=g.map(function(t){return row(t,hit)}).join('');
+      var g=by[ep],open=ui.openEp===ep,pr=progress(ep,all),sc=scriptFor(ep),sub;
+      if(pr)sub='<span class="prog"><b>'+pr.shot+'</b> of '+pr.total+' shot'+(pr.left.length?'':' ✓')+'</span>';
+      else{var u={};g.forEach(function(x){u[x.key]=1});var n=Object.keys(u).length;sub='<span class="prog">'+n+' scene'+(n===1?'':'s')+' shot</span>'}
+      html+='<tr class="grp'+(open?' open':'')+'"><td colspan="4"><div class="grprow"><button type="button" class="grpbtn" data-ep="'+ep+'" aria-expanded="'+open+'">Episode '+ep+sub+'</button>'
+        +(pr&&pr.left.length?'<span class="togo">'+pr.left.length+' to shoot</span>':'')
+        +(sc?'<a class="scriptlink" href="'+esc(sc.url)+'" target="_blank" rel="noopener" title="'+esc(sc.name)+'">Script ↗</a>':'')
+        +'<button type="button" class="grpfill" data-ep="'+ep+'" tabindex="-1" aria-hidden="true"><span class="chev">›</span></button></div>'
+        +(pr?'<div class="bar2" aria-hidden="true"><i style="width:'+Math.round(pr.shot/pr.total*100)+'%"></i></div>':'')
+        +'</td></tr>';
+      if(!open)return;
+      if(pr&&pr.left.length)html+='<tr class="left"><td colspan="4"><span class="lbl">Not shot yet</span>'+pr.left.map(function(n){return '<span class="chip">'+ep+'/'+n+'</span>'}).join('')+'</td></tr>';
+      if(!notShot){
+        if(g.length)html+=g.map(function(t){return row(t,hit)}).join('');
+        else html+='<tr><td colspan="4" class="muted">Nothing from Episode '+ep+' is in the reports logged so far.</td></tr>';
+      }
     });
     return html+'</tbody></table></div>';
   }
@@ -392,7 +417,7 @@
       +(SCRIPT_URL?(signed?'<button type="button" class="btn ghost wide" data-act="logout">Sign out</button>'
         :'<button type="button" class="btn ghost wide" data-act="login"><span aria-hidden="true">\uD83D\uDD12</span> Continuity sign-in</button>'):'');
     document.getElementById('stats').innerHTML+=signed?'<div class="mode">Continuity mode</div>':'';
-    document.getElementById('foot').innerHTML='';
+    document.getElementById('foot').innerHTML='Created by Nicholas Kibathi';
     var hint=document.getElementById('installhint'),dismissed=false;
     try{dismissed=localStorage.getItem('njw-ios-hint')==='1'}catch(e){}
     hint.innerHTML=(isIos()&&!standalone()&&!dismissed)?'<div class="installnote"><span>Install on iPhone: tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</span><button type="button" class="btn small" data-act="hide-hint">OK</button></div>':'';

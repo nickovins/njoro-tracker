@@ -249,3 +249,18 @@ a.scriptlink:focus-visible{outline:2px solid var(--green);outline-offset:2px}
   .plate .right{justify-items:end;min-width:0}
   .acts{justify-content:flex-end;max-width:520px}
 }
+
+/* Episode progress: shot / still to shoot */
+tr.grp td span.prog{font:600 13px var(--body);color:var(--muted);margin-left:10px}
+tr.grp td span.prog b{color:var(--ink);font-weight:800}
+tr.grp td span.togo{flex:none;font:700 12px var(--body);color:#C11F26;background:rgba(193,31,38,.08);border:1px solid rgba(193,31,38,.25);padding:3px 9px;border-radius:999px;white-space:nowrap}
+.bar2{height:4px;border-radius:4px;background:var(--line);margin-top:8px;overflow:hidden}
+.bar2 i{display:block;height:100%;background:var(--leaf);border-radius:4px}
+tr.grp.open .bar2 i{background:var(--deep)}
+tr.left td{background:var(--surface);padding:10px 14px 12px;line-height:2}
+tr.left .lbl{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:#C11F26;line-height:1.4;margin-bottom:4px}
+tr.left .chip{display:inline-block;font:600 13px var(--mono);padding:1px 8px;margin:0 6px 4px 0;border:1px solid rgba(193,31,38,.3);color:#C11F26;border-radius:6px;line-height:1.6}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) tr.grp td span.togo,:root:not([data-theme="light"]) tr.left .chip,:root:not([data-theme="light"]) tr.left .lbl{color:#F07A7F}}
+:root[data-theme="dark"] tr.grp td span.togo,:root[data-theme="dark"] tr.left .chip,:root[data-theme="dark"] tr.left .lbl{color:#F07A7F}
+.foot{text-align:center}
+@media (max-width:560px){tr.grp td span.prog{display:block;margin-left:0;margin-top:2px}.grprow .grpbtn{flex-direction:column;align-items:flex-start;gap:0}}
