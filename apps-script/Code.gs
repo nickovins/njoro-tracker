@@ -23,7 +23,8 @@ var LOG_ROOT_ID = '1KQgFJwqSnT5e3fR0aS7sNptej30-5Bs9'; // log sheets folder
 var SCRIPTS_ROOT_ID = '1keWRPeybj1YUOr8c6MtPNM-tHS-zmnjZ'; // episode scripts folder
 var SCRIPTS_TAB = 'Scripts';
 var TZ = 'Africa/Nairobi';
-var VERSION = 4;
+var VERSION = 5;
+var EPISODES = 52;
 
 /* ---------- entry points ---------- */
 
@@ -39,6 +40,9 @@ function doPost(e) {
   var gate = checkPasscode_(body.passcode);
   if (gate) return json_({ ok: false, error: gate });
 
+  // Reading post production needs the passcode but no lock.
+  if (body.action === 'post') return json_(postAll_());
+
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) return json_({ ok: false, error: 'busy' });
   try {
@@ -47,6 +51,7 @@ function doPost(e) {
     if (body.action === 'saveMany') return json_(withRows_(saveMany_(body.reports)));
     if (body.action === 'remove') return json_(withRows_(remove_(Number(body.day))));
     if (body.action === 'scripts') return json_({ ok: true, count: refreshScripts() });
+    if (body.action === 'postSave') return json_(postSave_(body));
     return json_({ ok: false, error: 'bad_request' });
   } catch (err) {
     return json_({ ok: false, error: 'server', message: String(err && err.message || err) });
@@ -368,6 +373,69 @@ function sceneNumbers_(text) {
   var inside = new RegExp('(?:^|\\n)\\s*' + HEAD_ + '\\.?\\s+(\\d{1,3}[A-Z]?)\\s[^\\n]*\\s(\\d{1,3}[A-Z]?)\\s*(?=\\n|$)', 'g');
   while ((m = inside.exec(t))) if (m[1] === m[2]) add(m[1]);
   return out.sort(function (a, b) { return parseInt(a, 10) - parseInt(b, 10) || (a < b ? -1 : a > b ? 1 : 0); });
+}
+
+/* ---------- post production ---------- */
+
+/** Post production lives in Script Properties, NOT in the Sheet, because the
+ *  Sheet can be read by anyone with its link. Only the passcode opens it.
+ *    POST_TX       date Episode 1 goes on air, like 2026-11-07 (blank until known)
+ *    POST_EP_<n>   {"editor","sound","trailer","dropped":[{"sc","why","note"}]}
+ *  Every other episode's TX date is worked out in the app: one week apart. */
+var DROP_WHY_ = ['Length', 'Performance', 'Other'];
+
+function postAll_() {
+  var props = PropertiesService.getScriptProperties().getProperties(), eps = {};
+  Object.keys(props).forEach(function (k) {
+    var m = /^POST_EP_(\d+)$/.exec(k);
+    if (!m) return;
+    try { eps[m[1]] = JSON.parse(props[k]); } catch (e) {}
+  });
+  return { ok: true, tx: props.POST_TX || '', eps: eps };
+}
+
+function clip_(v, n) { return String(v == null ? '' : v).replace(/[\u0000-\u001F]/g, ' ').trim().slice(0, n); }
+
+/** One change at a time, merged into what is already saved, so two people
+ *  editing different boxes never undo each other. */
+function postSave_(b) {
+  var props = PropertiesService.getScriptProperties();
+  if (b.tx !== undefined) {
+    var tx = clip_(b.tx, 10);
+    if (tx && !/^\d{4}-\d{2}-\d{2}$/.test(tx)) return { ok: false, error: 'bad_request' };
+    if (tx) props.setProperty('POST_TX', tx); else props.deleteProperty('POST_TX');
+  }
+  var ep = Number(b.ep);
+  if (ep) {
+    if (!(ep >= 1 && ep <= EPISODES && ep === Math.floor(ep))) return { ok: false, error: 'bad_request' };
+    var key = 'POST_EP_' + ep, cur;
+    try { cur = JSON.parse(props.getProperty(key) || '{}'); } catch (e) { cur = {}; }
+    var set = b.set || {};
+    if (set.editor !== undefined) cur.editor = clip_(set.editor, 80);
+    if (set.sound !== undefined) cur.sound = clip_(set.sound, 80);
+    if (set.trailer !== undefined) {
+      var t = clip_(set.trailer, 500);
+      if (t && !/^https:\/\/[^\s"'<>]+$/.test(t)) return { ok: false, error: 'bad_link_any' };
+      cur.trailer = t;
+    }
+    var list = Array.isArray(cur.dropped) ? cur.dropped : [];
+    if (set.dropAdd) {
+      var sc = clip_(set.dropAdd.sc, 5).toUpperCase().replace(/^0+(?=\d)/, '');
+      if (!/^\d{1,3}[A-Z]?$/.test(sc)) return { ok: false, error: 'bad_scene' };
+      var why = DROP_WHY_.indexOf(set.dropAdd.why) >= 0 ? set.dropAdd.why : 'Other';
+      list = list.filter(function (d) { return d.sc !== sc; });
+      list.push({ sc: sc, why: why, note: clip_(set.dropAdd.note, 200) });
+      if (list.length > 80) return { ok: false, error: 'bad_request' };
+    }
+    if (set.dropRemove !== undefined) {
+      var gone = clip_(set.dropRemove, 5).toUpperCase();
+      list = list.filter(function (d) { return d.sc !== gone; });
+    }
+    cur.dropped = list;
+    if (!cur.editor && !cur.sound && !cur.trailer && !list.length) props.deleteProperty(key);
+    else props.setProperty(key, JSON.stringify(cur));
+  }
+  return postAll_();
 }
 
 function json_(o) {

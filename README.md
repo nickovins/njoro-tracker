@@ -16,6 +16,7 @@ Put scripts in the scripts folder in Drive, with the episode in the name (`Ep 7`
 
 - **Everyone else:** read only. The app has no edit controls for them, and the Sheet is view-only.
 - **Continuity team:** sign in once per phone with the continuity passcode (footer link). That turns on the **Add daily report** pop-up, plus Edit report and Remove day on each day. Anyone with the passcode can add, edit or remove any day.
+- **Post production:** the same passcode opens a Post production tab. 52 episodes in 4 seasons of 13, with editor, sound, TX date, trailer link and dropped scenes per episode, all edited in place. Set the Episode 1 TX date once and every other episode is one week after the one before. This data is kept in the Google robot's Script Properties, not in the Sheet, because the Sheet can be read by anyone with its link.
 - The passcode is checked by the Apps Script in `apps-script/Code.gs`, which runs as the Sheet's owner. It is never in the app's code. Each wrong try waits 3 seconds before it is answered, so guessing is too slow to work.
 - Log sheets are attached automatically: on save, and every 30 minutes for days that are still missing one. The PDF must be in the log sheets folder (any subfolder) and named with the day and date, like `Day 9 9.10.2026.pdf`.
 

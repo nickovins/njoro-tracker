@@ -17,7 +17,12 @@
   var ed={code:''};try{ed.code=localStorage.getItem('njw-pass')||''}catch(e){}
   function isEditor(){return !!(SCRIPT_URL&&ed.code)}
   var installPrompt=null;
-  try{var v=localStorage.getItem('njw-view');if(v==='scenes'||v==='days')ui.view=v}catch(e){}
+  try{var v=localStorage.getItem('njw-view');if(v==='scenes'||v==='days'||v==='post')ui.view=v}catch(e){}
+  if(ui.view==='post'&&!isEditor())ui.view='scenes';
+  /* Post production: passcode only. Kept by the Google robot, never in the public Sheet. */
+  var EPISODES=52,PER_SEASON=13,SEASONS=4;
+  var post={tx:'',eps:{},loaded:false,loading:false,err:'',at:0,season:0,openDrop:null};
+  try{var pc=JSON.parse(localStorage.getItem('njw-post')||'null');if(pc&&pc.eps&&ed.code){post.tx=pc.tx||'';post.eps=pc.eps;post.loaded=true;post.at=pc.at||0}}catch(e){}
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function normSc(sc){return String(sc).toUpperCase().replace(/^0+(?=\d)/,'')}
   function keyOf(ep,sc){return Number(ep)+'/'+normSc(sc)}
@@ -212,8 +217,12 @@
   }
 
   function renderControls(){
-    document.getElementById('views').innerHTML=[['scenes','Scenes'],['days','Daily reports']].map(function(v){return '<button type="button" data-view="'+v[0]+'" aria-pressed="'+(ui.view===v[0])+'">'+v[1]+'</button>'}).join('');
+    if(ui.view==='post'&&!isEditor())ui.view='scenes';
+    var vs=[['scenes','Scenes'],['days','Daily reports']];if(isEditor())vs.push(['post','Post production']);
+    document.getElementById('views').innerHTML=vs.map(function(v){return '<button type="button" data-view="'+v[0]+'" aria-pressed="'+(ui.view===v[0])+'">'+v[1]+'</button>'}).join('');
+    var srch=document.querySelector('.search');if(srch)srch.hidden=ui.view==='post';
     var f=document.getElementById('filters');
+    if(ui.view==='post'){var cs=curSeason();f.innerHTML='<div class="seg" role="group" aria-label="Season">'+[1,2,3,4].map(function(s){return '<button type="button" data-season="'+s+'" aria-pressed="'+(cs===s)+'"><span class="hide-xs">Season </span><span class="show-xs">S</span>'+s+'</button>'}).join('')+'</div>';return}
     if(ui.view!=='scenes'){f.innerHTML='';return}
     f.innerHTML='<label for="f-show">Show</label><select id="f-show"><option value="all">All scenes</option><option value="todo"'+(ui.show==='todo'?' selected':'')+'>Not shot yet</option><option value="Pulled"'+(ui.show==='Pulled'?' selected':'')+'>Pulled</option><option value="Reshoot"'+(ui.show==='Reshoot'?' selected':'')+'>Reshoots</option></select>';
   }
@@ -295,6 +304,129 @@
     return html+'</tbody></table></div>';
   }
 
+
+  /* ---------- post production (passcode only) ---------- */
+  var WD=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var WHY={Length:'Episode too long',Performance:'Performance',Other:'Other'};
+  function isoParts(iso){var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso||'');return m?[+m[1],+m[2],+m[3]]:null}
+  function isoAdd(iso,n){var p=isoParts(iso);if(!p)return '';var d=new Date(Date.UTC(p[0],p[1]-1,p[2]+n));return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())}
+  function weekday(iso){var p=isoParts(iso);return p?WD[new Date(Date.UTC(p[0],p[1]-1,p[2])).getUTCDay()]:''}
+  function todayIso(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+  /* Episode 1 goes out on the TX date; every episode after it exactly one week later. */
+  function txOf(n){return post.tx?isoAdd(post.tx,7*(n-1)):''}
+  function nextEp(){if(!post.tx)return 0;var t=todayIso();for(var n=1;n<=EPISODES;n++)if(txOf(n)>=t)return n;return EPISODES+1}
+  function curSeason(){if(post.season)return post.season;var n=nextEp();return n&&n<=EPISODES?Math.ceil(n/PER_SEASON):1}
+  function txHtml(iso){return iso?'<span class="wd">'+esc(weekday(iso).slice(0,3))+'</span> '+esc(fmtDate(iso)):'<span class="tbc">TBC</span>'}
+  function trailerUrl(u){return /^https:\/\/[^\s"'<>]+$/.test(u||'')?u:''}
+
+  function renderPost(){
+    if(!isEditor())return '';
+    if(!post.loaded){
+      if(post.err)return '<div class="tablewrap"><p class="empty">'+esc(postErrText(post.err))+'</p></div>';
+      return '<div class="tablewrap"><p class="empty">Loading post production…</p></div>';
+    }
+    var s=curSeason(),a=(s-1)*PER_SEASON+1,b=s*PER_SEASON,t=todayIso(),nx=nextEp();
+    var html='<div class="txbar"><div class="txfld"><label for="tx">Episode 1 TX</label><input id="tx" type="date" value="'+esc(post.tx)+'"></div>'
+      +'<p class="muted">'+(post.tx?'One episode a week, every '+esc(weekday(post.tx))+'. Episode 52 airs '+esc(weekday(txOf(EPISODES)).slice(0,3)+' '+fmtDate(txOf(EPISODES)))+'.'
+        :'Not confirmed by the broadcaster yet. Set it here and all 52 dates fill in, one week apart.')+'</p></div>';
+    if(post.err)html+='<p class="sync err">'+esc(postErrText(post.err))+'</p>';
+    html+='<div class="tablewrap"><div class="seasonhead"><b>Season '+s+'</b><span class="muted">Episodes '+a+' to '+b+(post.tx?' · '+esc(fmtDate(txOf(a)))+' to '+esc(fmtDate(txOf(b))):'')+'</span></div><table class="posttbl">'
+      +'<thead><tr><th>Ep</th><th>Editor</th><th>Sound</th><th>TX</th><th>Trailer</th><th>Dropped</th></tr></thead><tbody>';
+    for(var n=a;n<=b;n++){
+      var e=post.eps[n]||{},tx=txOf(n),drop=e.dropped||[],open=post.openDrop===n,tl=trailerUrl(e.trailer);
+      var st=tx?(tx<t?'<span class="st aired">Aired</span>':(n===nx?'<span class="st next">Next</span>':'')):'';
+      html+='<tr class="pe'+(open?' open':'')+(tx&&tx<t?' past':'')+'">'
+        +'<td class="epn"><b>'+n+'</b>'+st+'</td>'
+        +'<td data-l="Editor">'+cellInput(n,'editor',e.editor,'Who is editing')+'</td>'
+        +'<td data-l="Sound">'+cellInput(n,'sound',e.sound,'Who is on sound')+'</td>'
+        +'<td class="txd" data-l="TX">'+txHtml(tx)+'</td>'
+        +'<td data-l="Trailer" class="trl"><div class="trlwrap">'+cellInput(n,'trailer',e.trailer,'Paste link')+(tl?'<a class="go" href="'+esc(tl)+'" target="_blank" rel="noopener" aria-label="Open Episode '+n+' trailer">↗</a>':'')+'</div></td>'
+        +'<td data-l="Dropped" class="drp"><button type="button" class="dropbtn'+(drop.length?' has':'')+'" data-drop="'+n+'" aria-expanded="'+open+'"><span class="dlbl">Dropped scenes</span><span>'+(drop.length?drop.length+' dropped':'None')+'</span><span class="chev" aria-hidden="true">›</span></button></td></tr>';
+      if(open)html+='<tr class="dropdet"><td colspan="6">'+dropPanel(n,drop)+'</td></tr>';
+    }
+    return html+'</tbody></table></div>';
+  }
+  function cellInput(n,f,v,ph){
+    var k=n+':'+f,fl=post.flash&&post.flash[k]||'';
+    return '<input class="cell'+(fl?' '+fl:'')+'" '+(f==='trailer'?'type="url" inputmode="url" ':'type="text" ')+'data-pep="'+n+'" data-pf="'+f+'" value="'+esc(v||'')+'" placeholder="'+ph+'" maxlength="'+(f==='trailer'?500:80)+'" autocomplete="off" aria-label="Episode '+n+' '+f+'">';
+  }
+  function dropPanel(n,drop){
+    var list=drop.slice().sort(function(x,y){return cmpKey(n+'/'+x.sc,n+'/'+y.sc)});
+    return '<div class="drophead"><b>Dropped from Episode '+n+'</b><span class="muted">Shot, but not in the final episode.</span></div>'
+      +(list.length?'<ul class="droplist">'+list.map(function(d){
+          return '<li><span class="mono">'+esc(n+'/'+d.sc)+'</span><span class="why '+esc(d.why)+'">'+esc(WHY[d.why]||d.why)+'</span>'+(d.note?'<span class="muted note">'+esc(d.note)+'</span>':'')
+            +'<button type="button" class="rm" data-dropdel="'+esc(d.sc)+'" data-pep="'+n+'" aria-label="Remove '+esc(n+'/'+d.sc)+'">✕</button></li>'}).join('')+'</ul>'
+        :'<p class="muted nodrop">No dropped scenes yet.</p>')
+      +'<form class="dropadd" data-pep="'+n+'"><input name="sc" class="mono" placeholder="Scene" maxlength="4" autocomplete="off" aria-label="Scene number" required>'
+      +'<select name="why" aria-label="Reason"><option value="Length">Episode too long</option><option value="Performance">Performance</option><option value="Other">Other</option></select>'
+      +'<input name="note" placeholder="Note (optional)" maxlength="200" autocomplete="off" aria-label="Note">'
+      +'<button type="submit" class="btn small primary">Add</button></form>';
+  }
+  function postErrText(code){
+    if(code==='old')return 'Post production needs the latest Google robot (version 5). Paste the new Code.gs and deploy a New version.';
+    return ERR[code]||ERR.server;
+  }
+  function cachePost(){try{localStorage.setItem('njw-post',JSON.stringify({tx:post.tx,eps:post.eps,at:post.at}))}catch(e){}}
+  /* Redraw without losing what someone is typing, or where the cursor is. */
+  function renderPostKeep(clearForm){
+    if(ui.view!=='post')return;
+    var main=document.getElementById('main'),keep={},act=document.activeElement,fk='',sel=null;
+    function keyOf2(el){if(el.dataset&&el.dataset.pf)return el.dataset.pep+':'+el.dataset.pf;var fm=el.closest&&el.closest('form.dropadd');return fm?'d'+fm.dataset.pep+':'+el.name:''}
+    main.querySelectorAll('input,select').forEach(function(el){var k=keyOf2(el);if(k&&(el.value!==el.defaultValue||el===act||el.tagName==='SELECT'))keep[k]=el.value});
+    if(act&&main.contains(act)){fk=keyOf2(act);try{sel=[act.selectionStart,act.selectionEnd]}catch(e){}}
+    if(clearForm)Object.keys(keep).forEach(function(k){if(k.indexOf('d'+clearForm+':')===0)delete keep[k]});
+    /* Replacing a box someone is typing in makes the browser fire "change" on it; ignore that. */
+    post.redrawing=true;try{main.innerHTML=renderPost()}finally{post.redrawing=false}
+    main.querySelectorAll('input,select').forEach(function(el){var k=keyOf2(el);if(k&&keep[k]!=null)el.value=keep[k];if(k&&k===fk){el.focus();if(sel&&sel[0]!=null)try{el.setSelectionRange(sel[0],sel[1])}catch(e){}}});
+    if(clearForm){var f=main.querySelector('form.dropadd [name="sc"]');if(f)f.focus()}
+  }
+  function applyPost(r){post.tx=r.tx||'';post.eps=r.eps||{};post.loaded=true;post.err='';post.at=Date.now();cachePost()}
+  function loadPost(){
+    if(!isEditor()||post.loading)return;
+    post.loading=true;var ver=post.ver||0;
+    callScript({action:'post'}).then(function(r){
+      post.loading=false;
+      if(!isEditor()){renderAll();return}
+      if((post.ver||0)!==ver)return;            /* a save finished meanwhile; its answer is newer */
+      if(r.ok)applyPost(r);else post.err=r.error==='bad_request'?'old':r.error;
+      renderPostKeep();
+    });
+  }
+  function savePost(body,key,clearForm){
+    post.ver=(post.ver||0)+1;post.saving=(post.saving||0)+1;
+    body.action='postSave';
+    return callScript(body).then(function(r){
+      post.saving--;
+      if(!isEditor()){renderAll();return r}
+      post.flash={};
+      if(r.ok){applyPost(r);if(key)post.flash[key]='saved'}
+      else{if(key)post.flash[key]='bad';toast(r.error==='bad_request'?postErrText('old'):errText(r))}
+      renderPostKeep(r.ok?clearForm:0);
+      if(key)setTimeout(function(){if(post.flash&&post.flash[key]){delete post.flash[key];var el=document.querySelector('input.cell[data-pep="'+key.split(':')[0]+'"][data-pf="'+key.split(':')[1]+'"]');if(el)el.classList.remove('saved','bad')}},2200);
+      return r;
+    });
+  }
+  function onPostChange(el){
+    if(post.redrawing||!el.isConnected)return;
+    if(el.id==='tx'){savePost({tx:el.value||''},'');return}
+    if(!el.matches('input.cell'))return;
+    var n=+el.dataset.pep,f=el.dataset.pf,v=el.value.trim();
+    if(f==='trailer'&&v&&!/^[a-z][a-z0-9+.-]*:\/\//i.test(v)){v='https://'+v;el.value=v}
+    if(f==='trailer'&&v&&!trailerUrl(v)){el.classList.add('bad');toast(ERR.bad_link_any);return}
+    var cur=(post.eps[n]||{})[f]||'';if(v===cur){el.classList.remove('bad');return}
+    var set={};set[f]=v;el.classList.add('saving');
+    savePost({ep:n,set:set},n+':'+f);
+  }
+  function onDropAdd(form){
+    var n=+form.dataset.pep,sc=normSc(form.sc.value.trim()),why=form.why.value,note=form.note.value.trim();
+    if(!/^\d{1,3}[A-Z]?$/.test(sc)){toast(ERR.bad_scene);form.sc.focus();return}
+    var L=sceneList(n),warn=L.length&&L.indexOf(scParts(sc)[0])<0;
+    var btn=form.querySelector('button');btn.disabled=true;btn.textContent='Adding…';
+    savePost({ep:n,set:{dropAdd:{sc:sc,why:why,note:note}}},'',n).then(function(r){
+      if(r&&r.ok)toast(warn?'Added. Note: scene '+sc+' is not in the Episode '+n+' script.':n+'/'+sc+' added to dropped scenes');
+      var b2=document.querySelector('form.dropadd button');if(b2){b2.disabled=false;b2.textContent='Add'}
+    });
+  }
 
   /* ---------- loading from the Google Sheet ---------- */
   var cbN=0;
@@ -445,8 +577,9 @@
     document.getElementById('loc').addEventListener('input',function(){if(this.value){document.getElementById('q').value='';ui.view='days';var h=locHits(this.value.trim());ui.openDay=h.length===1?h[0].day:null;renderControls()}renderAnswer();renderMain()});
     var app=document.getElementById('app');
     app.addEventListener('click',onClick);
-    app.addEventListener('change',function(e){if(e.target.id==='f-show'){ui.show=e.target.value;renderMain()}});
-    app.addEventListener('keydown',function(e){var r=e.target.closest&&e.target.closest('tr.d');if(r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();toggleDay(+r.dataset.day)}});
+    app.addEventListener('change',function(e){if(e.target.id==='f-show'){ui.show=e.target.value;renderMain();return}if(ui.view==='post')onPostChange(e.target)});
+    app.addEventListener('submit',function(e){var f=e.target.closest&&e.target.closest('form.dropadd');if(f){e.preventDefault();onDropAdd(f)}});
+    app.addEventListener('keydown',function(e){if(e.key==='Enter'&&e.target.matches&&e.target.matches('input.cell')){e.preventDefault();e.target.blur();return}var r=e.target.closest&&e.target.closest('tr.d');if(r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();toggleDay(+r.dataset.day)}});
   }
 
   function renderHeader(){
@@ -465,8 +598,8 @@
       +'<a class="btn" href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Log sheets ↗</a>'
       +(SCRIPTS_FOLDER?'<a class="btn" href="'+esc(SCRIPTS_FOLDER)+'" target="_blank" rel="noopener">Scripts ↗</a>':'')
       +(SCRIPT_URL?(signed?'<button type="button" class="btn ghost wide" data-act="logout">Sign out</button>'
-        :'<button type="button" class="btn ghost wide" data-act="login"><span aria-hidden="true">\uD83D\uDD12</span> Continuity sign-in</button>'):'');
-    document.getElementById('stats').innerHTML+=signed?'<div class="mode">Continuity mode</div>':'';
+        :'<button type="button" class="btn ghost wide" data-act="login"><span aria-hidden="true">\uD83D\uDD12</span> Team sign-in</button>'):'');
+    document.getElementById('stats').innerHTML+=signed?'<div class="mode">Signed in</div>':'';
     document.getElementById('foot').innerHTML='Created by Nicholas Kibathi';
     var hint=document.getElementById('installhint'),dismissed=false;
     try{dismissed=localStorage.getItem('njw-ios-hint')==='1'}catch(e){}
@@ -485,23 +618,26 @@
   }
 
   function toggleDay(day){ui.openDay=ui.openDay===day?null:day;renderMain()}
-  function renderMain(){document.getElementById('main').innerHTML=ui.view==='scenes'?renderScenes():renderDays()}
+  function renderMain(){if(ui.view==='post'){renderPostKeep();return}document.getElementById('main').innerHTML=ui.view==='scenes'?renderScenes():renderDays()}
   function renderAll(){renderHeader();renderStatus();renderAnswer();renderControls();renderMain()}
 
   function onClick(ev){
     var b=ev.target.closest('button,tr.d');if(!b)return;
     if(b.matches('tr.d')){toggleDay(+b.dataset.day);return}
     if(b.dataset.ep){var e=+b.dataset.ep;ui.openEp=ui.openEp===e?null:e;var q=document.getElementById('q');if(q.value){q.value='';renderAnswer()}renderMain();return}
-    if(b.dataset.view){ui.view=b.dataset.view;try{localStorage.setItem('njw-view',ui.view)}catch(e){}renderControls();renderMain();return}
+    if(b.dataset.view){ui.view=b.dataset.view;try{localStorage.setItem('njw-view',ui.view)}catch(e){}if(ui.view==='post'){var qq=document.getElementById('q'),ll=document.getElementById('loc');if(qq.value||ll.value){qq.value='';ll.value='';renderAnswer()}loadPost()}renderControls();renderMain();return}
+    if(b.dataset.season){post.season=+b.dataset.season;post.openDrop=null;renderControls();renderMain();return}
+    if(b.dataset.drop){var dn=+b.dataset.drop;post.openDrop=post.openDrop===dn?null:dn;renderMain();if(post.openDrop){var fi=document.querySelector('form.dropadd [name="sc"]');if(fi&&window.matchMedia('(min-width:561px)').matches)fi.focus()}return}
+    if(b.dataset.dropdel){savePost({ep:+b.dataset.pep,set:{dropRemove:b.dataset.dropdel}},'');return}
     var act=b.dataset.act;
     if(act==='menu'){ui.menu=!ui.menu;renderHeader();return}
     if(ui.menu){ui.menu=false;renderHeader()}
-    if(act==='refresh'){refresh();return}
+    if(act==='refresh'){refresh();if(ui.view==='post')loadPost();return}
     if(act==='add-many'){openAdd('',null,true);return}
     if(act==='pick-edit'||act==='pick-del'){openPicker(act==='pick-del');return}
     if(act==='hide-hint'){try{localStorage.setItem('njw-ios-hint','1')}catch(e){}renderHeader();return}
     if(act==='login'){openLogin();return}
-    if(act==='logout'){ed.code='';try{localStorage.removeItem('njw-pass')}catch(e){}ui.confirmDel=null;renderAll();toast('Continuity tools turned off on this phone');return}
+    if(act==='logout'){ed.code='';try{localStorage.removeItem('njw-pass');localStorage.removeItem('njw-post')}catch(e){}post.tx='';post.eps={};post.loaded=false;post.err='';post.openDrop=null;ui.confirmDel=null;if(ui.view==='post')ui.view='scenes';renderAll();toast('Signed out on this device');return}
     if(act==='add'){openAdd('',null);return}
     if(act==='replace'){var rd=dayByNum(+b.dataset.day);if(rd)openAdd(rd.raw,rd.day);return}
     if(act==='copy'){var cd=dayByNum(+b.dataset.day);if(cd)copyText(cd.raw).then(function(ok){toast(ok?'Day '+cd.day+' report copied':'Could not copy on this phone')});return}
@@ -514,13 +650,13 @@
 
   /* ---------- continuity tools (need the passcode; Google checks it) ---------- */
   function dayByNum(n){return state.days.filter(function(d){return d.day===n})[0]}
-  function toast(msg){var t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove()},3200)}
+  function toast(msg){document.querySelectorAll('.toast').forEach(function(x){x.remove()});var t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove()},3200)}
   function copyText(txt){
     if(navigator.clipboard&&window.isSecureContext)return navigator.clipboard.writeText(txt).then(function(){return true},function(){return legacyCopy(txt)});
     return Promise.resolve(legacyCopy(txt));
   }
   function legacyCopy(txt){try{var ta=document.createElement('textarea');ta.value=txt;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();var ok=document.execCommand('copy');ta.remove();return ok}catch(e){return false}}
-  var ERR={wrong_passcode:'That passcode is not right.',not_set_up:'Uploads are not set up on the Google side yet.',no_day:'No shoot day number found in the report.',no_scenes:'No scenes found in the report. Scenes are written as episode/scene, like 7/4.',bad_link:'The log sheet link must be a Google Drive link.',busy:'Someone else is saving right now. Try again in a moment.',not_found:'That day is not in the tracker any more.',network:'No connection to Google. Check your signal and try again.',server:'Google had a problem saving. Try again in a moment.'};
+  var ERR={wrong_passcode:'That passcode is not right.',not_set_up:'Uploads are not set up on the Google side yet.',no_day:'No shoot day number found in the report.',no_scenes:'No scenes found in the report. Scenes are written as episode/scene, like 7/4.',bad_link:'The log sheet link must be a Google Drive link.',busy:'Someone else is saving right now. Try again in a moment.',not_found:'That day is not in the tracker any more.',network:'No connection to Google. Check your signal and try again.',server:'Google had a problem saving. Try again in a moment.',bad_link_any:'The trailer link must be a full web link, like https://youtu.be/...',bad_scene:'Type a scene number, like 12 or 12A.'};
   function errText(r){return ERR[r&&r.error]||ERR.server}
   function callScript(body){
     if(!navigator.onLine)return Promise.resolve({ok:false,error:'network'});
@@ -547,8 +683,8 @@
   function closeDlg(){if(dlg&&dlg.open){if(dlg.close)dlg.close();else dlg.removeAttribute('open')}document.documentElement.classList.remove('modal-open')}
 
   function openLogin(){
-    openDlg('<form class="dlgbody" id="loginform"><h2 id="dlg-title">Continuity sign-in</h2>'
-      +'<p class="muted">For the continuity team only. This turns on adding, replacing and removing reports on this phone.</p>'
+    openDlg('<form class="dlgbody" id="loginform"><h2 id="dlg-title">Team sign-in</h2>'
+      +'<p class="muted">For the continuity and post teams. Turns on the daily report tools and Post production on this device.</p>'
       +'<label class="fld">Passcode<input id="pass" type="password" autocomplete="current-password" required></label>'
       +'<p class="dlgerr" id="dlgerr" role="alert"></p>'
       +'<div class="dlgacts"><button type="button" class="btn" data-dlg="close">Cancel</button><button type="submit" class="btn primary" id="loginbtn">Sign in</button></div></form>');
@@ -560,7 +696,7 @@
         btn.disabled=false;btn.textContent='Sign in';
         if(!r.ok){document.getElementById('dlgerr').textContent=errText(r);return}
         ed.code=code;try{localStorage.setItem('njw-pass',code)}catch(e){}
-        closeDlg();renderAll();toast('Continuity tools are on for this phone');
+        closeDlg();renderAll();loadPost();toast('Signed in. Daily reports and Post production are on.');
       });
     });
   }
@@ -733,7 +869,7 @@
   window.addEventListener('offline',function(){ui.offline=true;renderStatus()});
   /* Stay current while the app is open: check every 30 seconds, and straight away when it comes back to the front. */
   document.addEventListener('visibilitychange',function(){if(!document.hidden&&navigator.onLine&&Date.now()-(state.fetchedAt||0)>15000)refresh(true)});
-  setInterval(function(){if(!document.hidden&&navigator.onLine)refresh(true)},30000);
+  setInterval(function(){if(!document.hidden&&navigator.onLine){refresh(true);if(ui.view==='post'&&!post.saving)loadPost()}},30000);
   document.addEventListener('click',function(e){if(ui.menu&&!(e.target.closest&&e.target.closest('.menuwrap'))){ui.menu=false;renderHeader()}});
   document.addEventListener('keydown',function(e){if(e.key==='Escape'&&ui.menu){ui.menu=false;renderHeader()}});
 
@@ -741,6 +877,7 @@
   renderShell();
   renderAll();
   refresh();
+  if(ui.view==='post')loadPost();
   if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').catch(function(){});
   window.__njw={state:state,buildDays:buildDays,parseReport:parseReport,refresh:refresh};
 })();
