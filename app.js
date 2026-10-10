@@ -21,7 +21,7 @@
   if(ui.view==='post'&&!isEditor())ui.view='scenes';
   /* Post production: passcode only. Kept by the Google robot, never in the public Sheet. */
   var EPISODES=52,PER_SEASON=13,SEASONS=4;
-  var post={tx:'',eps:{},loaded:false,loading:false,err:'',at:0,season:0,openDrop:null};
+  var post={tx:'',eps:{},loaded:false,loading:false,err:'',at:0,season:0,openDrop:null,openMove:null};
   try{var pc=JSON.parse(localStorage.getItem('njw-post')||'null');if(pc&&pc.eps&&ed.code){post.tx=pc.tx||'';post.eps=pc.eps;post.loaded=true;post.at=pc.at||0}}catch(e){}
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function normSc(sc){return String(sc).toUpperCase().replace(/^0+(?=\d)/,'')}
@@ -313,10 +313,16 @@
   function weekday(iso){var p=isoParts(iso);return p?WD[new Date(Date.UTC(p[0],p[1]-1,p[2])).getUTCDay()]:''}
   function todayIso(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
   /* Episode 1 goes out on the TX date; every episode after it exactly one week later. */
-  function txOf(n){return post.tx?isoAdd(post.tx,7*(n-1)):''}
+  /* Episode 1 airs on the TX date. Each episode after it airs one week after the one before,
+     plus any days it was moved by (a skipped week is +7). Moving one episode moves all after it. */
+  function shiftOf(n){var x=(post.eps[n]||{}).shift;return n>1&&x?+x:0}
+  function txOf(n){if(!post.tx)return '';var d=post.tx;for(var i=2;i<=n;i++)d=isoAdd(d,7+shiftOf(i));return d}
+  function dayDiff(a,b){var p=isoParts(a),q=isoParts(b);return Math.round((Date.UTC(q[0],q[1]-1,q[2])-Date.UTC(p[0],p[1]-1,p[2]))/864e5)}
+  function shiftLabel(x){if(x>0&&x%7===0)return (x/7)+' week break before';return x>0?x+' days later':(-x)+' days early'}
+  function movedCount(){var c=0;for(var n=2;n<=EPISODES;n++)if(shiftOf(n))c++;return c}
   function nextEp(){if(!post.tx)return 0;var t=todayIso();for(var n=1;n<=EPISODES;n++)if(txOf(n)>=t)return n;return EPISODES+1}
   function curSeason(){if(post.season)return post.season;var n=nextEp();return n&&n<=EPISODES?Math.ceil(n/PER_SEASON):1}
-  function txHtml(iso){return iso?'<span class="wd">'+esc(weekday(iso).slice(0,3))+'</span> '+esc(fmtDate(iso)):'<span class="tbc">TBC</span>'}
+  function txHtml(iso){return iso?'<span class="txdate"><span class="wd">'+esc(weekday(iso).slice(0,3))+'</span> '+esc(fmtDate(iso))+'</span>':'<span class="tbc">TBC</span>'}
   function trailerUrl(u){return /^https:\/\/[^\s"'<>]+$/.test(u||'')?u:''}
 
   function renderPost(){
@@ -327,28 +333,44 @@
     }
     var s=curSeason(),a=(s-1)*PER_SEASON+1,b=s*PER_SEASON,t=todayIso(),nx=nextEp();
     var html='<div class="txbar"><div class="txfld"><label for="tx">Episode 1 TX</label><input id="tx" type="date" value="'+esc(post.tx)+'"></div>'
-      +'<p class="muted">'+(post.tx?'One episode a week, every '+esc(weekday(post.tx))+'. Episode 52 airs '+esc(weekday(txOf(EPISODES)).slice(0,3)+' '+fmtDate(txOf(EPISODES)))+'.'
+      +'<p class="muted">'+(post.tx?'One episode a week, every '+esc(weekday(post.tx))+(movedCount()?', with '+movedCount()+' episode'+(movedCount()===1?'':'s')+' moved':'')+'. Episode 52 airs '+esc(weekday(txOf(EPISODES)).slice(0,3)+' '+fmtDate(txOf(EPISODES)))+'.'
         :'Not confirmed by the broadcaster yet. Set it here and all 52 dates fill in, one week apart.')+'</p></div>';
     if(post.err)html+='<p class="sync err">'+esc(postErrText(post.err))+'</p>';
     html+='<div class="tablewrap"><div class="seasonhead"><b>Season '+s+'</b><span class="muted">Episodes '+a+' to '+b+(post.tx?' · '+esc(fmtDate(txOf(a)))+' to '+esc(fmtDate(txOf(b))):'')+'</span></div><table class="posttbl">'
       +'<thead><tr><th>Ep</th><th>Editor</th><th>Sound</th><th>TX</th><th>Trailer</th><th>Dropped</th></tr></thead><tbody>';
     for(var n=a;n<=b;n++){
-      var e=post.eps[n]||{},tx=txOf(n),drop=e.dropped||[],open=post.openDrop===n,tl=trailerUrl(e.trailer);
+      var e=post.eps[n]||{},tx=txOf(n),drop=e.dropped||[],open=post.openDrop===n,mv=post.openMove===n,sh=shiftOf(n),tl=trailerUrl(e.trailer);
       var st=tx?(tx<t?'<span class="st aired">Aired</span>':(n===nx?'<span class="st next">Next</span>':'')):'';
       html+='<tr class="pe'+(open?' open':'')+(tx&&tx<t?' past':'')+'">'
         +'<td class="epn"><b>'+n+'</b>'+st+'</td>'
         +'<td data-l="Editor">'+cellInput(n,'editor',e.editor,'Who is editing')+'</td>'
         +'<td data-l="Sound">'+cellInput(n,'sound',e.sound,'Who is on sound')+'</td>'
-        +'<td class="txd" data-l="TX">'+txHtml(tx)+'</td>'
+        +'<td class="txd" data-l="TX"><div class="txcell">'+(tx&&n>1?'<button type="button" class="datebtn" data-move="'+n+'" title="Move this episode\u2019s TX date" aria-label="'+esc(weekday(tx)+' '+fmtDate(tx))+', move Episode '+n+' TX">'+txHtml(tx)+'</button>':txHtml(tx))+(tx&&n>1?'<button type="button" class="movebtn'+(sh?' moved':'')+'" data-move="'+n+'" aria-expanded="'+mv+'" title="Move this episode\u2019s TX date">'+(sh?esc(shiftLabel(sh)):'Move')+'</button>':'')+'</div></td>'
         +'<td data-l="Trailer" class="trl"><div class="trlwrap">'+cellInput(n,'trailer',e.trailer,'Paste link')+(tl?'<a class="go" href="'+esc(tl)+'" target="_blank" rel="noopener" aria-label="Open Episode '+n+' trailer">↗</a>':'')+'</div></td>'
         +'<td data-l="Dropped" class="drp"><button type="button" class="dropbtn'+(drop.length?' has':'')+'" data-drop="'+n+'" aria-expanded="'+open+'"><span class="dlbl">Dropped scenes</span><span>'+(drop.length?drop.length+' dropped':'None')+'</span><span class="chev" aria-hidden="true">›</span></button></td></tr>';
       if(open)html+='<tr class="dropdet"><td colspan="6">'+dropPanel(n,drop)+'</td></tr>';
+      if(mv&&tx)html+='<tr class="dropdet movedet"><td colspan="6">'+movePanel(n)+'</td></tr>';
     }
     return html+'</tbody></table></div>';
   }
   function cellInput(n,f,v,ph){
     var k=n+':'+f,fl=post.flash&&post.flash[k]||'';
     return '<input class="cell'+(fl?' '+fl:'')+'" '+(f==='trailer'?'type="url" inputmode="url" ':'type="text" ')+'data-pep="'+n+'" data-pf="'+f+'" value="'+esc(v||'')+'" placeholder="'+ph+'" maxlength="'+(f==='trailer'?500:80)+'" autocomplete="off" aria-label="Episode '+n+' '+f+'">';
+  }
+  function movePanel(n){
+    var prev=txOf(n-1),normal=isoAdd(prev,7),cur=txOf(n),sh=shiftOf(n),wk=function(i){return weekday(i).slice(0,3)+' '+fmtDate(i)};
+    return '<div class="drophead"><b>Move Episode '+n+' TX</b><span class="muted">For a skipped week, a holiday or a special. Episode '+(n<EPISODES?(n+1)+(n+1<EPISODES?' to '+EPISODES:''):n)+(n<EPISODES?' move with it, still one week apart.':' is the last episode.')+'</span></div>'
+      +'<p class="movenote">Normally '+esc(wk(normal))+', one week after Episode '+(n-1)+' ('+esc(wk(prev))+').'+(sh?' <b>Now '+esc(wk(cur))+'.</b>':'')+'</p>'
+      +'<div class="moverow"><button type="button" class="btn small primary" data-skip="'+n+'">Skip a week</button>'
+      +'<label class="mvfld">or pick a date<input type="date" data-pep="'+n+'" data-pf="mv" value="'+esc(cur)+'" min="'+esc(isoAdd(prev,1))+'"></label>'
+      +(sh?'<button type="button" class="btn small" data-unmove="'+n+'">Back to normal</button>':'')+'</div>';
+  }
+  function moveTo(n,iso){
+    var prev=txOf(n-1);
+    if(!isoParts(iso)||iso<=prev){toast('Episode '+n+' has to air after Episode '+(n-1)+' ('+fmtDate(prev)+').');renderPostKeep();return}
+    var sh=dayDiff(prev,iso)-7;
+    if(sh===shiftOf(n))return;
+    savePost({ep:n,set:{shift:sh}},'').then(function(r){if(r&&r.ok)toast(sh?'Episode '+n+' now airs '+weekday(iso).slice(0,3)+' '+fmtDate(iso)+(n<EPISODES?'. Later episodes moved with it.':'.'):'Episode '+n+' is back on the normal week.')});
   }
   function dropPanel(n,drop){
     var list=drop.slice().sort(function(x,y){return cmpKey(n+'/'+x.sc,n+'/'+y.sc)});
@@ -409,6 +431,7 @@
   function onPostChange(el){
     if(post.redrawing||!el.isConnected)return;
     if(el.id==='tx'){savePost({tx:el.value||''},'');return}
+    if(el.dataset.pf==='mv'){if(el.value)moveTo(+el.dataset.pep,el.value);return}
     if(!el.matches('input.cell'))return;
     var n=+el.dataset.pep,f=el.dataset.pf,v=el.value.trim();
     if(f==='trailer'&&v&&!/^[a-z][a-z0-9+.-]*:\/\//i.test(v)){v='https://'+v;el.value=v}
@@ -626,8 +649,11 @@
     if(b.matches('tr.d')){toggleDay(+b.dataset.day);return}
     if(b.dataset.ep){var e=+b.dataset.ep;ui.openEp=ui.openEp===e?null:e;var q=document.getElementById('q');if(q.value){q.value='';renderAnswer()}renderMain();return}
     if(b.dataset.view){ui.view=b.dataset.view;try{localStorage.setItem('njw-view',ui.view)}catch(e){}if(ui.view==='post'){var qq=document.getElementById('q'),ll=document.getElementById('loc');if(qq.value||ll.value){qq.value='';ll.value='';renderAnswer()}loadPost()}renderControls();renderMain();return}
-    if(b.dataset.season){post.season=+b.dataset.season;post.openDrop=null;renderControls();renderMain();return}
-    if(b.dataset.drop){var dn=+b.dataset.drop;post.openDrop=post.openDrop===dn?null:dn;renderMain();if(post.openDrop){var fi=document.querySelector('form.dropadd [name="sc"]');if(fi&&window.matchMedia('(min-width:561px)').matches)fi.focus()}return}
+    if(b.dataset.season){post.season=+b.dataset.season;post.openDrop=null;post.openMove=null;renderControls();renderMain();return}
+    if(b.dataset.move){var mn=+b.dataset.move;post.openMove=post.openMove===mn?null:mn;post.openDrop=null;renderMain();return}
+    if(b.dataset.skip){var sn=+b.dataset.skip;moveTo(sn,isoAdd(txOf(sn),7));return}
+    if(b.dataset.unmove){var un=+b.dataset.unmove;moveTo(un,isoAdd(txOf(un-1),7));return}
+    if(b.dataset.drop){var dn=+b.dataset.drop;post.openDrop=post.openDrop===dn?null:dn;post.openMove=null;renderMain();if(post.openDrop){var fi=document.querySelector('form.dropadd [name="sc"]');if(fi&&window.matchMedia('(min-width:561px)').matches)fi.focus()}return}
     if(b.dataset.dropdel){savePost({ep:+b.dataset.pep,set:{dropRemove:b.dataset.dropdel}},'');return}
     var act=b.dataset.act;
     if(act==='menu'){ui.menu=!ui.menu;renderHeader();return}
@@ -656,7 +682,7 @@
     return Promise.resolve(legacyCopy(txt));
   }
   function legacyCopy(txt){try{var ta=document.createElement('textarea');ta.value=txt;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();var ok=document.execCommand('copy');ta.remove();return ok}catch(e){return false}}
-  var ERR={wrong_passcode:'That passcode is not right.',not_set_up:'Uploads are not set up on the Google side yet.',no_day:'No shoot day number found in the report.',no_scenes:'No scenes found in the report. Scenes are written as episode/scene, like 7/4.',bad_link:'The log sheet link must be a Google Drive link.',busy:'Someone else is saving right now. Try again in a moment.',not_found:'That day is not in the tracker any more.',network:'No connection to Google. Check your signal and try again.',server:'Google had a problem saving. Try again in a moment.',bad_link_any:'The trailer link must be a full web link, like https://youtu.be/...',bad_scene:'Type a scene number, like 12 or 12A.'};
+  var ERR={wrong_passcode:'That passcode is not right.',not_set_up:'Uploads are not set up on the Google side yet.',no_day:'No shoot day number found in the report.',no_scenes:'No scenes found in the report. Scenes are written as episode/scene, like 7/4.',bad_link:'The log sheet link must be a Google Drive link.',busy:'Someone else is saving right now. Try again in a moment.',not_found:'That day is not in the tracker any more.',network:'No connection to Google. Check your signal and try again.',server:'Google had a problem saving. Try again in a moment.',bad_link_any:'The trailer link must be a full web link, like https://youtu.be/...',bad_scene:'Type a scene number, like 12 or 12A.',bad_move:'That date could not be saved. Pick a date after the episode before.'};
   function errText(r){return ERR[r&&r.error]||ERR.server}
   function callScript(body){
     if(!navigator.onLine)return Promise.resolve({ok:false,error:'network'});

@@ -395,3 +395,30 @@ tr.dropdet td{background:var(--bg);padding:12px 14px 14px;border-left:4px solid 
   .dropadd .btn{grid-column:1/-1}
   .txbar p{padding-bottom:0}
 }
+
+/* Moving one episode's TX (skipped week, holiday, special) */
+.txcell{display:flex;flex-direction:column;align-items:flex-start;gap:3px}
+.movebtn{all:unset;box-sizing:border-box;cursor:pointer;font:700 11px var(--body);letter-spacing:.03em;color:var(--muted);padding:1px 8px;border-radius:999px;border:1px dashed var(--line);white-space:nowrap}
+.movebtn:hover{border-color:var(--green);color:var(--deep)}
+.movebtn:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+.movebtn.moved{border-style:solid;border-color:rgba(201,162,39,.5);background:rgba(201,162,39,.14);color:#7A5F00}
+.movebtn[aria-expanded="true"]{border-style:solid;border-color:var(--deep);color:var(--deep)}
+.movenote{margin:0 0 10px;font-size:14px}
+.moverow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.mvfld{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);font-weight:700}
+.mvfld input{font:600 14px var(--body);padding:7px 10px;border:1.5px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);min-height:40px}
+.mvfld input:focus{outline:none;border-color:var(--green)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .movebtn.moved{color:#E8CF6A}}
+:root[data-theme="dark"] .movebtn.moved{color:#E8CF6A}
+@media (max-width:640px){
+  .txcell{align-items:flex-end}
+  .moverow .btn{flex:1 1 100%;min-height:44px}
+  .mvfld{flex:1 1 100%;justify-content:space-between}
+  .mvfld input{flex:1;max-width:60%}
+}
+.txdate{white-space:nowrap}
+/* The date is the button: click it to move that episode. Phones also get a Move pill. */
+.datebtn{all:unset;box-sizing:border-box;cursor:pointer;border-radius:4px;border-bottom:1.5px dotted transparent}
+.datebtn:hover{border-bottom-color:var(--green)}
+.datebtn:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+@media (min-width:641px){.movebtn:not(.moved):not([aria-expanded="true"]){display:none}}

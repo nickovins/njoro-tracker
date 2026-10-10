@@ -380,8 +380,9 @@ function sceneNumbers_(text) {
 /** Post production lives in Script Properties, NOT in the Sheet, because the
  *  Sheet can be read by anyone with its link. Only the passcode opens it.
  *    POST_TX       date Episode 1 goes on air, like 2026-11-07 (blank until known)
- *    POST_EP_<n>   {"editor","sound","trailer","dropped":[{"sc","why","note"}]}
- *  Every other episode's TX date is worked out in the app: one week apart. */
+ *    POST_EP_<n>   {"editor","sound","trailer","shift","dropped":[{"sc","why","note"}]}
+ *  Every other episode's TX date is worked out in the app: one week after the
+ *  episode before, plus "shift" days when that episode was moved (a skipped week = 7). */
 var DROP_WHY_ = ['Length', 'Performance', 'Other'];
 
 function postAll_() {
@@ -413,6 +414,13 @@ function postSave_(b) {
     var set = b.set || {};
     if (set.editor !== undefined) cur.editor = clip_(set.editor, 80);
     if (set.sound !== undefined) cur.sound = clip_(set.sound, 80);
+    // A moved TX: days later (or earlier) than one week after the episode before.
+    // Stored as a gap, not a date, so changing Episode 1's TX carries every break along.
+    if (set.shift !== undefined) {
+      var sh = Number(set.shift) || 0;
+      if (ep === 1 || sh !== Math.floor(sh) || sh <= -7 || sh > 365) return { ok: false, error: 'bad_move' };
+      if (sh) cur.shift = sh; else delete cur.shift;
+    }
     if (set.trailer !== undefined) {
       var t = clip_(set.trailer, 500);
       if (t && !/^https:\/\/[^\s"'<>]+$/.test(t)) return { ok: false, error: 'bad_link_any' };
@@ -432,7 +440,7 @@ function postSave_(b) {
       list = list.filter(function (d) { return d.sc !== gone; });
     }
     cur.dropped = list;
-    if (!cur.editor && !cur.sound && !cur.trailer && !list.length) props.deleteProperty(key);
+    if (!cur.editor && !cur.sound && !cur.trailer && !cur.shift && !list.length) props.deleteProperty(key);
     else props.setProperty(key, JSON.stringify(cur));
   }
   return postAll_();

@@ -18,7 +18,8 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Tab only shows after sign-in. Same passcode as continuity.
 - Stored in Script Properties (POST_TX, POST_EP_<n> JSON: editor, sound, trailer, dropped[{sc,why,note}]). Not in the Sheet, which is public to anyone with the link.
 - Robot actions: post (read, no lock) and postSave (one field, or dropAdd/dropRemove, merged server side so two editors do not undo each other).
-- TX dates are worked out in the app: Episode n = Episode 1 TX + 7 x (n - 1). No per-episode override yet.
+- TX dates are worked out in the app: Episode 1 = POST_TX; Episode n = Episode n-1 + 7 + shift(n). shift is stored per episode in days (Skip a week = +7), so a move carries every later episode and survives a change to Episode 1 TX. Desktop: click the date. Phone: Move pill.
+- Install steps for Nick: apps-script/SETUP.md.
 - Needs robot VERSION 5. With an older robot the tab says so instead of failing.
 
 ## Architecture
@@ -28,6 +29,6 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Scopes: spreadsheets.currentonly, drive.readonly, drive.file, script.scriptapp. No Gmail.
 
 ## Rules
-- Bump sw.js VERSION and index.html ?v= on each release (now njw-v12 / v=12).
+- Bump sw.js VERSION and index.html ?v= on each release (now njw-v13 / v=13).
 - Commit as Nick Kibathi <nicholaskibathi@gmail.com>. Test with Playwright at 390 px and 1280 px.
 - Never ask for or store the passcode. Plain language, no em/en dashes, honest pushback.
