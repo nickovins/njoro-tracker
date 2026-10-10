@@ -41,13 +41,21 @@ Sheet: https://docs.google.com/spreadsheets/d/13mpLW2iFSSqDja--dwxXEEz_jVpjOeDud
 
 ## Every update
 
-9. **Deploy > Manage deployments** > select the existing Web app > pencil (Edit) >
-   Version: **New version** > **Deploy**.
+9. Make sure the code is saved: no orange dot next to `Code.gs`. Deploy only sends
+   SAVED code.
+   Then **Deploy > Manage deployments**. Check the left list:
+   - Click each Web app and look at its **Deployment ID**. Find the one that starts
+     `AKfycbzts4XJrONLd9` (the app's address). If none starts that way, you are in the
+     wrong Apps Script project: stop and see "Wrong project" below.
+   - With that one selected, click the pencil (Edit). Open the **Version** dropdown and
+     pick **New version** at the top. Leaving it on the version already shown changes
+     nothing; this is the usual reason the check below still shows an old number.
+   - Click **Deploy**. The panel should now show a higher version number and today's date.
    Do NOT use "New deployment" here: that makes a new web address and the app would
    keep talking to the old code.
-10. Check: open the Web app URL in a browser. It should show
-    `{"ok":true,"app":"njoro-tracker","version":5}`.
-    https://script.google.com/macros/s/AKfycbzts4XJrONLd9LMRi_MgDsfK4_LqBLTRXAv7nuQpKHXOF88zw7x2-hbwTpZa8jZNFbk/exec
+10. Check: open the Web app URL in a browser (add `?x=2`, `?x=3` and so on to dodge any
+    cached copy). It should show `{"ok":true,"app":"njoro-tracker","version":5}`.
+    https://script.google.com/macros/s/AKfycbzts4XJrONLd9LMRi_MgDsfK4_LqBLTRXAv7nuQpKHXOF88zw7x2-hbwTpZa8jZNFbk/exec?x=1
 
 ## On each phone or laptop
 
@@ -57,6 +65,16 @@ Sheet: https://docs.google.com/spreadsheets/d/13mpLW2iFSSqDja--dwxXEEz_jVpjOeDud
     Daily reports.
 
 ## If something is off
+
+- The check shows `"version":1` (or any number below 5): the web address is still serving
+  old code. Either step 9 kept the old version in the dropdown, the code was not saved,
+  or the code was pasted into a different project (see next point).
+- Wrong project: the script editor's address (script.google.com/.../projects/XXXX/edit)
+  is the project. The app's robot lives in whichever project has the deployment
+  `AKfycbzts4XJrONLd9...`. Find it at https://script.google.com/home (My Projects), open
+  each project's Deploy > Manage deployments until you find that ID, and paste the code
+  there. Or keep the project you are in: New deployment there, and send Claude the new
+  /exec address so the app points at it.
 
 - Post production says it "needs the latest Google robot": step 9 was missed, or
   "New deployment" was used instead. Redo step 9.
