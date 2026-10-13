@@ -32,6 +32,7 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - TX dates are worked out in the app: Episode 1 = POST_TX; Episode n = Episode n-1 + 7 + shift(n). shift is stored per episode in days (Skip a week = +7), so a move carries every later episode and survives a change to Episode 1 TX. Desktop: click the date. Phone: Move pill.
 - Install steps for Nick: apps-script/SETUP.md.
 - Excel export: vendor/exceljs.min.js (ExcelJS 4.4.0, MIT), loaded only when Export is tapped. buildPostWorkbook() lays out formatted tables in the app colours (Arial, title bands, bordered banded rows, coloured status labels, totals, frozen headers, filters, print setup). Sheets: Summary (tiles plus crew tables), All episodes, Editors, Sound, Dropped scenes.
+- Continued is not listed in the repeated scenes box (not even under decided); it shows as a tag on the scene line in its episode, with an Undo for the team.
 - Continued on a robot older than version 9: the app writes "continued" into that day's report (reportWithContinued) instead of a decision, so the flag clears on any version.
 - Post production: the airing episode row is dark-edged; the next to air gets a full lime row highlight (tr.pe.nextup), also on phones.
 - Season picker is shared with Scenes (ui.season, localStorage njw-season).

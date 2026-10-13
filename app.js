@@ -114,13 +114,13 @@
 
   /* Every scene recorded on a day. Older saves kept pulled scenes in a separate list; they count as shot. */
   function entriesOf(d){
-    return (d.shot||[]).map(function(s){return {ep:s.ep,sc:s.sc,note:s.note||'',tags:(s.tags||[]).slice()}})
+    return (d.shot||[]).map(function(s){return {ep:s.ep,sc:s.sc,note:s.note||'',tags:(s.tags||[]).slice(),decided:s.decided||null}})
       .concat((d.pulled||[]).map(function(s){return {ep:s.ep,sc:s.sc,note:s.note||'',tags:['Pulled']}}));
   }
   /* One row per time a scene was shot. Repeats tagged Reshoot are numbered: Reshoot, Reshoot 2 ... */
   function takes(){
     var by={};
-    daysAsc().forEach(function(d){entriesOf(d).forEach(function(s){if(s.tags.indexOf('Duplicate')>=0)return;var k=keyOf(s.ep,s.sc);(by[k]=by[k]||[]).push({key:k,ep:+s.ep,day:d,note:s.note,tags:s.tags})})});
+    daysAsc().forEach(function(d){entriesOf(d).forEach(function(s){if(s.tags.indexOf('Duplicate')>=0)return;var k=keyOf(s.ep,s.sc);(by[k]=by[k]||[]).push({key:k,ep:+s.ep,day:d,note:s.note,tags:s.tags,decided:s.decided})})});
     var out=[];
     Object.keys(by).sort(cmpKey).forEach(function(k){
       var n=0;by[k].forEach(function(t){if(t.tags.indexOf('Reshoot')>=0){n++;t.ext=n>1?'Reshoot '+n:'Reshoot'}else t.ext='';out.push(t)});
@@ -246,9 +246,11 @@
     f.innerHTML=seasonSeg()+'<label for="f-show" class="sr">Show</label><select id="f-show"><option value="all">All scenes</option><option value="todo"'+(ui.show==='todo'?' selected':'')+'>Not shot yet</option><option value="Check"'+(ui.show==='Check'?' selected':'')+'>Needs a check</option><option value="Pulled"'+(ui.show==='Pulled'?' selected':'')+'>Pulled</option><option value="Reshoot"'+(ui.show==='Reshoot'?' selected':'')+'>Reshoots</option></select>';
   }
 
+  /* A Continued choice lives on the scene's own line, with a small Undo for the team. */
+  function contUndo(t){return t.decided&&t.decided.decision==='Continued'&&isEditor()?'<button type="button" class="linkbtn contundo" data-decide="" data-scene="'+esc(t.key)+'" data-day="'+t.day.day+'" aria-label="Undo Continued for '+esc(t.key)+' on Day '+t.day.day+'">Undo</button>':''}
   function row(t,hit,showEp){
     var other=t.tags.filter(function(x){return x!=='Reshoot'});
-    return '<tr'+(hit===t.key?' class="hit"':'')+'><td class="sc">'+esc(t.key)+(t.ext?'<span class="ext">'+esc(t.ext)+'</span>':'')+'</td><td class="when">'+esc(dayRef(t.day))+' '+logLink(t.day,'Log')+'<div class="sub show-sm">'+esc(t.day.location||'')+(other.length||t.note?'<br>':'')+tagsHtml(other)+(t.note?'<span class="muted">'+esc(t.note)+'</span>':'')+'</div></td><td class="loc hide-sm">'+esc(t.day.location||'')+'</td><td class="note hide-sm">'+tagsHtml(other)+(t.note?'<span class="muted">'+esc(t.note)+'</span>':'')+'</td></tr>';
+    return '<tr'+(hit===t.key?' class="hit"':'')+'><td class="sc">'+esc(t.key)+(t.ext?'<span class="ext">'+esc(t.ext)+'</span>':'')+'</td><td class="when">'+esc(dayRef(t.day))+' '+logLink(t.day,'Log')+'<div class="sub show-sm">'+esc(t.day.location||'')+(other.length||t.note?'<br>':'')+tagsHtml(other)+contUndo(t)+(t.note?'<span class="muted">'+esc(t.note)+'</span>':'')+'</div></td><td class="loc hide-sm">'+esc(t.day.location||'')+'</td><td class="note hide-sm">'+tagsHtml(other)+contUndo(t)+(t.note?'<span class="muted">'+esc(t.note)+'</span>':'')+'</td></tr>';
   }
   var HEAD='<thead><tr><th>Scene</th><th>Shot on</th><th class="hide-sm">Location</th><th class="hide-sm">Notes</th></tr></thead>';
   /* Scenes, one season at a time: 13 episodes, numbered 1 to 52 the same way as Post production. */
@@ -559,7 +561,7 @@
     daysAsc().forEach(function(d){(d.shot||[]).forEach(function(x){
       if(!x.firstDay)return;
       var it={key:keyOf(x.ep,x.sc),day:d,first:dayByNum(x.firstDay),note:x.note,decided:x.decided};
-      if(x.tags.indexOf('Check')>=0)pending.push(it);else if(x.decided)decided.push(it);
+      if(x.tags.indexOf('Check')>=0)pending.push(it);else if(x.decided&&x.decided.decision!=='Continued')decided.push(it);   // Continued: shown only on the episode's scene line
     })});
     return {pending:pending,decided:decided};
   }

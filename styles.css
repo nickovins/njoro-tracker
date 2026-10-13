@@ -549,3 +549,4 @@ input.cell.unsaved{border-color:#E7B43C!important;border-style:solid;background:
 .btn.rpcont{border-color:var(--leaf)}
 .rpacts{flex-wrap:wrap;justify-content:flex-end}
 @media (max-width:560px){.rpacts{width:100%;justify-content:stretch}.rpacts>.btn{flex:1 1 30%;min-width:0;padding-inline:8px}}
+.linkbtn.contundo{font-size:12px;margin:0 6px}
