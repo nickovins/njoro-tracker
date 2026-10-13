@@ -279,6 +279,7 @@
       else sub='<span class="prog noscript">No script in Drive yet</span>';
       var checks=g.filter(function(t){return t.tags.indexOf('Check')>=0}).length;
       html+='<tr class="grp'+(open?' open':'')+(pr||g.length?'':' empty')+'"><td colspan="4"><div class="grprow"><button type="button" class="grpbtn" data-ep="'+ep+'" aria-expanded="'+open+'">Episode '+ep+sub+'</button>'
+        +(post.loaded&&airingEp()===ep?'<span class="onairchip">On air</span>':'')
         +(checks?'<span class="needcheck">'+checks+' to check</span>':'')
         +(pr&&pr.left.length?'<span class="togo">'+pr.left.length+' to shoot</span>':'')
         +(sc?'<a class="scriptlink" href="'+esc(sc.url)+'" target="_blank" rel="noopener" title="'+esc(sc.name)+'">Script ↗</a>':'')
@@ -345,6 +346,16 @@
   function shiftLabel(x){if(x>0&&x%7===0)return (x/7)+' week break before';return x>0?x+' days later':(-x)+' days early'}
   function movedCount(){var c=0;for(var n=2;n<=EPISODES;n++)if(shiftOf(n))c++;return c}
   function nextEp(){if(!post.tx)return 0;var t=todayIso();for(var n=1;n<=EPISODES;n++)if(txOf(n)>=t)return n;return EPISODES+1}
+  /* The episode on air now: its TX date has come and the next episode's has not. */
+  function airingEp(){
+    if(!post.tx)return 0;var t=todayIso(),cur=0;
+    for(var n=1;n<=EPISODES;n++){if(txOf(n)<=t)cur=n;else break}
+    if(!cur)return 0;
+    var after=cur<EPISODES?txOf(cur+1):isoAdd(txOf(cur),7);
+    return t<after?cur:0;
+  }
+  /* The next episode to air after today. */
+  function upNextEp(){if(!post.tx)return 0;var t=todayIso();for(var n=1;n<=EPISODES;n++)if(txOf(n)>t)return n;return 0}
   function curSeason(){return ui.season}
   function txHtml(iso){return iso?'<span class="txdate"><span class="wd">'+esc(weekday(iso).slice(0,3))+'</span> '+esc(fmtDate(iso))+'</span>':'<span class="tbc">TBC</span>'}
   function trailerUrl(u){return /^https:\/\/[^\s"'<>]+$/.test(u||'')?u:''}
@@ -355,19 +366,25 @@
       if(post.err)return '<div class="tablewrap"><p class="empty">'+esc(postErrText(post.err))+'</p></div>';
       return '<div class="tablewrap"><p class="empty">Loading post production…</p></div>';
     }
-    var s=curSeason(),a=(s-1)*PER_SEASON+1,b=s*PER_SEASON,t=todayIso(),nx=nextEp();
+    var s=curSeason(),a=(s-1)*PER_SEASON+1,b=s*PER_SEASON,t=todayIso(),air=airingEp(),nx=upNextEp();
+    if(post.openEp==null)post.openEp=air||nx||0;
     var html='<div class="txbar"><div class="txfld"><label for="tx">Episode 1 TX</label><input id="tx" type="date" value="'+esc(post.tx)+'"></div>'
       +'<button type="button" class="btn small exportbtn" data-act="export"><span aria-hidden="true">\u2913</span> Export to Excel</button>'
       +'<p class="muted">'+(post.tx?'One episode a week, every '+esc(weekday(post.tx))+(movedCount()?', with '+movedCount()+' episode'+(movedCount()===1?'':'s')+' moved':'')+'. Episode 52 airs '+esc(weekday(txOf(EPISODES)).slice(0,3)+' '+fmtDate(txOf(EPISODES)))+'.'
-        :'Not confirmed by the broadcaster yet. Set it here and all 52 dates fill in, one week apart.')+'</p></div>';
+        :'Not confirmed by the broadcaster yet. Set it here and all 52 dates fill in, one week apart.')+'</p>'
+      +(air||nx?'<button type="button" class="onairnow" data-act="goto-air"><span class="st onair">'+(air?(txOf(air)===t?'On air today':'On air'):'Airs next')+'</span> Episode '+(air||nx)+' \u00b7 '+esc(weekday(txOf(air||nx)).slice(0,3)+' '+fmtDate(txOf(air||nx)))+(air&&nx?'<span class="muted"> \u00b7 next: Episode '+nx+', '+esc(fmtDate(txOf(nx)))+'</span>':'')+'</button>':'')
+      +'<p class="savestate" id="savestate" role="status">'+saveStateHtml()+'</p></div>';
     if(post.err)html+='<p class="sync err">'+esc(postErrText(post.err))+'</p>';
     html+='<div class="tablewrap"><div class="seasonhead"><b>Season '+s+'</b><span class="muted">Episodes '+a+' to '+b+(post.tx?' · '+esc(fmtDate(txOf(a)))+' to '+esc(fmtDate(txOf(b))):'')+'</span></div><table class="posttbl">'
       +'<thead><tr><th>Ep</th><th>Editor</th><th>Sound</th><th>TX</th><th>Trailer</th><th>Dropped</th></tr></thead><tbody>';
     for(var n=a;n<=b;n++){
       var e=post.eps[n]||{},tx=txOf(n),drop=e.dropped||[],open=post.openDrop===n,mv=post.openMove===n,sh=shiftOf(n),tl=trailerUrl(e.trailer);
-      var st=tx?(tx<t?'<span class="st aired">Aired</span>':(n===nx?'<span class="st next">Next</span>':'')):'';
-      html+='<tr class="pe'+(open?' open':'')+(tx&&tx<t?' past':'')+'">'
-        +'<td class="epn"><b>'+n+'</b>'+st+'</td>'
+      var st=n===air?'<span class="st onair">'+(tx===t?'On air today':'On air')+'</span>':(tx?(tx<t?'<span class="st aired">Aired</span>':(n===nx?'<span class="st next">Next</span>':'')):'');
+      var exp=post.openEp===n,ed0=pendingOr(n,'editor',e.editor),sd0=pendingOr(n,'sound',e.sound);
+      var sum=[ed0?'Editor: '+esc(ed0):'No editor yet',sd0?'Sound: '+esc(sd0):'No sound yet'].concat(drop.length?[drop.length+' dropped']:[]).concat(trailerUrl(pendingOr(n,'trailer',e.trailer))?['Trailer \u2713']:[]).join(' \u00b7 ');
+      html+='<tr class="pe'+(open?' open':'')+(exp?' expanded':' collapsed')+(n===air?' airing':'')+(n===nx&&!air?' nextup':'')+(tx&&tx<t&&n!==air?' past':'')+'" id="pe'+n+'">'
+        +'<td class="epn"><button type="button" class="pexp" data-pexp="'+n+'" aria-expanded="'+exp+'"><b>'+n+'</b>'+st+'</button></td>'
+        +'<td class="sum"><button type="button" class="pexp sumbtn" data-pexp="'+n+'" aria-expanded="'+exp+'"><span>'+sum+'</span><span class="chev" aria-hidden="true">\u203A</span></button></td>'
         +'<td data-l="Editor">'+cellInput(n,'editor',e.editor,'Who is editing')+'</td>'
         +'<td data-l="Sound">'+cellInput(n,'sound',e.sound,'Who is on sound')+'</td>'
         +'<td class="txd" data-l="TX"><div class="txcell">'+(tx&&n>1?'<button type="button" class="datebtn" data-move="'+n+'" title="Move this episode\u2019s TX date" aria-label="'+esc(weekday(tx)+' '+fmtDate(tx))+', move Episode '+n+' TX">'+txHtml(tx)+'</button>':txHtml(tx))+(tx&&n>1?'<button type="button" class="movebtn'+(sh?' moved':'')+'" data-move="'+n+'" aria-expanded="'+mv+'" title="Move this episode\u2019s TX date">'+(sh?esc(shiftLabel(sh)):'Move')+'</button>':'')+'</div></td>'
@@ -380,6 +397,7 @@
   }
   function cellInput(n,f,v,ph){
     var k=n+':'+f,fl=post.flash&&post.flash[k]||'';
+    if(pending[k]!=null){v=pending[k];fl=(fl?fl+' ':'')+'unsaved'}
     return '<input class="cell'+(fl?' '+fl:'')+'" '+(f==='trailer'?'type="url" inputmode="url" ':'type="text" ')+'data-pep="'+n+'" data-pf="'+f+'" value="'+esc(v||'')+'" placeholder="'+ph+'" maxlength="'+(f==='trailer'?500:80)+'" autocomplete="off" aria-label="Episode '+n+' '+f+'">';
   }
   function movePanel(n){
@@ -415,8 +433,65 @@
   }
   function cachePost(){try{localStorage.setItem('njw-post',JSON.stringify({tx:post.tx,eps:post.eps,at:post.at}))}catch(e){}}
   /* Redraw without losing what someone is typing, or where the cursor is. */
-  function renderPostKeep(clearForm){
+  /* ---------- post production: nothing typed is ever lost ----------
+     Every keystroke in Editor, Sound or Trailer is kept on this device until Google confirms
+     it, saved about a second after typing stops, and sent again after a reload, a sign-out
+     or a lost signal. */
+  var pending={};try{pending=JSON.parse(localStorage.getItem('njw-pending')||'{}')||{}}catch(e){pending={}}
+  var inflight={},saveTimers={};
+  function savePending(){try{if(Object.keys(pending).length)localStorage.setItem('njw-pending',JSON.stringify(pending));else localStorage.removeItem('njw-pending')}catch(e){}}
+  function pendingOr(n,f,v){var k=n+':'+f;return pending[k]!=null?pending[k]:(v||'')}
+  function serverVal(n,f){return ((post.eps[n]||{})[f])||''}
+  function cleanVal(f,v){v=String(v==null?'':v).trim();if(f==='trailer'&&v&&!/^[a-z][a-z0-9+.-]*:\/\//i.test(v))v='https://'+v;return v}
+  function cellEl(k){var p=k.split(':');return document.querySelector('input.cell[data-pep="'+p[0]+'"][data-pf="'+p[1]+'"]')}
+  function markCell(k,cls){var el=cellEl(k);if(!el)return;el.classList.remove('saving','saved','bad','unsaved');if(cls)el.classList.add(cls)}
+  function saveStateHtml(){
+    var n=Object.keys(pending).length,busy=Object.keys(inflight).length||post.saving;
+    if(busy)return '<span class="ss busy">Saving\u2026</span>';
+    if(!n)return post.at?'<span class="ss ok">\u2713 All changes saved</span>':'';
+    return '<span class="ss warn">'+n+' change'+(n===1?'':'s')+' not saved to Google yet. '+(navigator.onLine?'Kept on this device.':'No signal: kept on this device and sent when you are back online.')+'</span> <button type="button" class="linkbtn" data-act="retry-save">Save now</button>';
+  }
+  function renderSaveState(){var el=document.getElementById('savestate');if(el)el.innerHTML=saveStateHtml()}
+  function onCellInput(el){
+    var k=el.dataset.pep+':'+el.dataset.pf;
+    pending[k]=el.value;savePending();markCell(k,'unsaved');
+    clearTimeout(saveTimers[k]);saveTimers[k]=setTimeout(function(){flushKey(k)},1200);
+    renderSaveState();
+  }
+  function flushKey(k){
+    clearTimeout(saveTimers[k]);
+    if(pending[k]==null)return;
+    if(!isEditor()||!post.loaded||!navigator.onLine){renderSaveState();return}
+    if(inflight[k]){inflight[k]=2;return}
+    var p=k.split(':'),n=+p[0],f=p[1],v=cleanVal(f,pending[k]);
+    if(f==='trailer'&&v&&!trailerUrl(v)){markCell(k,'bad');toast(ERR.bad_link_any);return}
+    if(v===serverVal(n,f)){delete pending[k];savePending();markCell(k,'');renderSaveState();return}
+    inflight[k]=1;var set={};set[f]=v;markCell(k,'saving');renderSaveState();
+    savePost({ep:n,set:set},k).then(function(r){
+      var again=inflight[k]===2;delete inflight[k];
+      if(r&&r.ok&&pending[k]!=null&&cleanVal(f,pending[k])===serverVal(n,f)){delete pending[k];savePending();markCell(k,'saved')}
+      else if(pending[k]!=null)markCell(k,r&&r.ok?'unsaved':'bad');
+      renderSaveState();
+      if(again&&pending[k]!=null)flushKey(k);
+    });
+  }
+  function flushAll(){Object.keys(pending).forEach(flushKey)}
+  /* Closing the app or switching away: send what is waiting, without waiting for an answer. */
+  function flushOnLeave(){
+    if(!isEditor()||!navigator.onLine)return;
+    Object.keys(pending).forEach(function(k){
+      if(inflight[k])return;var p=k.split(':'),set={};set[p[1]]=cleanVal(p[1],pending[k]);
+      if(p[1]==='trailer'&&set.trailer&&!trailerUrl(set.trailer))return;
+      try{fetch(SCRIPT_URL,{method:'POST',keepalive:true,headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'postSave',token:auth.token,ep:+p[0],set:set})})}catch(e){}
+    });
+  }
+  function typingInPost(){var a=document.activeElement;return !!(a&&a.matches&&a.matches('input.cell')&&document.getElementById('main').contains(a))}
+
+  function renderPostKeep(clearForm,force){
     if(ui.view!=='post')return;
+    /* Never redraw under someone's fingers: wait until they leave the box. */
+    if(!force&&typingInPost()){post.deferRender=true;return}
+    post.deferRender=false;
     var main=document.getElementById('main'),keep={},act=document.activeElement,fk='',sel=null;
     function keyOf2(el){if(el.dataset&&el.dataset.pf)return el.dataset.pep+':'+el.dataset.pf;var fm=el.closest&&el.closest('form.dropadd');return fm?'d'+fm.dataset.pep+':'+el.name:''}
     main.querySelectorAll('input,select').forEach(function(el){var k=keyOf2(el);if(k&&(el.value!==el.defaultValue||el===act||el.tagName==='SELECT'))keep[k]=el.value});
@@ -438,6 +513,7 @@
       if((post.ver||0)!==ver)return;            /* a save finished meanwhile; its answer is newer */
       if(r.ok)applyPost(r);else if(r.error!=='network'||!post.loaded)post.err=r.error==='bad_request'?'old':r.error;
       renderPostKeep();
+      if(r.ok)flushAll();
     });
   }
   function savePost(body,key,clearForm){
@@ -447,10 +523,10 @@
       post.saving--;
       if(!isEditor()){renderAll();return r}
       post.flash={};
-      if(r.ok){applyPost(r);if(key)post.flash[key]='saved'}
-      else{if(key)post.flash[key]='bad';toast(r.error==='bad_request'?postErrText('old'):errText(r))}
+      if(r.ok)applyPost(r);
+      else if(r.error!=='signed_out')toast(r.error==='bad_request'?postErrText('old'):(r.error==='network'?'No signal. Your change is kept on this device and sent when you are back online.':errText(r)));
       renderPostKeep(r.ok?clearForm:0);
-      if(key)setTimeout(function(){if(post.flash&&post.flash[key]){delete post.flash[key];var el=document.querySelector('input.cell[data-pep="'+key.split(':')[0]+'"][data-pf="'+key.split(':')[1]+'"]');if(el)el.classList.remove('saved','bad')}},2200);
+      if(key&&r.ok&&pending[key]==null)setTimeout(function(){var el=cellEl(key);if(el)el.classList.remove('saved')},2200);
       return r;
     });
   }
@@ -459,6 +535,7 @@
     if(el.id==='tx'){savePost({tx:el.value||''},'');return}
     if(el.dataset.pf==='mv'){if(el.value)moveTo(+el.dataset.pep,el.value);return}
     if(!el.matches('input.cell'))return;
+    if(pending[el.dataset.pep+':'+el.dataset.pf]!=null){flushKey(el.dataset.pep+':'+el.dataset.pf);return}
     var n=+el.dataset.pep,f=el.dataset.pf,v=el.value.trim();
     if(f==='trailer'&&v&&!/^[a-z][a-z0-9+.-]*:\/\//i.test(v)){v='https://'+v;el.value=v}
     if(f==='trailer'&&v&&!trailerUrl(v)){el.classList.add('bad');toast(ERR.bad_link_any);return}
@@ -487,16 +564,22 @@
     })});
     return {pending:pending,decided:decided};
   }
+  /* Not sure? Open either day's report to fix a wrong scene number. */
+  function editBtns(it){
+    return '<span class="rpedit"><span class="muted">Edit report:</span>'
+      +(it.first?'<button type="button" class="btn small" data-act="edit-day" data-day="'+it.first.day+'">Day '+it.first.day+'</button>':'')
+      +'<button type="button" class="btn small" data-act="edit-day" data-day="'+it.day.day+'">Day '+it.day.day+'</button></span>';
+  }
   function renderRepeats(){
     if(ui.view!=='scenes'&&ui.view!=='days')return '';
     var r=repeatList();if(!r.pending.length&&!r.decided.length)return '';
     var ed=isEditor(),html='<section class="repeats'+(r.pending.length?' pending':'')+'" aria-label="Repeated scenes">';
     if(r.pending.length){
       html+='<div class="rphead"><b>'+r.pending.length+' repeated scene'+(r.pending.length===1?'':'s')+' to check</b>'
-        +'<span>Logged on two days. <b>Reshoot</b>: shot again on purpose, both days count. <b>Duplicate</b>: logged twice by mistake, only the first day counts.</span></div><ul class="rplist">'
+        +'<span>Logged on two days. <b>Reshoot</b>: shot again on purpose, both days count. <b>Duplicate</b>: logged twice by mistake, only the first day counts. Not sure, or a wrong scene number? <b>Edit</b> the report.</span></div><ul class="rplist">'
         +r.pending.map(function(it){
           return '<li><div class="rpwhat"><span class="mono rpsc">'+esc(it.key)+'</span><span>First on <b>'+esc(it.first?dayRef(it.first):'an earlier day')+'</b>, again on <b>'+esc(dayRef(it.day))+'</b>'+(it.note?' <span class="muted">('+esc(it.note)+')</span>':'')+'</span></div>'
-            +(ed?'<div class="rpacts"><button type="button" class="btn small rpre" data-decide="Reshoot" data-scene="'+esc(it.key)+'" data-day="'+it.day.day+'">Reshoot</button><button type="button" class="btn small rpdup" data-decide="Duplicate" data-scene="'+esc(it.key)+'" data-day="'+it.day.day+'">Duplicate</button></div>'
+            +(ed?'<div class="rpacts"><button type="button" class="btn small rpre" data-decide="Reshoot" data-scene="'+esc(it.key)+'" data-day="'+it.day.day+'">Reshoot</button><button type="button" class="btn small rpdup" data-decide="Duplicate" data-scene="'+esc(it.key)+'" data-day="'+it.day.day+'">Duplicate</button>'+editBtns(it)+'</div>'
               :'<span class="muted rpsign">Sign in to decide</span>')+'</li>';
         }).join('')+'</ul>';
     }
@@ -504,7 +587,7 @@
       html+='<button type="button" class="linkbtn rptoggle" data-act="show-decided" aria-expanded="'+!!ui.showDecided+'">'+(ui.showDecided?'Hide':'Show')+' '+r.decided.length+' decided repeat'+(r.decided.length===1?'':'s')+'</button>';
       if(ui.showDecided)html+='<ul class="rplist decided">'+r.decided.map(function(it){
         return '<li><div class="rpwhat"><span class="mono rpsc">'+esc(it.key)+'</span><span>Day '+it.day.day+(it.first?' (first on Day '+it.first.day+')':'')+'</span>'+tagsHtml([it.decided.decision])+'<span class="muted">'+esc(it.decided.by)+(it.decided.when?', '+esc(it.decided.when):'')+'</span></div>'
-          +(ed?'<div class="rpacts"><button type="button" class="btn small" data-decide="" data-scene="'+esc(it.key)+'" data-day="'+it.day.day+'">Undo</button></div>':'')+'</li>';
+          +(ed?'<div class="rpacts"><button type="button" class="btn small" data-decide="" data-scene="'+esc(it.key)+'" data-day="'+it.day.day+'">Undo</button>'+editBtns(it)+'</div>':'')+'</li>';
       }).join('')+'</ul>';
     }
     return html+'</section>';
@@ -830,6 +913,12 @@
       if(e.target.id==='f-show'){ui.show=e.target.value;renderMain();return}
       if(ui.view==='post')onPostChange(e.target);
     });
+    app.addEventListener('input',function(e){if(ui.view==='post'&&e.target.matches&&e.target.matches('input.cell'))onCellInput(e.target)});
+    app.addEventListener('focusout',function(e){
+      if(!(e.target.matches&&e.target.matches('input.cell')))return;
+      flushKey(e.target.dataset.pep+':'+e.target.dataset.pf);
+      setTimeout(function(){if(post.deferRender&&!typingInPost())renderPostKeep()},0);
+    });
     app.addEventListener('submit',function(e){var f=e.target.closest&&e.target.closest('form.dropadd');if(f){e.preventDefault();onDropAdd(f)}});
     app.addEventListener('keydown',function(e){if(e.key==='Enter'&&e.target.matches&&e.target.matches('input.cell')){e.preventDefault();e.target.blur();return}var r=e.target.closest&&e.target.closest('tr.d');if(r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();toggleDay(+r.dataset.day)}});
   }
@@ -887,6 +976,7 @@
     if(b.dataset.ep){var e=+b.dataset.ep;ui.openEp=ui.openEp===e?null:e;var q=document.getElementById('q');if(q.value){q.value='';renderAnswer()}renderMain();return}
     if(b.dataset.view){ui.view=b.dataset.view;try{localStorage.setItem('njw-view',ui.view)}catch(e){}if(ui.view==='post'||ui.view==='admin'){var qq=document.getElementById('q'),ll=document.getElementById('loc');if(qq.value||ll.value){qq.value='';ll.value='';renderAnswer()}}if(ui.view==='post')loadPost();if(ui.view==='admin')loadAdmin();renderControls();renderMain();return}
     if(b.dataset.season){setSeason(+b.dataset.season);post.openDrop=null;post.openMove=null;ui.openEp=null;var q2=document.getElementById('q');if(q2&&q2.value&&ui.view==='scenes'){q2.value='';renderAnswer()}renderControls();renderMain();return}
+    if(b.dataset.pexp){var pn=+b.dataset.pexp;post.openEp=post.openEp===pn?0:pn;if(post.openDrop!==pn)post.openDrop=null;if(post.openMove!==pn)post.openMove=null;renderPostKeep(0,true);return}
     if(b.hasAttribute('data-decide')){decideRepeat(b.dataset.scene,+b.dataset.day,b.dataset.decide);return}
     if(b.dataset.move){var mn=+b.dataset.move;post.openMove=post.openMove===mn?null:mn;post.openDrop=null;renderMain();return}
     if(b.dataset.skip){var sn=+b.dataset.skip;moveTo(sn,isoAdd(txOf(sn),7));return}
@@ -900,6 +990,9 @@
     if(act==='drive'){checkDrive();return}
     if(act==='show-decided'){ui.showDecided=!ui.showDecided;renderMain();return}
     if(act==='export'){exportPost();return}
+    if(act==='retry-save'){flushAll();renderSaveState();return}
+    if(act==='goto-air'){var ge=airingEp()||upNextEp();if(ge){setSeason(seasonOf(ge));post.openEp=ge;renderControls();renderPostKeep(0,true);var row=document.getElementById('pe'+ge);if(row)row.scrollIntoView({block:'center',behavior:'smooth'})}return}
+    if(act==='edit-day'){var edd=dayByNum(+b.dataset.day);if(edd)openAdd(edd.raw,edd.day);return}
     if(act&&act.indexOf('adm-')===0){adminAction(act);return}
     if(act==='refresh'){refresh();if(ui.view==='post')loadPost();return}
     if(act==='add-many'){openAdd('',null,true);return}
@@ -1191,7 +1284,9 @@
 
   window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();installPrompt=e;renderHeader()});
   window.addEventListener('appinstalled',function(){installPrompt=null;renderHeader()});
-  window.addEventListener('online',function(){ui.offline=false;refresh()});
+  window.addEventListener('online',function(){ui.offline=false;refresh();if(isEditor()&&post.loaded)flushAll()});
+  window.addEventListener('pagehide',flushOnLeave);
+  document.addEventListener('visibilitychange',function(){if(document.hidden)flushOnLeave()});
   window.addEventListener('offline',function(){ui.offline=true;renderStatus()});
   /* Stay current while the app is open: check every 30 seconds, and straight away when it comes back to the front. */
   document.addEventListener('visibilitychange',function(){if(!document.hidden&&navigator.onLine&&Date.now()-(state.fetchedAt||0)>15000)refresh(true)});

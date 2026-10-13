@@ -16,6 +16,12 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - UI: Nick tried the simplified v16 layout and asked to go back. App v17 = the v15 layout (logo plate, green stats bar, two search boxes, segmented views, header Daily reports menu) with v8 behaviour (master password sign-in, no password change in app, Activity times as DD.MM HH:MM).
 - Nick's v7 status unknown; v8 steps in apps-script/SETUP.md (cleanUp, setup, New version deploy).
 
+## App v18 (13.10.2026, 14:40)
+- Post fields save while typing (1.2 s after the last key), on leaving the box, and on closing the app (fetch keepalive). Every unsaved value sits in localStorage njw-pending until Google confirms it; shown amber; resent after reload, sign-in or coming back online; "Save now" link. No redraw while a post box has focus (post.deferRender). Root cause of Nick's lost entries: a background redraw while typing reset the browser's change tracking, so leaving the box never saved.
+- On air: airingEp() = last episode whose TX has come, until the next TX. Highlighted row, "On air" chip (also in Scenes), "On air / Airs next" bar that jumps to it.
+- Phones: post episodes are one-line cards (editor, sound, dropped, trailer); only post.openEp shows its boxes. Opens on the episode on air or next.
+- Repeats: Edit report buttons for both days.
+
 ## Post production (added 10.10.2026)
 - Tab only shows after sign-in (one master password since v8).
 - Stored in Script Properties (POST_TX, POST_EP_<n> JSON: editor, sound, trailer, dropped[{sc,why,note}]). Not in the Sheet, which is public to anyone with the link.
@@ -34,6 +40,6 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Scopes: spreadsheets.currentonly, drive.readonly, drive.file, script.scriptapp, script.external_request (Drive export only). No Gmail.
 
 ## Rules
-- Bump sw.js VERSION and index.html ?v= on each release (now njw-v17 / v=17).
+- Bump sw.js VERSION and index.html ?v= on each release (now njw-v18 / v=18).
 - Commit as Nick Kibathi <nicholaskibathi@gmail.com>. Test with Playwright at 390 px and 1280 px.
 - Never ask for or store the passcode or anyone's password. Plain language, no em/en dashes, honest pushback.

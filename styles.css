@@ -498,3 +498,46 @@ tr.admform input,.addusr input{font:600 14px var(--body);padding:8px 10px;border
 .fld .opt{font-weight:500;color:var(--muted);font-size:12px}
 .admrow{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:12px 14px}
 .caret{margin-right:6px;text-align:center}
+
+/* ---------- v18: on air, phone episode cards, safe saving ---------- */
+.pexp{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:6px;cursor:pointer}
+.pexp:focus-visible{outline:2px solid var(--green);outline-offset:2px;border-radius:6px}
+.posttbl td.sum{display:none}
+.st.onair{background:#13522B;color:#CEE05C}
+tr.grp td span.onairchip{flex:none;font:700 11.5px var(--body);color:#CEE05C;background:#13522B;padding:3px 9px;border-radius:999px;white-space:nowrap;margin-left:0}
+.posttbl tr.pe.airing td{background:#EEF7D3;box-shadow:inset 0 2px 0 #9FC63B,inset 0 -2px 0 #9FC63B}
+.posttbl tr.pe.airing td:first-child{box-shadow:inset 5px 0 0 #13522B,inset 0 2px 0 #9FC63B,inset 0 -2px 0 #9FC63B}
+.posttbl tr.pe.nextup td:first-child{box-shadow:inset 4px 0 0 #9FC63B}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .posttbl tr.pe.airing td{background:#22351A}}
+:root[data-theme="dark"] .posttbl tr.pe.airing td{background:#22351A}
+.onairnow{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;flex:1 1 100%;font:700 14px var(--body);color:var(--deep);padding:8px 10px;border-radius:10px;background:var(--hit)}
+.onairnow:hover,.onairnow:focus-visible{outline:2px solid var(--leaf)}
+.onairnow .muted{font-weight:600}
+.savestate{flex:1 1 100%;margin:0;font-size:13px;min-height:1em}
+.savestate:empty{display:none}
+.ss.ok{color:var(--deep);font-weight:700}
+.ss.busy{color:var(--muted);font-weight:700}
+.ss.warn{color:#7A4A00;font-weight:700}
+input.cell.unsaved{border-color:#E7B43C!important;border-style:solid;background:#FFF6DC}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) input.cell.unsaved{background:#2B2410}:root:not([data-theme="light"]) .ss.warn{color:#F2CF6B}}
+:root[data-theme="dark"] input.cell.unsaved{background:#2B2410}:root[data-theme="dark"] .ss.warn{color:#F2CF6B}
+.rpedit{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;margin-left:6px;font-size:13px}
+@media (max-width:560px){.rpedit{margin-left:0;width:100%}}
+
+/* Phones: only the open episode shows its boxes; the rest are one-line cards */
+@media (max-width:640px){
+  .posttbl tr.pe.collapsed td[data-l="Editor"],.posttbl tr.pe.collapsed td[data-l="Sound"],.posttbl tr.pe.collapsed td.trl,.posttbl tr.pe.collapsed td.drp{display:none}
+  .posttbl tr.pe.collapsed td.sum{display:block;grid-column:1/-1;padding:2px 0 0}
+  .posttbl tr.pe.collapsed{padding:8px 12px}
+  .sumbtn{width:100%;justify-content:space-between;font-size:13px;color:var(--muted);font-weight:600}
+  .sumbtn span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sumbtn .chev{font-size:18px;color:var(--muted);flex:none}
+  .posttbl tr.pe.expanded{box-shadow:inset 4px 0 0 var(--deep)}
+  .posttbl tr.pe.airing{background:#EEF7D3;box-shadow:inset 5px 0 0 #13522B}
+  .posttbl tr.pe.airing td{box-shadow:none!important;background:none}
+  .posttbl tr.pe.nextup td:first-child{box-shadow:none}
+  .posttbl tr.pe.nextup{box-shadow:inset 4px 0 0 #9FC63B}
+}
+@media (prefers-color-scheme:dark) and (max-width:640px){:root:not([data-theme="light"]) .posttbl tr.pe.airing{background:#22351A}}
+@media (max-width:640px){.posttbl tr.pe.expanded td.sum{display:none!important}}
+@media (min-width:641px){.posttbl tr.pe td.sum{display:none!important}}
