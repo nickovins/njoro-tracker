@@ -13,7 +13,7 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Team sign-in = one master password (PASSCODE). No names, no in-app password change. gen_() = SESS_GEN + 6-byte digest of PASSCODE, so editing PASSCODE in Script Properties ends every session. Activity "Who" = "Team (<device>)" from the app's user agent.
 - Script Properties tidy: scene-number cache moved from SC_* properties into the Scripts tab ("Updated" now has seconds; 'none' = read, no headings). cleanUp() deletes everything except PASSCODE, IDLE_MINUTES, POST_TX, POST_EP_n, ACT_RING, SESS_GEN; setup() runs it.
 - Bug fixed: Sign everyone out did nothing (SESS_GEN was set from the string gen).
-- UI simplified: slim header (small logo, title, Sign in), underline tabs, one toolbar per tab (Scenes: search, seasons, filter, Scripts link; Daily reports: location search, Log sheets, + Add report, More menu; Post: seasons). Green stats bar and long hints removed; last report in the status line. Phone tab labels: Scenes, Reports, Post, Activity.
+- UI: Nick tried the simplified v16 layout and asked to go back. App v17 = the v15 layout (logo plate, green stats bar, two search boxes, segmented views, header Daily reports menu) with v8 behaviour (master password sign-in, no password change in app, Activity times as DD.MM HH:MM).
 - Nick's v7 status unknown; v8 steps in apps-script/SETUP.md (cleanUp, setup, New version deploy).
 
 ## Post production (added 10.10.2026)
@@ -34,6 +34,6 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Scopes: spreadsheets.currentonly, drive.readonly, drive.file, script.scriptapp, script.external_request (Drive export only). No Gmail.
 
 ## Rules
-- Bump sw.js VERSION and index.html ?v= on each release (now njw-v16 / v=16).
+- Bump sw.js VERSION and index.html ?v= on each release (now njw-v17 / v=17).
 - Commit as Nick Kibathi <nicholaskibathi@gmail.com>. Test with Playwright at 390 px and 1280 px.
 - Never ask for or store the passcode or anyone's password. Plain language, no em/en dashes, honest pushback.

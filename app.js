@@ -235,32 +235,15 @@
   function seasonSeg(){
     return '<div class="seg" role="group" aria-label="Season">'+[1,2,3,4].map(function(n){return '<button type="button" data-season="'+n+'" aria-pressed="'+(ui.season===n)+'"><span class="hide-xs">Season </span><span class="show-xs">S</span>'+n+'</button>'}).join('')+'</div>';
   }
-  function dayMenu(){
-    return '<div class="menuwrap"><button type="button" class="btn small" data-act="menu" aria-haspopup="true" aria-expanded="'+!!ui.menu+'">More <span class="caret2" aria-hidden="true">\u25BE</span></button>'
-      +(ui.menu?'<div class="menu right" role="menu">'
-        +'<button type="button" role="menuitem" data-act="add-many"><b>Add several days</b><span>Paste many reports at once</span></button>'
-        +'<button type="button" role="menuitem" data-act="pick-edit"><b>Update a day</b><span>Fix or replace a report</span></button>'
-        +'<button type="button" role="menuitem" data-act="drive"><b>Check Drive now</b><span>Attach new log sheets and scripts</span></button>'
-        +'<button type="button" role="menuitem" data-act="pick-del" class="del"><b>Delete a day</b><span>Take a day out of the tracker</span></button>'
-        +'</div>':'')+'</div>';
-  }
   function renderControls(){
-    if((ui.view==='post'||ui.view==='admin')&&!isEditor())ui.view='scenes';
-    var vs=[['scenes','Scenes'],['days','<span class="lg">Daily reports</span><span class="sm">Reports</span>']];if(isEditor()){vs.push(['post','<span class="lg">Post production</span><span class="sm">Post</span>']);vs.push(['admin','Activity'])}
+    if((ui.view==='post'&&!isEditor())||(ui.view==='admin'&&!isAdmin()))ui.view='scenes';
+    var vs=[['scenes','Scenes'],['days','Daily reports']];if(isEditor())vs.push(['post','Post production']);if(isAdmin())vs.push(['admin','Activity']);
     document.getElementById('views').innerHTML=vs.map(function(v){return '<button type="button" data-view="'+v[0]+'" aria-pressed="'+(ui.view===v[0])+'">'+v[1]+'</button>'}).join('');
-    document.getElementById('qbox').hidden=ui.view!=='scenes';
-    document.getElementById('locbox').hidden=ui.view!=='days';
-    var f=document.getElementById('filters'),v=ui.view;
-    document.getElementById('tools').hidden=v==='admin';
-    if(v==='post'){f.innerHTML=seasonSeg();return}
-    if(v==='days'){
-      f.innerHTML='<a class="textlink" href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Log sheets \u2197</a>'
-        +(isEditor()?'<button type="button" class="btn small primary" data-act="add">+ Add report</button>'+dayMenu():'');
-      return;
-    }
-    if(v!=='scenes'){f.innerHTML='';return}
-    f.innerHTML=seasonSeg()+'<label for="f-show" class="sr">Show</label><select id="f-show"><option value="all">All scenes</option><option value="todo"'+(ui.show==='todo'?' selected':'')+'>Not shot yet</option><option value="Check"'+(ui.show==='Check'?' selected':'')+'>Needs a check</option><option value="Pulled"'+(ui.show==='Pulled'?' selected':'')+'>Pulled</option><option value="Reshoot"'+(ui.show==='Reshoot'?' selected':'')+'>Reshoots</option></select>'
-      +(SCRIPTS_FOLDER?'<a class="textlink" href="'+esc(SCRIPTS_FOLDER)+'" target="_blank" rel="noopener">Scripts \u2197</a>':'');
+    var srch=document.querySelector('.search');if(srch)srch.hidden=ui.view==='post'||ui.view==='admin';
+    var f=document.getElementById('filters');
+    if(ui.view==='post'){f.innerHTML=seasonSeg();return}
+    if(ui.view!=='scenes'){f.innerHTML='';return}
+    f.innerHTML=seasonSeg()+'<label for="f-show" class="sr">Show</label><select id="f-show"><option value="all">All scenes</option><option value="todo"'+(ui.show==='todo'?' selected':'')+'>Not shot yet</option><option value="Check"'+(ui.show==='Check'?' selected':'')+'>Needs a check</option><option value="Pulled"'+(ui.show==='Pulled'?' selected':'')+'>Pulled</option><option value="Reshoot"'+(ui.show==='Reshoot'?' selected':'')+'>Reshoots</option></select>';
   }
 
   function row(t,hit,showEp){
@@ -510,7 +493,7 @@
     var ed=isEditor(),html='<section class="repeats'+(r.pending.length?' pending':'')+'" aria-label="Repeated scenes">';
     if(r.pending.length){
       html+='<div class="rphead"><b>'+r.pending.length+' repeated scene'+(r.pending.length===1?'':'s')+' to check</b>'
-        +'<span><b>Reshoot</b> keeps both days. <b>Duplicate</b> keeps only the first.</span></div><ul class="rplist">'
+        +'<span>Logged on two days. <b>Reshoot</b>: shot again on purpose, both days count. <b>Duplicate</b>: logged twice by mistake, only the first day counts.</span></div><ul class="rplist">'
         +r.pending.map(function(it){
           return '<li><div class="rpwhat"><span class="mono rpsc">'+esc(it.key)+'</span><span>First on <b>'+esc(it.first?dayRef(it.first):'an earlier day')+'</b>, again on <b>'+esc(dayRef(it.day))+'</b>'+(it.note?' <span class="muted">('+esc(it.note)+')</span>':'')+'</span></div>'
             +(ed?'<div class="rpacts"><button type="button" class="btn small rpre" data-decide="Reshoot" data-scene="'+esc(it.key)+'" data-day="'+it.day.day+'">Reshoot</button><button type="button" class="btn small rpdup" data-decide="Duplicate" data-scene="'+esc(it.key)+'" data-day="'+it.day.day+'">Duplicate</button></div>'
@@ -825,17 +808,18 @@
 
   function renderShell(){
     document.getElementById('app').innerHTML=
-      '<header class="top"><div class="brand"><img class="logo" src="logo.webp" alt="Njoro wa Uba" width="230" height="144">'
-      +'<div class="ttl"><h1><span class="sr">Njoro wa Uba </span>Scene Tracker</h1><p class="sub">'+esc(CYCLE)+'</p></div></div>'
-      +'<div class="topacts" id="acts"></div></header>'
+      '<header class="mast"><div class="plate"><img src="logo.webp" alt="Njoro wa Uba" width="230" height="144">'
+      +'<div class="right"><h1 class="kicker"><span class="sr">Njoro wa Uba </span>Scene Tracker</h1><div class="acts" id="acts"></div></div></div>'
+      +'<dl class="stats" id="stats"></dl></header>'
       +'<div id="installhint"></div>'
-      +'<nav class="tabs" id="views" aria-label="Sections"></nav>'
       +'<p class="sync" id="sync" role="status"></p>'
-      +'<section class="tools" id="tools">'
-      +'<div class="searchbox" id="qbox"><label for="q" class="sr">Find a scene</label><input id="q" type="search" inputmode="text" placeholder="Find a scene, e.g. 7/4 or 7" autocomplete="off" spellcheck="false" enterkeyhint="search"></div>'
-      +'<div class="searchbox" id="locbox" hidden><label for="loc" class="sr">Find a location</label><input id="loc" type="search" placeholder="Find a location, e.g. Ruaka" autocomplete="off" enterkeyhint="search"></div>'
-      +'<div class="filters" id="filters"></div></section>'
-      +'<div id="answer"></div>'
+      +'<section class="search"><div class="searchgrid">'
+      +'<div><label for="q">Episode and scene</label><input id="q" type="text" inputmode="text" placeholder="e.g. 7/4" autocomplete="off" spellcheck="false">'
+      +'<p class="hint">Type <span class="mono">7/4</span> for Episode 7, Scene 4, or <span class="mono">7</span> for the whole episode.</p></div>'
+      +'<div><label for="loc">Location</label><input id="loc" type="text" placeholder="e.g. Ruaka, Upperhill, hotel" autocomplete="off">'
+      +'<p class="hint">Finds the shoot days at a location, even with typos. Use it to track down unlogged establishing shots.</p></div>'
+      +'</div><div id="answer"></div></section>'
+      +'<div class="bar"><div class="seg" role="group" aria-label="View" id="views"></div><div class="filters" id="filters"></div></div>'
       +'<div id="main"></div>'
       +'<p class="foot" id="foot"></p>';
     document.getElementById('q').addEventListener('input',function(){if(this.value){document.getElementById('loc').value='';ui.view='scenes';var pq=parseQuery(),pe=pq&&pq.type==='ep'?pq.ep:(pq&&pq.type==='scene'?+pq.key.split('/')[0]:0);if(pe>=1&&pe<=EPISODES)setSeason(seasonOf(pe));renderControls()}renderAnswer();renderMain()});
@@ -851,13 +835,26 @@
   }
 
   function renderHeader(){
+    var last=daysAsc().slice(-1)[0];
+    document.getElementById('stats').innerHTML='<div class="cyc">'+esc(CYCLE)+'</div><div><dt>Last report</dt><dd>'+(last?esc(dayRef(last)):'None')+'</dd></div>';
     var signed=isEditor();
     document.getElementById('acts').innerHTML=
-      (installPrompt?'<button type="button" class="btn small" data-act="install">Install app</button>':'')
-      +(SCRIPT_URL?(signed?'<div class="menuwrap"><button type="button" class="btn small acct" data-act="acct" aria-haspopup="true" aria-expanded="'+!!ui.acct+'"><span class="dot" aria-hidden="true"></span>Signed in <span class="caret2" aria-hidden="true">\u25BE</span></button>'
-          +(ui.acct?'<div class="menu right" role="menu"><p class="menuhead"><b>Team sign-in</b><br><span>Signs out by itself after '+esc(auth.idle||30)+' minutes without use.</span></p>'
+      (installPrompt?'<button type="button" class="btn primary wide" data-act="install">Install app</button>':'')
+      +(signed?'<div class="menuwrap wide"><button type="button" class="btn primary" data-act="menu" aria-haspopup="true" aria-expanded="'+!!ui.menu+'">Daily reports <span class="caret2" aria-hidden="true">\u25BE</span></button>'
+        +(ui.menu?'<div class="menu" role="menu">'
+          +'<button type="button" role="menuitem" data-act="add"><b>Add a day</b><span>Paste one report</span></button>'
+          +'<button type="button" role="menuitem" data-act="add-many"><b>Add several days</b><span>Paste many reports at once</span></button>'
+          +'<button type="button" role="menuitem" data-act="pick-edit"><b>Update a day</b><span>Fix or replace a report</span></button>'
+          +'<button type="button" role="menuitem" data-act="drive"><b>Check Drive now</b><span>Attach new log sheets and scripts</span></button>'
+          +'<button type="button" role="menuitem" data-act="pick-del" class="del"><b>Delete a day</b><span>Take a day out of the tracker</span></button>'
+          +'</div>':'')+'</div>':'')
+      +'<a class="btn" href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Log sheets ↗</a>'
+      +(SCRIPTS_FOLDER?'<a class="btn" href="'+esc(SCRIPTS_FOLDER)+'" target="_blank" rel="noopener">Scripts ↗</a>':'')
+      +(SCRIPT_URL?(signed?'<div class="menuwrap wide"><button type="button" class="btn ghost acct" data-act="acct" aria-haspopup="true" aria-expanded="'+!!ui.acct+'"><span class="who">Signed in</span> <span class="caret2" aria-hidden="true">\u25BE</span></button>'
+          +(ui.acct?'<div class="menu" role="menu"><p class="menuhead"><b>Team sign-in</b><br><span>Signs out by itself after '+esc(auth.idle||30)+' minutes without use.</span></p>'
             +'<button type="button" role="menuitem" data-act="logout" class="del"><b>Sign out</b><span>On this device</span></button></div>':'')+'</div>'
-        :'<button type="button" class="btn small" data-act="login">Sign in</button>'):'');
+        :'<button type="button" class="btn ghost wide" data-act="login"><span aria-hidden="true">\uD83D\uDD12</span> Sign in</button>'):'');
+    document.getElementById('stats').innerHTML+=signed?'<div class="mode">Signed in</div>':'';
     document.getElementById('foot').innerHTML='Created by Nicholas Kibathi';
     var hint=document.getElementById('installhint'),dismissed=false;
     try{dismissed=localStorage.getItem('njw-ios-hint')==='1'}catch(e){}
@@ -870,7 +867,7 @@
     if(ui.loading)parts.push('Checking for new reports…');
     else if(ui.offline&&n)parts.push('<strong>Offline.</strong> Showing reports saved on this phone ('+esc(fmtWhen(state.fetchedAt))+').');
     else if(ui.stale&&n)parts.push('<strong>Could not reach Google.</strong> Showing the copy saved on this phone ('+esc(fmtWhen(state.fetchedAt))+').');
-    else if(state.fetchedAt){var lr=daysAsc().slice(-1)[0];parts.push('<span>Updated '+esc(fmtWhen(state.fetchedAt))+'<span class="lg"> \u00b7 '+n+' shoot day'+(n===1?'':'s')+'</span>'+(lr?' \u00b7 last report Day '+lr.day+(lr.iso?', '+esc(fmtDate(lr.iso)):''):'')+'</span>')}
+    else if(state.fetchedAt)parts.push('Up to date, '+esc(fmtWhen(state.fetchedAt))+' · '+n+' shoot day'+(n===1?'':'s'));
     el.className='sync'+((ui.offline||ui.stale)&&!ui.loading?' off':'')+(ui.error?' err':'');
     el.innerHTML=(ui.error?esc(ui.error):parts.join(' '))+(ui.loading?'':' <button type="button" class="linkbtn" data-act="refresh">Refresh</button>');
   }
@@ -888,7 +885,7 @@
     var b=ev.target.closest('button,tr.d');if(!b)return;
     if(b.matches('tr.d')){toggleDay(+b.dataset.day);return}
     if(b.dataset.ep){var e=+b.dataset.ep;ui.openEp=ui.openEp===e?null:e;var q=document.getElementById('q');if(q.value){q.value='';renderAnswer()}renderMain();return}
-    if(b.dataset.view){ui.view=b.dataset.view;ui.menu=false;try{localStorage.setItem('njw-view',ui.view)}catch(e){}var qq=document.getElementById('q'),ll=document.getElementById('loc');if((ui.view!=='scenes'&&qq.value)||(ui.view!=='days'&&ll.value)){if(ui.view!=='scenes')qq.value='';if(ui.view!=='days')ll.value='';renderAnswer()}if(ui.view==='post')loadPost();if(ui.view==='admin')loadAdmin();renderControls();renderMain();return}
+    if(b.dataset.view){ui.view=b.dataset.view;try{localStorage.setItem('njw-view',ui.view)}catch(e){}if(ui.view==='post'||ui.view==='admin'){var qq=document.getElementById('q'),ll=document.getElementById('loc');if(qq.value||ll.value){qq.value='';ll.value='';renderAnswer()}}if(ui.view==='post')loadPost();if(ui.view==='admin')loadAdmin();renderControls();renderMain();return}
     if(b.dataset.season){setSeason(+b.dataset.season);post.openDrop=null;post.openMove=null;ui.openEp=null;var q2=document.getElementById('q');if(q2&&q2.value&&ui.view==='scenes'){q2.value='';renderAnswer()}renderControls();renderMain();return}
     if(b.hasAttribute('data-decide')){decideRepeat(b.dataset.scene,+b.dataset.day,b.dataset.decide);return}
     if(b.dataset.move){var mn=+b.dataset.move;post.openMove=post.openMove===mn?null:mn;post.openDrop=null;renderMain();return}
@@ -897,9 +894,9 @@
     if(b.dataset.drop){var dn=+b.dataset.drop;post.openDrop=post.openDrop===dn?null:dn;post.openMove=null;renderMain();if(post.openDrop){var fi=document.querySelector('form.dropadd [name="sc"]');if(fi&&window.matchMedia('(min-width:561px)').matches)fi.focus()}return}
     if(b.dataset.dropdel){savePost({ep:+b.dataset.pep,set:{dropRemove:b.dataset.dropdel}},'');return}
     var act=b.dataset.act;
-    if(act==='menu'){ui.menu=!ui.menu;ui.acct=false;renderHeader();renderControls();return}
-    if(act==='acct'){ui.acct=!ui.acct;ui.menu=false;renderHeader();renderControls();return}
-    if(ui.menu||ui.acct){ui.menu=false;ui.acct=false;renderHeader();renderControls()}
+    if(act==='menu'){ui.menu=!ui.menu;ui.acct=false;renderHeader();return}
+    if(act==='acct'){ui.acct=!ui.acct;ui.menu=false;renderHeader();return}
+    if(ui.menu||ui.acct){ui.menu=false;ui.acct=false;renderHeader()}
     if(act==='drive'){checkDrive();return}
     if(act==='show-decided'){ui.showDecided=!ui.showDecided;renderMain();return}
     if(act==='export'){exportPost();return}
@@ -1199,8 +1196,8 @@
   /* Stay current while the app is open: check every 30 seconds, and straight away when it comes back to the front. */
   document.addEventListener('visibilitychange',function(){if(!document.hidden&&navigator.onLine&&Date.now()-(state.fetchedAt||0)>15000)refresh(true)});
   setInterval(function(){if(!document.hidden&&navigator.onLine){refresh(true);if(ui.view==='post'&&!post.saving)loadPost(true)}},30000);
-  document.addEventListener('click',function(e){if((ui.menu||ui.acct)&&!(e.target.closest&&e.target.closest('.menuwrap'))){ui.menu=false;ui.acct=false;renderHeader();renderControls()}});
-  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&(ui.menu||ui.acct)){ui.menu=false;ui.acct=false;renderHeader();renderControls()}});
+  document.addEventListener('click',function(e){if((ui.menu||ui.acct)&&!(e.target.closest&&e.target.closest('.menuwrap'))){ui.menu=false;ui.acct=false;renderHeader()}});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&ui.menu){ui.menu=false;renderHeader()}});
 
   ['pointerdown','keydown','touchstart','wheel','scroll'].forEach(function(ev){window.addEventListener(ev,markActive,{passive:true,capture:true})});
   setInterval(idleCheck,20000);

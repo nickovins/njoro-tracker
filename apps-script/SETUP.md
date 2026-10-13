@@ -8,7 +8,7 @@ App: https://nickovins.github.io/njoro-tracker/
 
 What version 8 changes: Team sign-in is one master password (no names, no
 second password). Changing that password in Google signs every device out.
-Script Properties are cleaned up. The app (the website) is already updated.
+Script Properties are cleaned up. The app (the website) is already updated and keeps its usual layout.
 
 ## Part A: update the Google robot
 
