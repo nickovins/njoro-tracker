@@ -9,15 +9,15 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Log sheets folder: https://drive.google.com/drive/folders/1KQgFJwqSnT5e3fR0aS7sNptej30-5Bs9
 - Scripts folder: https://drive.google.com/drive/folders/1keWRPeybj1YUOr8c6MtPNM-tHS-zmnjZ
 
-## State on 13.10.2026 (afternoon)
-- Nick ran setup on robot v6 at 12:39: Scripts tab and Repeats tab made, Day 9 log linked, but every script failed "Conversion ... to text/markdown failed" (DriveApp getAs cannot turn a Google Doc into text). Fixed in v7: export via UrlFetchApp to drive/v3/files/{id}/export?mimeType=text/plain with ScriptApp.getOAuthToken() (new scope script.external_request). The Node mock now throws on getAs like real Google.
-- v7: accounts removed at Nick's request. One admin password = Script Property PASSCODE. Name at sign-in is only an activity label. SESS_GEN bump on password change or "Sign everyone out". setup() deletes the old USERS property.
-- Export (Excel): Summary (per editor and sound person: episodes, aired, still to air, episode numbers, first/last TX; episodes with nobody), Editors, Sound (each episode with TX date, day, status, totals), All episodes, Dropped scenes. Cells like "Wanjiru & Kamau" count for both.
-- Waiting on Nick: paste v7, run setup (re-authorise), New version deploy, then make the Sheet Restricted. Steps: apps-script/SETUP.md.
-- Scripts in Drive: Episodes 1 to 9, 12, 13. Repeat waiting: 7/16 (Day 7 and Day 10).
+## State on 13.10.2026 (evening): v8 / app v16
+- Team sign-in = one master password (PASSCODE). No names, no in-app password change. gen_() = SESS_GEN + 6-byte digest of PASSCODE, so editing PASSCODE in Script Properties ends every session. Activity "Who" = "Team (<device>)" from the app's user agent.
+- Script Properties tidy: scene-number cache moved from SC_* properties into the Scripts tab ("Updated" now has seconds; 'none' = read, no headings). cleanUp() deletes everything except PASSCODE, IDLE_MINUTES, POST_TX, POST_EP_n, ACT_RING, SESS_GEN; setup() runs it.
+- Bug fixed: Sign everyone out did nothing (SESS_GEN was set from the string gen).
+- UI simplified: slim header (small logo, title, Sign in), underline tabs, one toolbar per tab (Scenes: search, seasons, filter, Scripts link; Daily reports: location search, Log sheets, + Add report, More menu; Post: seasons). Green stats bar and long hints removed; last report in the status line. Phone tab labels: Scenes, Reports, Post, Activity.
+- Nick's v7 status unknown; v8 steps in apps-script/SETUP.md (cleanUp, setup, New version deploy).
 
 ## Post production (added 10.10.2026)
-- Tab only shows after sign-in (one admin password since v7).
+- Tab only shows after sign-in (one master password since v8).
 - Stored in Script Properties (POST_TX, POST_EP_<n> JSON: editor, sound, trailer, dropped[{sc,why,note}]). Not in the Sheet, which is public to anyone with the link.
 - Robot actions: post (read, no lock) and postSave (one field, or dropAdd/dropRemove, merged server side so two editors do not undo each other).
 - TX dates are worked out in the app: Episode 1 = POST_TX; Episode n = Episode n-1 + 7 + shift(n). shift is stored per episode in days (Skip a week = +7), so a move carries every later episode and survives a change to Episode 1 TX. Desktop: click the date. Phone: Move pill.
@@ -27,13 +27,13 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 
 ## Architecture
 - Reads: robot GET ?read=1 (reports, scripts, repeats; 30 s cache in CacheService). Falls back to gviz JSONP from the Sheet while the robot is older than 6.
-- Writes: POST text/plain JSON with a session token. Actions: login (PASSCODE), logout, touch, check, save, saveMany, remove, drive, decide, post, postSave, note, password, signoutAll, activity. Writes return `data` (same as the read) so the saving phone updates at once.
+- Writes: POST text/plain JSON with a session token. Actions: login (PASSCODE), logout, touch, check, save, saveMany, remove, drive, decide, post, postSave, note, signoutAll, activity. Writes return `data` (same as the read) so the saving phone updates at once.
 - Sessions: CacheService S_<token> {n,g,c,a}; idle limit IDLE_MINUTES (default 30), max 12 h; touch:false for background polls; g must equal SESS_GEN.
 - Activity: ACT_RING in Script Properties (last ~8 KB) always; Activity tab only when the Sheet is PRIVATE (checked every 10 min).
 - Robot every 30 min: links missing log sheets, rewrites the Scripts tab (Episode | Script | Link | Updated | Scenes). Scene numbers come from converting each script PDF to a temporary Google Doc (drive.file + advanced Drive v3), cached per file version in Script Properties.
 - Scopes: spreadsheets.currentonly, drive.readonly, drive.file, script.scriptapp, script.external_request (Drive export only). No Gmail.
 
 ## Rules
-- Bump sw.js VERSION and index.html ?v= on each release (now njw-v15 / v=15).
+- Bump sw.js VERSION and index.html ?v= on each release (now njw-v16 / v=16).
 - Commit as Nick Kibathi <nicholaskibathi@gmail.com>. Test with Playwright at 390 px and 1280 px.
 - Never ask for or store the passcode or anyone's password. Plain language, no em/en dashes, honest pushback.

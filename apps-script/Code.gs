@@ -16,10 +16,19 @@
  * It has no access to Gmail, Calendar, Contacts or any other spreadsheet.
  * In Drive it only ever opens the log sheets and scripts folders below.
  *
- * Sign-in: ONE admin password, kept in Project Settings > Script Properties as
- * PASSCODE. It is never in this file or in the app. A sign-in ends after
- * IDLE_MINUTES without use, after 12 hours, or when the password changes.
- * The name typed at sign-in is only a label for the activity log.
+ * Team sign-in: ONE master password, kept in Project Settings > Script Properties
+ * as PASSCODE. It is never in this file or in the app. To change it, change it
+ * there: every device is then signed out. A sign-in also ends after IDLE_MINUTES
+ * without use, or after 12 hours. The activity log names the device (iPhone, Mac ...).
+ *
+ * Script Properties, all of them:
+ *   PASSCODE       the master password (the only one to edit by hand)
+ *   IDLE_MINUTES   optional: minutes without use before sign-out (default 30)
+ *   POST_TX        post production: Episode 1 TX date
+ *   POST_EP_<n>    post production: one line per episode that has anything filled in
+ *   ACT_RING       the last few activity entries (backup of the Activity tab)
+ *   SESS_GEN       goes up when someone taps "Sign everyone out"
+ * Run cleanUp() from the editor to remove anything else (older versions left extras).
  *
  * Tabs in the Sheet:
  *   Reports    one row per shoot day (anyone with the app can read these)
@@ -37,7 +46,7 @@ var SCRIPTS_TAB = 'Scripts';
 var REPEATS_TAB = 'Repeats';
 var ACTIVITY_TAB = 'Activity';
 var TZ = 'Africa/Nairobi';
-var VERSION = 7;
+var VERSION = 8;
 var EPISODES = 52;
 var IDLE_MINUTES_DEFAULT = 30;   // change with Script Property IDLE_MINUTES
 var SESSION_MAX_HOURS = 12;      // even an active sign-in ends after this
@@ -121,9 +130,8 @@ function write_(a, b, me) {
     if (what === 'export') log_(me.name, 'Exported post production to Excel', '');
     return { ok: true };
   }
-  if (a === 'password') return changePassword_(b, me);
   if (a === 'signoutAll') {
-    props_().setProperty('SESS_GEN', String(gen_() + 1));
+    props_().setProperty('SESS_GEN', String((Number(props_().getProperty('SESS_GEN')) || 0) + 1));
     log_(me.name, 'Signed everyone out', 'Every device has to sign in again');
     return { ok: true };
   }
@@ -144,7 +152,7 @@ function setup() {
   if (!PropertiesService.getScriptProperties().getProperty('PASSCODE')) {
     throw new Error('Setup stopped: add PASSCODE (the admin password) in Project Settings > Script Properties, then run setup again.');
   }
-  props_().deleteProperty('USERS');            // name-and-password accounts from version 6 are no longer used
+  cleanUp();                                  // removes lines older versions left in Script Properties
   var logs = linkMissingLogs(), scripts = refreshScripts(240000);
   var withScenes = tabRows_(SpreadsheetApp.getActive().getSheetByName(SCRIPTS_TAB), 5).filter(function (r) { return r[4]; }).length;
   console.log('Version ' + VERSION + ' ready. Log sheets attached now: ' + logs + '. Episode scripts found: ' + scripts + ', scene numbers read for ' + withScenes + '.');
@@ -218,11 +226,23 @@ function props_() { return PropertiesService.getScriptProperties(); }
 function idleMinutes_() { var n = Number(props_().getProperty('IDLE_MINUTES')); return n >= 5 && n <= 720 ? n : IDLE_MINUTES_DEFAULT; }
 function cleanName_(n) { return String(n || '').replace(/[\u0000-\u001F<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40); }
 function now_() { return Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm'); }
-/** Goes up by one when the password changes or someone taps "Sign everyone out". */
-function gen_() { return Number(props_().getProperty('SESS_GEN')) || 0; }
+/** Changes when someone taps "Sign everyone out" or the master password is changed
+ *  in Script Properties. A sign-in made before the change stops working. */
+function gen_() {
+  var pw = props_().getProperty('PASSCODE') || '';
+  var d = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, 'njw:' + pw).slice(0, 6)
+    .map(function (b) { return ('0' + ((b + 256) % 256).toString(16)).slice(-2); }).join('');
+  return (Number(props_().getProperty('SESS_GEN')) || 0) + ':' + d;
+}
+
+/** A short, harmless description of the device, for the activity log: "iPhone, Safari". */
+function deviceLabel_(d) {
+  var t = cleanName_(d).replace(/[^A-Za-z0-9 ,.()]/g, '').slice(0, 40);
+  return t ? 'Team (' + t + ')' : 'Team';
+}
 
 function login_(b) {
-  var who = cleanName_(b.name) || 'Admin', cache = CacheService.getScriptCache();
+  var who = deviceLabel_(b.device), cache = CacheService.getScriptCache();
   if (!props_().getProperty('PASSCODE')) return { ok: false, error: 'no_passcode' };
   // Many wrong passwords in 15 minutes, from anywhere: pause all sign-ins for a while.
   var fails = Number(cache.get('LOGIN_FAILS')) || 0;
@@ -244,7 +264,7 @@ function startSession_(who) {
   return { ok: true, token: token, user: { name: who }, idle: idleMinutes_() };
 }
 
-/** The signed-in person, or null. touch=false checks without counting as use. */
+/** The signed-in device, or null. touch=false checks without counting as use. */
 function session_(token, touch) {
   if (!token || !/^[a-f0-9]{64}$/.test(String(token))) return null;
   var cache = CacheService.getScriptCache(), raw = cache.get('S_' + token);
@@ -264,15 +284,15 @@ function endSession_(token) {
   try { log_(JSON.parse(raw).n, 'Signed out', ''); } catch (e) {}
 }
 
-/** Changes the admin password for everyone. Every other device is signed out. */
-function changePassword_(b, me) {
-  if (!same_(String(b.current || ''), props_().getProperty('PASSCODE') || '')) { Utilities.sleep(2000); return { ok: false, error: 'wrong_current' }; }
-  var pw = String(b.password || '');
-  if (pw.length < 8) return { ok: false, error: 'weak_password' };
-  props_().setProperty('PASSCODE', pw);
-  props_().setProperty('SESS_GEN', String(gen_() + 1));
-  log_(me.name, 'Changed the admin password', 'Every other device was signed out');
-  return startSession_(me.name);              // this device carries on
+/** Run from the editor: removes Script Properties the robot no longer uses and
+ *  prints what is left. Never touches PASSCODE, IDLE_MINUTES or post production. */
+function cleanUp() {
+  var p = props_(), all = p.getProperties(), keep = /^(PASSCODE|IDLE_MINUTES|POST_TX|POST_EP_\d+|ACT_RING|SESS_GEN)$/, gone = [];
+  Object.keys(all).forEach(function (k) { if (!keep.test(k)) { p.deleteProperty(k); gone.push(k); } });
+  var left = Object.keys(p.getProperties()).sort();
+  console.log('Removed ' + gone.length + ' unused line' + (gone.length === 1 ? '' : 's') + (gone.length ? ': ' + gone.join(', ') : '') + '.');
+  console.log('Left (' + left.length + '): ' + left.join(', ') + '. PASSCODE is the master password. POST_ lines are your post production data: do not delete them.');
+  return gone.length;
 }
 
 function same_(a, b) {
@@ -574,11 +594,15 @@ function refreshScripts(budgetMs) {
     }
   }
   var ss = SpreadsheetApp.getActive(), tab = ss.getSheetByName(SCRIPTS_TAB) || ss.insertSheet(SCRIPTS_TAB);
+  /* Scene numbers already read are kept in the tab itself: same file, same "Updated" time,
+     no need to read it again. A replaced or edited script is read again. */
+  var known = {};
+  tabRows_(tab, 5).forEach(function (r) { if (r[4]) known[r[2] + '|' + r[3]] = r[4]; });
   var started = Date.now();
   var rows = Object.keys(best).map(Number).sort(function (a, b) { return a - b; }).map(function (ep) {
-    var b = best[ep];
-    var scenes = b.file ? scenesOf_(b.file, Date.now() - started < budgetMs) : '';
-    return [String(ep), b.name, b.url, Utilities.formatDate(b.updated, TZ, 'yyyy-MM-dd HH:mm'), scenes];
+    var b = best[ep], when = Utilities.formatDate(b.updated, TZ, 'yyyy-MM-dd HH:mm:ss');
+    var scenes = known[b.url + '|' + when] || (b.file && Date.now() - started < budgetMs ? scenesOf_(b.file) : '');
+    return [String(ep), b.name, b.url, when, scenes];
   });
   tab.clearContents();
   var out = [['Episode', 'Script', 'Link', 'Updated', 'Scenes']].concat(rows);
@@ -590,23 +614,12 @@ function refreshScripts(budgetMs) {
 
 /* ---------- scene numbers in a script ---------- */
 
-/** Scene numbers in a script file, like "1,2,3,4A". Remembered per file version,
- *  so each script is only read once (and again when it is replaced or edited). */
-function scenesOf_(file, mayRead) {
-  var props = props_();
-  var key = 'SC_' + file.getId() + '_' + file.getLastUpdated().getTime();
-  var known = props.getProperty(key);
-  if (known != null) return known;
-  if (!mayRead) return '';
+/** Scene numbers in a script file, like "1,2,3,4A". '' if it could not be read
+ *  (tried again on the next run), 'none' if it was read but has no scene headings. */
+function scenesOf_(file) {
   var text = scriptText_(file);
-  if (text == null) return '';                 // could not read it; try again in 30 minutes
-  var list = sceneNumbers_(text).join(',');
-  // Forget older versions of this file, then remember this one.
-  Object.keys(props.getProperties()).forEach(function (k) {
-    if (k.indexOf('SC_' + file.getId() + '_') === 0) props.deleteProperty(k);
-  });
-  props.setProperty(key, list);
-  return list;
+  if (text == null) return '';
+  return sceneNumbers_(text).join(',') || 'none';   // 'none': read fine, no scene headings found; not read again
 }
 
 /** The words in a script. A PDF is first copied as a temporary Google Doc (Google

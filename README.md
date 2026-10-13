@@ -15,13 +15,13 @@ Put scripts in the scripts folder in Drive, with the episode in the name (`Ep 7`
 ## Who can change what
 
 - **Everyone:** sees Scenes (Season 1 to 4, 13 episodes each) and Daily reports. No edit controls.
-- **Signed in (one admin password):** adds, updates and deletes daily reports, marks repeated scenes as Reshoot or Duplicate, runs Check Drive now, uses Post production (52 episodes, editor, sound, weekly TX dates, trailer, dropped scenes, Excel export with a crew summary) and sees Activity.
-- The password is the Script Property PASSCODE. It can be changed in the app (Change admin password), which signs every other device out. Activity > Sign everyone out does the same without changing it.
-- A sign-in ends after 30 minutes without use (Script Property IDLE_MINUTES) or after 12 hours. 20 wrong passwords in 15 minutes pause sign-in for 15 minutes.
-- The name typed at sign-in is only a label in the activity log (Activity tab in the Sheet once the Sheet is private).
+- **Team (signed in with the one master password):** adds, updates and deletes daily reports, marks repeated scenes as Reshoot or Duplicate, runs Check Drive now, uses Post production (52 episodes, editor, sound, weekly TX dates, trailer, dropped scenes, Excel export with a crew summary) and sees Activity.
+- The master password is the Script Property PASSCODE. Changing it there signs every device out. Activity > Sign everyone out does the same without changing it.
+- A sign-in ends after 30 minutes without use (Script Property IDLE_MINUTES) or after 12 hours. 20 wrong passwords in 15 minutes pause sign-in for 15 minutes. The activity log names the device (for example "Team (iPhone, Safari)").
 - The robot also serves the public read (`?read=1`), so the Sheet can be private.
 - Log sheets attach automatically: on save, and every 30 minutes for days still missing one. Any PDF or image in the log sheets folder (any subfolder) named with the day and date (`Day 9 9.10.2026.pdf`), or the day alone if uploaded within 5 days of the shoot.
 - A scene logged on two days is flagged at the top of the app until someone marks it Reshoot (both count) or Duplicate (only the first day counts). Decisions are in the Repeats tab.
+- Script Properties: PASSCODE, IDLE_MINUTES (optional), POST_TX, POST_EP_<n>, ACT_RING, SESS_GEN. `cleanUp()` removes anything else.
 
 The script can edit only this one spreadsheet and can only look at Drive (never change it). It has no Gmail access. Its only outside call is to Google Drive's own export address, to read the text of its temporary script copies. See `apps-script/appsscript.json`.
 
