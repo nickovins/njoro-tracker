@@ -23,7 +23,7 @@ summary. The app (the website) is already updated.
 4. Open https://raw.githubusercontent.com/nickovins/njoro-tracker/main/apps-script/Code.gs
    Copy everything the same way. In the editor click **Code.gs**, Ctrl+A, Ctrl+V.
 5. Press **Ctrl+S** (Mac: Cmd+S). Check: no orange dot next to the file names, and
-   line 38 reads `var VERSION = 7;`.
+   line 40 reads `var VERSION = 7;` (press Ctrl+F and search VERSION if unsure).
 6. Gear (**Project Settings**) > **Script Properties**.
    `PASSCODE` is now **the admin password** everyone signs in with. Keep the one you
    set, or change it here. Anyone you give it to can make changes, so share it only
