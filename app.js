@@ -14,13 +14,13 @@
 
   var state={days:[],scripts:{},repeats:{},rows:[],fetchedAt:null};
   var ui={view:'scenes',show:'all',openEp:null,openDay:null,loading:false,offline:!navigator.onLine,error:'',confirmDel:null,busy:false,season:1,showDecided:false};
-  /* Sign-in: name and password, checked by the Google robot. Only a sign-in token is kept on
+  /* Sign-in: one admin password, checked by the Google robot. Only a sign-in token is kept on
      the device, never the password. A sign-in ends after IDLE minutes without use. */
-  var auth={token:'',name:'',role:'',idle:30};
+  var auth={token:'',name:'',idle:30};
   try{var au=JSON.parse(localStorage.getItem('njw-auth')||'null');if(au&&au.token)auth=au;localStorage.removeItem('njw-pass')}catch(e){}
   var lastAct=Date.now(),lastPing=0;try{lastAct=+localStorage.getItem('njw-last')||Date.now()}catch(e){}
   function isEditor(){return !!(SCRIPT_URL&&auth.token)}
-  function isAdmin(){return isEditor()&&auth.role==='admin'}
+  function isAdmin(){return isEditor()}
   var installPrompt=null;
   try{var v=localStorage.getItem('njw-view');if(v==='scenes'||v==='days'||v==='post'||v==='admin')ui.view=v}catch(e){}
   try{var sv=+localStorage.getItem('njw-season');if(sv>=1&&sv<=4)ui.season=sv}catch(e){}
@@ -31,7 +31,7 @@
   function setSeason(s){ui.season=s;try{localStorage.setItem('njw-season',String(s))}catch(e){}}
   var post={tx:'',eps:{},loaded:false,loading:false,err:'',at:0,openDrop:null,openMove:null};
   try{var pc=JSON.parse(localStorage.getItem('njw-post')||'null');if(pc&&pc.eps&&auth.token){post.tx=pc.tx||'';post.eps=pc.eps;post.loaded=true;post.at=pc.at||0}}catch(e){}
-  var admin={users:null,activity:null,private:null,err:'',busy:false,resetFor:null,removeFor:null};
+  var admin={activity:null,private:null,err:''};
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function normSc(sc){return String(sc).toUpperCase().replace(/^0+(?=\d)/,'')}
   function keyOf(ep,sc){return Number(ep)+'/'+normSc(sc)}
@@ -70,7 +70,8 @@
     var raw=sc&&sc.scenes&&sc.scenes.length?sc.scenes:null;
     if(raw&&raw.length>=3)raw.forEach(function(x){var n=scParts(x)[0];if(n<9999&&!seen[n]){seen[n]=1;out.push(n)}});
     /* Scripts number scenes 1, 2, 3 ... so a heading the reader missed is still counted. */
-    var top=Math.max.apply(null,out.concat([SCENE_COUNT[ep]||0]));
+    /* The script's own headings win; the hand count is only for when the script has not been read. */
+    var top=out.length?Math.max.apply(null,out):(SCENE_COUNT[ep]||0);
     if(top>0&&top<=300){out=[];for(var i=1;i<=top;i++)out.push(i)}
     return out;
   }
@@ -236,7 +237,7 @@
   }
   function renderControls(){
     if((ui.view==='post'&&!isEditor())||(ui.view==='admin'&&!isAdmin()))ui.view='scenes';
-    var vs=[['scenes','Scenes'],['days','Daily reports']];if(isEditor())vs.push(['post','Post production']);if(isAdmin())vs.push(['admin','Admin']);
+    var vs=[['scenes','Scenes'],['days','Daily reports']];if(isEditor())vs.push(['post','Post production']);if(isAdmin())vs.push(['admin','Activity']);
     document.getElementById('views').innerHTML=vs.map(function(v){return '<button type="button" data-view="'+v[0]+'" aria-pressed="'+(ui.view===v[0])+'">'+v[1]+'</button>'}).join('');
     var srch=document.querySelector('.search');if(srch)srch.hidden=ui.view==='post'||ui.view==='admin';
     var f=document.getElementById('filters');
@@ -534,49 +535,80 @@
     if(window.XLSX)return Promise.resolve(window.XLSX);
     return new Promise(function(res,rej){var sc=document.createElement('script');sc.src='vendor/xlsx.full.min.js';sc.onload=function(){window.XLSX?res(window.XLSX):rej(new Error('xlsx'))};sc.onerror=function(){rej(new Error('xlsx'))};document.head.appendChild(sc)});
   }
+  /* One cell can hold two people: "Wanjiru / Otieno", "Wanjiru & Otieno", "Wanjiru, Otieno", "Wanjiru and Otieno". */
+  function peopleIn(v){return String(v||'').split(/\s*(?:[,\/&+;]|\band\b)\s*/i).map(function(x){return x.replace(/\s+/g,' ').trim()}).filter(Boolean)}
+  function txStatus(tx){if(!tx)return 'TX date not set';return tx<todayIso()?'Aired':(tx===todayIso()?'Airs today':'Upcoming')}
+  /* Who did which episodes, for one role. Names are grouped ignoring capitals and extra spaces. */
+  function crewFor(field){
+    var by={},order=[];
+    for(var n=1;n<=EPISODES;n++){
+      peopleIn((post.eps[n]||{})[field]).forEach(function(name){
+        var k=name.toLowerCase();if(!by[k]){by[k]={name:name,eps:[]};order.push(k)}
+        if(by[k].eps.indexOf(n)<0)by[k].eps.push(n);
+      });
+    }
+    return order.map(function(k){return by[k]}).sort(function(a,b){return b.eps.length-a.eps.length||a.name.localeCompare(b.name)});
+  }
+  function epList(eps){
+    var out=[],i=0;
+    while(i<eps.length){var j=i;while(j+1<eps.length&&eps[j+1]===eps[j]+1)j++;out.push(j>i+1?eps[i]+' to '+eps[j]:(j===i+1?eps[i]+', '+eps[j]:String(eps[i])));i=j+1}
+    return out.join(', ');
+  }
   function exportPost(){
     if(!post.loaded){toast('Post production has not loaded yet.');return}
     loadXlsx().then(function(X){
-      var rows=[['Season','Episode','TX date','TX day','Moved','Editor','Sound','Trailer link','Dropped scenes']],drops=[['Season','Episode','Scene','Reason','Note']];
-      for(var n=1;n<=EPISODES;n++){
-        var e=post.eps[n]||{},tx=txOf(n),sh=shiftOf(n),dr=(e.dropped||[]).slice().sort(function(x,y){return cmpKey(n+'/'+x.sc,n+'/'+y.sc)});
-        rows.push([seasonOf(n),n,tx?fmtDate(tx):'TBC',tx?weekday(tx):'',sh?shiftLabel(sh):'',e.editor||'',e.sound||'',e.trailer||'',dr.length]);
-        dr.forEach(function(d){drops.push([seasonOf(n),n,n+'/'+d.sc,WHY[d.why]||d.why,d.note||''])});
+      var editors=crewFor('editor'),sound=crewFor('sound'),t=todayIso();
+      function txCells(n){var tx=txOf(n);return [tx?fmtDate(tx):'TBC',tx?weekday(tx):'',txStatus(tx)]}
+      /* 1. Summary: how many episodes each person did */
+      var sum=[['Njoro wa Uba post production: crew summary'],['Exported '+fmtDate(t)+' by '+(auth.name||'Admin')+'. Episode 1 TX: '+(post.tx?fmtDate(post.tx)+' ('+weekday(post.tx)+')':'not confirmed yet')+'.'],[],
+        ['Role','Name','Episodes','Aired so far','Still to air','Episode numbers','First TX','Last TX']];
+      function sumRows(role,list){
+        if(!list.length){sum.push([role,'Nobody assigned yet',0,0,0,'','',''])}
+        list.forEach(function(p){
+          var aired=p.eps.filter(function(n){var x=txOf(n);return x&&x<t}).length,first=txOf(p.eps[0]),lastE=txOf(p.eps[p.eps.length-1]);
+          sum.push([role,p.name,p.eps.length,aired,p.eps.length-aired,epList(p.eps),first?fmtDate(first):'TBC',lastE?fmtDate(lastE):'TBC']);
+        });
       }
-      var info=[['Njoro wa Uba: post production backup'],[''],['Exported',new Date().toLocaleString('en-GB')],['Exported by',auth.name],['Episode 1 TX',post.tx?fmtDate(post.tx)+' ('+weekday(post.tx)+')':'Not confirmed'],['Episodes',EPISODES+' in '+SEASONS+' seasons of '+PER_SEASON],['Moved episodes',movedCount()]];
+      sumRows('Editor',editors);sumRows('Sound',sound);
+      var noEd=[],noSd=[];for(var n=1;n<=EPISODES;n++){var e0=post.eps[n]||{};if(!peopleIn(e0.editor).length)noEd.push(n);if(!peopleIn(e0.sound).length)noSd.push(n)}
+      sum.push([],['Episodes with no editor yet',noEd.length,epList(noEd)],['Episodes with no sound yet',noSd.length,epList(noSd)]);
+      /* 2 and 3. Each person's episodes, with TX */
+      function perPerson(list,role){
+        var rows=[[role,'Season','Episode','TX date','TX day','Status']];
+        list.forEach(function(p){p.eps.forEach(function(n){rows.push([p.name,seasonOf(n),n].concat(txCells(n)))});rows.push([p.name+' total: '+p.eps.length+' episode'+(p.eps.length===1?'':'s')]);rows.push([])});
+        if(!list.length)rows.push(['Nobody assigned yet']);
+        return rows;
+      }
+      /* 4. Every episode */
+      var all=[['Season','Episode','TX date','TX day','Status','Moved','Editor','Sound','Trailer link','Dropped scenes']],drops=[['Season','Episode','Scene','Reason','Note']];
+      for(var m=1;m<=EPISODES;m++){
+        var e=post.eps[m]||{},sh=shiftOf(m),dr=(e.dropped||[]).slice().sort(function(x,y){return cmpKey(m+'/'+x.sc,m+'/'+y.sc)});
+        all.push([seasonOf(m),m].concat(txCells(m)).concat([sh?shiftLabel(sh):'',e.editor||'',e.sound||'',e.trailer||'',dr.length]));
+        dr.forEach(function(d){drops.push([seasonOf(m),m,m+'/'+d.sc,WHY[d.why]||d.why,d.note||''])});
+      }
       var wb=X.utils.book_new();
-      var w1=X.utils.aoa_to_sheet(rows);w1['!cols']=[{wch:7},{wch:8},{wch:11},{wch:10},{wch:20},{wch:22},{wch:22},{wch:44},{wch:14}];w1['!freeze']={xSplit:0,ySplit:1};
-      var w2=X.utils.aoa_to_sheet(drops);w2['!cols']=[{wch:7},{wch:8},{wch:8},{wch:18},{wch:50}];
-      var w3=X.utils.aoa_to_sheet(info);w3['!cols']=[{wch:16},{wch:40}];
-      X.utils.book_append_sheet(wb,w1,'Post production');X.utils.book_append_sheet(wb,w2,'Dropped scenes');X.utils.book_append_sheet(wb,w3,'About');
-      X.writeFile(wb,'Njoro wa Uba Post Production '+todayIso()+'.xlsx');
+      function add(rows,name,cols){var w=X.utils.aoa_to_sheet(rows);w['!cols']=cols.map(function(c){return {wch:c}});X.utils.book_append_sheet(wb,w,name)}
+      add(sum,'Summary',[10,24,10,13,12,34,12,12]);
+      add(perPerson(editors,'Editor'),'Editors',[24,8,9,12,11,16]);
+      add(perPerson(sound,'Sound'),'Sound',[24,8,9,12,11,16]);
+      add(all,'All episodes',[7,8,11,10,15,20,22,22,44,14]);
+      add(drops,'Dropped scenes',[7,8,8,18,50]);
+      X.writeFile(wb,'Njoro wa Uba Post Production '+t+'.xlsx');
       callScript({action:'note',what:'export'});
       toast('Excel file saved to your downloads');
     }).catch(function(){toast('Could not build the Excel file. Check your connection and try again.')});
   }
 
-  /* ---------- admin: team and recent activity ---------- */
+  /* ---------- admin: recent activity ---------- */
   function loadAdmin(){
     if(!isAdmin())return;
     admin.err='';
-    callScript({action:'users'}).then(function(r){if(r.ok){admin.users=r.users;admin.idle=r.idle}else admin.err=errText(r);if(ui.view==='admin')renderMain()});
     callScript({action:'activity'},true).then(function(r){if(r.ok){admin.activity=r.rows;admin.private=r.private}else admin.err=errText(r);if(ui.view==='admin')renderMain()});
   }
   function renderAdmin(){
     if(!isAdmin())return '';
-    var u=admin.users,html='';
+    var html='';
     if(admin.err)html+='<p class="sync err">'+esc(admin.err)+'</p>';
-    html+='<section class="tablewrap adm"><div class="seasonhead"><b>Team</b><span class="muted">Who can sign in. Sign-ins end after '+esc(admin.idle||auth.idle||30)+' minutes without use.</span></div>';
-    if(!u)html+='<p class="empty">Loading team\u2026</p>';
-    else html+='<table class="admtbl"><thead><tr><th>Name</th><th>Role</th><th class="hide-sm">Last sign-in</th><th></th></tr></thead><tbody>'+u.map(function(x){
-      var me=x.name.toLowerCase()===auth.name.toLowerCase(),k=esc(x.name);
-      var row='<tr><td><b>'+k+'</b>'+(me?' <span class="muted">(you)</span>':'')+'</td><td>'+(me?(x.role==='admin'?'Admin':'Team'):'<select data-role-for="'+k+'" aria-label="Role for '+k+'"><option value="member"'+(x.role!=='admin'?' selected':'')+'>Team</option><option value="admin"'+(x.role==='admin'?' selected':'')+'>Admin</option></select>')+'</td><td class="hide-sm muted">'+esc(x.last||'Never')+'</td>'
-        +'<td class="admacts">'+(me?'':'<button type="button" class="btn small" data-act="adm-reset" data-name="'+k+'">Reset password</button><button type="button" class="btn small" data-act="adm-remove" data-name="'+k+'">Remove</button>')+'</td></tr>';
-      if(admin.resetFor===x.name)row+='<tr class="admform"><td colspan="4"><form data-form="reset" data-name="'+k+'"><label>New password for '+k+'<input name="pw" type="text" minlength="6" required autocomplete="off"></label><button type="submit" class="btn small primary">Save password</button><button type="button" class="btn small" data-act="adm-cancel">Cancel</button><span class="muted">Tell them in person. They can change it after signing in.</span></form></td></tr>';
-      if(admin.removeFor===x.name)row+='<tr class="admform"><td colspan="4"><span>Remove <b>'+k+'</b>? They are signed out at once.</span> <button type="button" class="btn small danger" data-act="adm-remove-yes" data-name="'+k+'">Remove</button><button type="button" class="btn small" data-act="adm-cancel">Keep</button></td></tr>';
-      return row;
-    }).join('')+'</tbody></table>';
-    html+='<form class="addusr" data-form="add"><b>Add someone</b><input name="name" placeholder="Name, e.g. Wanjiru K" maxlength="40" required autocomplete="off" aria-label="Name"><input name="pw" type="text" placeholder="First password (6+)" minlength="6" required autocomplete="off" aria-label="First password"><select name="role" aria-label="Role"><option value="member">Team</option><option value="admin">Admin</option></select><button type="submit" class="btn small primary">Add</button></form></section>';
     var act=admin.activity;
     html+='<section class="tablewrap adm"><div class="seasonhead"><b>Recent activity</b><span class="muted">Sign-ins and changes, newest first. Also kept in the Activity tab of the Google Sheet.</span><button type="button" class="linkbtn" data-act="adm-refresh">Refresh</button></div>';
     if(admin.private===false)html+='<p class="warnbar">The Google Sheet is still shared with anyone who has the link, so the Activity tab is off and only the last few entries are kept. In the Sheet: Share > General access > <b>Restricted</b>.</p>';
@@ -585,28 +617,17 @@
     else html+='<table class="acttbl"><thead><tr><th>When</th><th>Who</th><th>What</th><th class="hide-sm">Details</th></tr></thead><tbody>'+act.map(function(r){
       return '<tr class="'+(/fail|block/i.test(r[2])?'bad':'')+'"><td class="mono when">'+esc(r[0])+'</td><td>'+esc(r[1])+'</td><td>'+esc(r[2])+'<div class="sub show-sm">'+esc(r[3]||'')+'</div></td><td class="hide-sm muted">'+esc(r[3]||'')+'</td></tr>';
     }).join('')+'</tbody></table>';
-    return html+'</section>';
+    html+='</section><section class="tablewrap adm admsec"><div class="seasonhead"><b>Sign-in</b><span class="muted">One admin password for everyone. Sign-ins end after '+esc(auth.idle||30)+' minutes without use.</span></div>'
+      +'<div class="admrow"><button type="button" class="btn small" data-act="pw">Change admin password</button>'
+      +(admin.confirmAll?'<span class="confirm">Sign out every device, including this one?</span><button type="button" class="btn small danger" data-act="adm-all-yes">Sign everyone out</button><button type="button" class="btn small" data-act="adm-cancel">Cancel</button>'
+        :'<button type="button" class="btn small" data-act="adm-all">Sign everyone out</button>')+'</div></section>';
+    return html;
   }
-  function adminDone(r,msg){
-    admin.busy=false;
-    if(!r.ok){toast(errText(r));return false}
-    if(r.users)admin.users=r.users;
-    admin.resetFor=null;admin.removeFor=null;renderMain();if(msg)toast(msg);
-    callScript({action:'activity'},true).then(function(x){if(x.ok){admin.activity=x.rows;admin.private=x.private;if(ui.view==='admin')renderMain()}});
-    return true;
-  }
-  function adminAction(act,b){
-    var name=b.dataset.name;
+  function adminAction(act){
     if(act==='adm-refresh'){admin.activity=null;renderMain();loadAdmin();return}
-    if(act==='adm-cancel'){admin.resetFor=null;admin.removeFor=null;renderMain();return}
-    if(act==='adm-reset'){admin.resetFor=name;admin.removeFor=null;renderMain();var i=document.querySelector('form[data-form="reset"] input');if(i)i.focus();return}
-    if(act==='adm-remove'){admin.removeFor=name;admin.resetFor=null;renderMain();return}
-    if(act==='adm-remove-yes'){b.disabled=true;callScript({action:'userRemove',name:name}).then(function(r){adminDone(r,name+' removed')});return}
-  }
-  function onAdminSubmit(f){
-    var kind=f.dataset.form,btn=f.querySelector('button[type="submit"]');if(btn)btn.disabled=true;
-    if(kind==='add'){var nm=f.name.value.trim();callScript({action:'userAdd',name:nm,password:f.pw.value,role:f.role.value}).then(function(r){if(btn)btn.disabled=false;if(adminDone(r,nm+' added. Give them their password in person.'))f.reset()});return}
-    if(kind==='reset'){var who=f.dataset.name;callScript({action:'userReset',name:who,password:f.pw.value}).then(function(r){if(btn)btn.disabled=false;adminDone(r,'Password reset for '+who+'. Their old sign-ins have ended.')});return}
+    if(act==='adm-cancel'){admin.confirmAll=false;renderMain();return}
+    if(act==='adm-all'){admin.confirmAll=true;renderMain();return}
+    if(act==='adm-all-yes'){admin.confirmAll=false;callScript({action:'signoutAll'}).then(function(r){if(!r.ok){toast(errText(r));return}signOut('')})}
   }
 
   /* ---------- loading from the Google Sheet ---------- */
@@ -726,7 +747,7 @@
     state.rows=reportRows(d.reports);state.scripts=scriptsFromRows(d.scripts);state.repeats=repeatsFromRows(d.repeats);
     state.days=buildDays(state.rows,[]);state.fetchedAt=Date.now();saveCache();
     if(fromWrite)wrote={at:Date.now(),sig:sigOf(state.days)};
-    ui.stale=false;ui.offline=false;ui.error='';ui.via='robot';
+    ui.stale=false;ui.offline=false;ui.error='';ui.via='robot';ui.robot=+d.version||0;
     return true;
   }
   function applyServerRows(r){
@@ -762,7 +783,7 @@
         var rp=results[2]?gvizRows(results[2],['scene','day','decision','by','when']):null;if(rp)state.repeats=repeatsFromRows(rp);
         var days=buildDays(rows,[]);
         if(!(Date.now()-wrote.at<150000&&sigOf(days)!==wrote.sig)){state.rows=rows.map(function(r){return {raw:r.raw,log:r.log,time:r.time,order:r.order}});state.days=days}
-        state.fetchedAt=Date.now();saveCache();ui.via='sheet';
+        state.fetchedAt=Date.now();saveCache();ui.via='sheet';ui.robot=1;
       }
       changed=before!==sigOf(state.days)+'|'+JSON.stringify(state.scripts)+'|'+JSON.stringify(state.repeats)||ui.stale;
       ui.offline=false;ui.stale=false;
@@ -806,10 +827,9 @@
     app.addEventListener('click',onClick);
     app.addEventListener('change',function(e){
       if(e.target.id==='f-show'){ui.show=e.target.value;renderMain();return}
-      if(e.target.dataset&&e.target.dataset.roleFor){var nm=e.target.dataset.roleFor,rl=e.target.value;callScript({action:'userRole',name:nm,role:rl}).then(function(r){adminDone(r,nm+' is now '+(rl==='admin'?'an admin':'on the team'))||renderMain()});return}
       if(ui.view==='post')onPostChange(e.target);
     });
-    app.addEventListener('submit',function(e){var f=e.target.closest&&e.target.closest('form.dropadd');if(f){e.preventDefault();onDropAdd(f);return}var af=e.target.closest&&e.target.closest('form[data-form]');if(af){e.preventDefault();onAdminSubmit(af)}});
+    app.addEventListener('submit',function(e){var f=e.target.closest&&e.target.closest('form.dropadd');if(f){e.preventDefault();onDropAdd(f)}});
     app.addEventListener('keydown',function(e){if(e.key==='Enter'&&e.target.matches&&e.target.matches('input.cell')){e.preventDefault();e.target.blur();return}var r=e.target.closest&&e.target.closest('tr.d');if(r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();toggleDay(+r.dataset.day)}});
   }
 
@@ -830,11 +850,11 @@
       +'<a class="btn" href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Log sheets ↗</a>'
       +(SCRIPTS_FOLDER?'<a class="btn" href="'+esc(SCRIPTS_FOLDER)+'" target="_blank" rel="noopener">Scripts ↗</a>':'')
       +(SCRIPT_URL?(signed?'<div class="menuwrap wide"><button type="button" class="btn ghost acct" data-act="acct" aria-haspopup="true" aria-expanded="'+!!ui.acct+'"><span class="who">'+esc(auth.name)+'</span> <span class="caret2" aria-hidden="true">\u25BE</span></button>'
-          +(ui.acct?'<div class="menu" role="menu"><p class="menuhead">Signed in as <b>'+esc(auth.name)+'</b>'+(isAdmin()?' (admin)':'')+'<br><span>Signs out by itself after '+esc(auth.idle||30)+' minutes without use.</span></p>'
-            +'<button type="button" role="menuitem" data-act="pw"><b>Change password</b><span>Pick a new one</span></button>'
+          +(ui.acct?'<div class="menu" role="menu"><p class="menuhead">Signed in as <b>'+esc(auth.name)+'</b><br><span>Signs out by itself after '+esc(auth.idle||30)+' minutes without use.</span></p>'
+            +'<button type="button" role="menuitem" data-act="pw"><b>Change admin password</b><span>For everyone. Other devices are signed out.</span></button>'
             +'<button type="button" role="menuitem" data-act="logout" class="del"><b>Sign out</b><span>On this device</span></button></div>':'')+'</div>'
         :'<button type="button" class="btn ghost wide" data-act="login"><span aria-hidden="true">\uD83D\uDD12</span> Sign in</button>'):'');
-    document.getElementById('stats').innerHTML+=signed?'<div class="mode">'+(isAdmin()?'Admin':'Signed in')+'</div>':'';
+    document.getElementById('stats').innerHTML+=signed?'<div class="mode">Admin</div>':'';
     document.getElementById('foot').innerHTML='Created by Nicholas Kibathi';
     var hint=document.getElementById('installhint'),dismissed=false;
     try{dismissed=localStorage.getItem('njw-ios-hint')==='1'}catch(e){}
@@ -881,7 +901,7 @@
     if(act==='pw'){openPassword();return}
     if(act==='show-decided'){ui.showDecided=!ui.showDecided;renderMain();return}
     if(act==='export'){exportPost();return}
-    if(act&&act.indexOf('adm-')===0){adminAction(act,b);return}
+    if(act&&act.indexOf('adm-')===0){adminAction(act);return}
     if(act==='refresh'){refresh();if(ui.view==='post')loadPost();return}
     if(act==='add-many'){openAdd('',null,true);return}
     if(act==='pick-edit'||act==='pick-del'){openPicker(act==='pick-del');return}
@@ -906,7 +926,7 @@
     return Promise.resolve(legacyCopy(txt));
   }
   function legacyCopy(txt){try{var ta=document.createElement('textarea');ta.value=txt;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();var ok=document.execCommand('copy');ta.remove();return ok}catch(e){return false}}
-  var ERR={wrong_passcode:'That setup passcode is not right.',not_set_up:'The Google robot is not set up yet (no PASSCODE).',wrong_login:'That name and password do not match.',no_users:'No accounts yet. The owner sets up the first one with the setup passcode.',locked:'Too many wrong tries for this name. Wait 15 minutes.',signed_out:'You were signed out. Sign in again.',not_allowed:'Only an admin can do that.',bad_name:'Type a name of at least 2 letters.',weak_password:'Passwords need at least 6 characters.',name_taken:'Someone already has that name. Add a surname or initial.',wrong_current:'Your current password is not right.',not_self:'You cannot do that to your own account.',last_admin:'Keep at least one admin.',old_robot:'The Google robot is still an old version. Follow the install steps to update it to version 6.',no_day:'No shoot day number found in the report.',no_scenes:'No scenes found in the report. Scenes are written as episode/scene, like 7/4.',bad_link:'The log sheet link must be a Google Drive link.',busy:'Someone else is saving right now. Try again in a moment.',not_found:'That day is not in the tracker any more.',network:'No connection to Google. Check your signal and try again.',server:'Google had a problem saving. Try again in a moment.',bad_link_any:'The trailer link must be a full web link, like https://youtu.be/...',bad_scene:'Type a scene number, like 12 or 12A.',bad_move:'That date could not be saved. Pick a date after the episode before.'};
+  var ERR={wrong_passcode:'That setup passcode is not right.',not_set_up:'The Google robot is not set up yet (no PASSCODE).',wrong_login:'That password is not right.',no_passcode:'No admin password is set in Google yet (Script Property PASSCODE).',locked:'Too many wrong passwords. Sign-in is paused for 15 minutes.',signed_out:'You were signed out. Sign in again.',not_allowed:'Only an admin can do that.',bad_name:'Type a name of at least 2 letters.',weak_password:'The new password needs at least 8 characters.',wrong_current:'The current password is not right.',old_robot:'The Google robot is still an old version. Follow the install steps to update it to version 7.',no_day:'No shoot day number found in the report.',no_scenes:'No scenes found in the report. Scenes are written as episode/scene, like 7/4.',bad_link:'The log sheet link must be a Google Drive link.',busy:'Someone else is saving right now. Try again in a moment.',not_found:'That day is not in the tracker any more.',network:'No connection to Google. Check your signal and try again.',server:'Google had a problem saving. Try again in a moment.',bad_link_any:'The trailer link must be a full web link, like https://youtu.be/...',bad_scene:'Type a scene number, like 12 or 12A.',bad_move:'That date could not be saved. Pick a date after the episode before.'};
   function errText(r){return ERR[r&&r.error]||ERR.server}
   /* quiet: a background check that must not count as someone using the app. */
   function callScript(body,quiet){
@@ -918,7 +938,8 @@
       .then(function(r){
         r=r||{ok:false,error:'server'};
         /* An old robot (before version 6) answers every sign-in request this way. */
-        if(!r.ok&&(r.error==='wrong_passcode'||r.error==='not_set_up')&&body.action!=='bootstrap')r.error='old_robot';
+        if(!r.ok&&(r.error==='wrong_passcode'||r.error==='not_set_up'||r.error==='no_users'||r.error==='not_allowed'))r.error='old_robot';
+        if(!r.ok&&r.error==='wrong_login'&&ui.robot&&ui.robot<7)r.error='old_robot';
         if(!r.ok&&r.error==='signed_out'&&auth.token&&body.action!=='login')signOut('expired');
         return r;
       });
@@ -927,9 +948,9 @@
   /* ---------- signing in and out ---------- */
   function saveAuth(){try{if(auth.token)localStorage.setItem('njw-auth',JSON.stringify(auth));else localStorage.removeItem('njw-auth')}catch(e){}}
   function signedIn(r){
-    auth={token:r.token,name:r.user.name,role:r.user.role,idle:r.idle||30};saveAuth();
+    auth={token:r.token,name:(r.user&&r.user.name)||'Admin',idle:r.idle||30};saveAuth();
     lastAct=Date.now();lastPing=Date.now();try{localStorage.setItem('njw-last',String(lastAct))}catch(e){}
-    post.loaded=false;admin.users=null;admin.activity=null;
+    post.loaded=false;admin.activity=null;
     closeDlg();renderAll();loadPost();
     toast('Signed in as '+auth.name);
   }
@@ -938,13 +959,13 @@
     var tok=auth.token;if(!tok&&!why)return;
     if(tok&&why!=='expired')fetch(SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'logout',token:tok}),redirect:'follow'}).catch(function(){});
     var mins=auth.idle||30;
-    auth={token:'',name:'',role:'',idle:mins};saveAuth();
+    auth={token:'',name:'',idle:mins};saveAuth();
     try{localStorage.removeItem('njw-post')}catch(e){}
     post.tx='';post.eps={};post.loaded=false;post.err='';post.openDrop=null;post.openMove=null;
-    admin.users=null;admin.activity=null;ui.confirmDel=null;ui.menu=false;ui.acct=false;
+    admin.activity=null;ui.confirmDel=null;ui.menu=false;ui.acct=false;
     if(ui.view==='post'||ui.view==='admin')ui.view='scenes';
     closeDlg();renderAll();
-    if(why==='idle'||why==='expired')openDlg('<div class="dlgbody"><h2 id="dlg-title">Signed out</h2><p>'+(why==='idle'?'You were signed out after '+esc(mins)+' minutes without using the app.':'Your sign-in ended. This happens after '+esc(mins)+' minutes without use, after 12 hours, or when an admin resets your password.')+'</p><p class="muted">Anyone can still see scenes and daily reports. Sign in again to make changes.</p><div class="dlgacts"><button type="button" class="btn" data-dlg="close">OK</button><button type="button" class="btn primary" data-act="login" data-dlg="relogin">Sign in again</button></div></div>');
+    if(why==='idle'||why==='expired')openDlg('<div class="dlgbody"><h2 id="dlg-title">Signed out</h2><p>'+(why==='idle'?'You were signed out after '+esc(mins)+' minutes without using the app.':'Your sign-in ended. This happens after '+esc(mins)+' minutes without use, after 12 hours, or when the admin password is changed.')+'</p><p class="muted">Anyone can still see scenes and daily reports. Sign in again to make changes.</p><div class="dlgacts"><button type="button" class="btn" data-dlg="close">OK</button><button type="button" class="btn primary" data-act="login" data-dlg="relogin">Sign in again</button></div></div>');
     else toast('Signed out on this device');
   }
   /* Real use (taps, typing, scrolling) keeps the sign-in alive. Background refreshes do not. */
@@ -977,38 +998,36 @@
   function openDlg(html){var d=dialog();d.innerHTML=html;if(!d.open){if(d.showModal)d.showModal();else d.setAttribute('open','')}document.documentElement.classList.add('modal-open')}
   function closeDlg(){if(dlg&&dlg.open){if(dlg.close)dlg.close();else dlg.removeAttribute('open')}document.documentElement.classList.remove('modal-open')}
 
-  function openLogin(owner){
+  function openLogin(){
     var last='';try{last=localStorage.getItem('njw-name')||''}catch(e){}
-    openDlg('<form class="dlgbody" id="loginform" autocomplete="on"><div class="dlghead"><h2 id="dlg-title">'+(owner?'Owner setup':'Sign in')+'</h2><button type="button" class="x" data-dlg="close" aria-label="Close">\u2715</button></div>'
-      +'<p class="muted">'+(owner?'Only for the owner. Creates or resets an admin account using the setup passcode kept in Google. Admins then add the team.':'For the continuity and post teams. Signs out by itself after a while without use.')+'</p>'
-      +'<label class="fld">Name<input id="lname" type="text" autocomplete="username" autocapitalize="words" spellcheck="false" maxlength="40" required value="'+esc(last)+'"></label>'
-      +'<label class="fld">'+(owner?'New password':'Password')+'<input id="lpass" type="password" autocomplete="'+(owner?'new-password':'current-password')+'" minlength="'+(owner?6:1)+'" required></label>'
-      +(owner?'<label class="fld">Setup passcode<input id="lcode" type="password" autocomplete="off" required></label>':'')
+    openDlg('<form class="dlgbody" id="loginform" autocomplete="on"><div class="dlghead"><h2 id="dlg-title">Admin sign-in</h2><button type="button" class="x" data-dlg="close" aria-label="Close">\u2715</button></div>'
+      +'<p class="muted">Turns on daily report tools, Post production and Recent activity on this device. Signs out by itself after a while without use.</p>'
+      +'<input type="text" autocomplete="username" value="admin" hidden>'
+      +'<label class="fld">Admin password<input id="lpass" type="password" autocomplete="current-password" required></label>'
+      +'<label class="fld">Your name <span class="opt">(optional, shown in Recent activity)</span><input id="lname" type="text" autocapitalize="words" spellcheck="false" maxlength="40" value="'+esc(last)+'" placeholder="e.g. Nick"></label>'
       +'<p class="dlgerr" id="dlgerr" role="alert"></p>'
-      +'<div class="dlgacts"><button type="button" class="btn" data-dlg="close">Cancel</button><button type="submit" class="btn primary" id="loginbtn">'+(owner?'Set up and sign in':'Sign in')+'</button></div>'
-      +'<p class="dlgfoot">'+(owner?'<button type="button" class="linkbtn" data-dlg="login-normal">Back to sign in</button>':'Forgot your password? Ask an admin to reset it. <button type="button" class="linkbtn" data-dlg="login-owner">Owner setup</button>')+'</p></form>');
-    var f=document.getElementById('loginform');(last&&!owner?document.getElementById('lpass'):document.getElementById('lname')).focus();
-    f.addEventListener('submit',function(e){
+      +'<div class="dlgacts"><button type="button" class="btn" data-dlg="close">Cancel</button><button type="submit" class="btn primary" id="loginbtn">Sign in</button></div></form>');
+    document.getElementById('lpass').focus();
+    document.getElementById('loginform').addEventListener('submit',function(e){
       e.preventDefault();
       var name=document.getElementById('lname').value.trim(),pw=document.getElementById('lpass').value,btn=document.getElementById('loginbtn'),err=document.getElementById('dlgerr');
-      if(!name||!pw)return;
-      var body={action:owner?'bootstrap':'login',name:name,password:pw};
-      if(owner)body.passcode=document.getElementById('lcode').value.trim();
+      if(!pw)return;
       btn.disabled=true;btn.textContent='Checking…';err.textContent='';
-      callScript(body).then(function(r){
-        btn.disabled=false;btn.textContent=owner?'Set up and sign in':'Sign in';
+      callScript({action:'login',name:name,password:pw}).then(function(r){
+        btn.disabled=false;btn.textContent='Sign in';
         if(r.ok&&!r.token)r={ok:false,error:'old_robot'};
-        if(!r.ok){err.textContent=errText(r);if(r.error==='no_users'&&!owner)setTimeout(function(){openLogin(true)},1600);return}
-        try{localStorage.setItem('njw-name',r.user.name)}catch(e){}
+        if(!r.ok){err.textContent=errText(r);return}
+        try{localStorage.setItem('njw-name',name)}catch(e){}
         signedIn(r);
       });
     });
   }
   function openPassword(){
-    openDlg('<form class="dlgbody" id="pwform"><div class="dlghead"><h2 id="dlg-title">Change password</h2><button type="button" class="x" data-dlg="close" aria-label="Close">\u2715</button></div>'
-      +'<input type="text" autocomplete="username" value="'+esc(auth.name)+'" hidden>'
+    openDlg('<form class="dlgbody" id="pwform"><div class="dlghead"><h2 id="dlg-title">Change admin password</h2><button type="button" class="x" data-dlg="close" aria-label="Close">\u2715</button></div>'
+      +'<p class="muted">This is the one password everyone uses. Every other device is signed out and needs the new password.</p>'
+      +'<input type="text" autocomplete="username" value="admin" hidden>'
       +'<label class="fld">Current password<input id="pwcur" type="password" autocomplete="current-password" required></label>'
-      +'<label class="fld">New password<input id="pwnew" type="password" autocomplete="new-password" minlength="6" required></label>'
+      +'<label class="fld">New password (8 or more characters)<input id="pwnew" type="password" autocomplete="new-password" minlength="8" required></label>'
       +'<p class="dlgerr" id="dlgerr" role="alert"></p>'
       +'<div class="dlgacts"><button type="button" class="btn" data-dlg="close">Cancel</button><button type="submit" class="btn primary" id="pwbtn">Change password</button></div></form>');
     document.getElementById('pwcur').focus();
@@ -1017,7 +1036,7 @@
       callScript({action:'password',current:document.getElementById('pwcur').value,password:document.getElementById('pwnew').value}).then(function(r){
         btn.disabled=false;
         if(!r.ok){document.getElementById('dlgerr').textContent=errText(r);return}
-        auth.token=r.token;saveAuth();closeDlg();toast('Password changed');
+        auth.token=r.token;saveAuth();closeDlg();toast('Admin password changed. Other devices are signed out.');
       });
     });
   }
@@ -1176,8 +1195,7 @@
     var b=e.target.closest&&e.target.closest('[data-dlg]');if(!b)return;
     var a=b.dataset.dlg;
     if(a==='close'){closeDlg();return}
-    if(a==='login-owner'){openLogin(true);return}
-    if(a==='login-normal'||a==='relogin'){openLogin(false);return}
+    if(a==='relogin'){openLogin();return}
     if(a==='clear'){var ta=document.getElementById('rep');ta.value='';if(draftKey()){try{localStorage.removeItem(draftKey())}catch(e){}}preview();ta.focus();return}
     if(a==='paste'){navigator.clipboard.readText().then(function(t){var ta=document.getElementById('rep');ta.value=t;if(draftKey()){try{localStorage.setItem(draftKey(),t)}catch(e){}}preview()},function(){var ta=document.getElementById('rep');ta.focus();document.getElementById('dlgerr').textContent='Paste was blocked. Long-press in the box and choose Paste.'});return}
     if(a==='save'){saveReport();return}

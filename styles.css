@@ -495,3 +495,5 @@ tr.admform input,.addusr input{font:600 14px var(--body);padding:8px 10px;border
   dialog.sheet{height:auto;max-height:100dvh;margin:0;top:auto;bottom:0;border-radius:18px 18px 0 0}
   dialog.sheet .dlgbody{padding-bottom:calc(18px + env(safe-area-inset-bottom,0px))}
 }
+.fld .opt{font-weight:500;color:var(--muted);font-size:12px}
+.admrow{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:12px 14px}

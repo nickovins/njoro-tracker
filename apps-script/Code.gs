@@ -11,13 +11,15 @@
  *     scene list in a script PDF, it turns a copy into text, reads it,
  *     and deletes the copy. It cannot touch any file it did not create.
  *   - run itself every 30 minutes           (script.scriptapp)
+ *   - call Google's own Drive address to turn its temporary copy of a script
+ *     into plain text                       (script.external_request)
  * It has no access to Gmail, Calendar, Contacts or any other spreadsheet.
  * In Drive it only ever opens the log sheets and scripts folders below.
  *
- * Sign-in is by name and password. Passwords are stored only as salted
- * hashes in Script Properties. A sign-in ends after IDLE_MINUTES without use.
- * PASSCODE (Script Properties) is the owner's master key: it is only used
- * to create or reset an admin account. Never share it with the team.
+ * Sign-in: ONE admin password, kept in Project Settings > Script Properties as
+ * PASSCODE. It is never in this file or in the app. A sign-in ends after
+ * IDLE_MINUTES without use, after 12 hours, or when the password changes.
+ * The name typed at sign-in is only a label for the activity log.
  *
  * Tabs in the Sheet:
  *   Reports    one row per shoot day (anyone with the app can read these)
@@ -35,7 +37,7 @@ var SCRIPTS_TAB = 'Scripts';
 var REPEATS_TAB = 'Repeats';
 var ACTIVITY_TAB = 'Activity';
 var TZ = 'Africa/Nairobi';
-var VERSION = 6;
+var VERSION = 7;
 var EPISODES = 52;
 var IDLE_MINUTES_DEFAULT = 30;   // change with Script Property IDLE_MINUTES
 var SESSION_MAX_HOURS = 12;      // even an active sign-in ends after this
@@ -64,16 +66,14 @@ function route_(b) {
   var a = String(b.action || '');
   // No sign-in needed for these.
   if (a === 'login') return login_(b);
-  if (a === 'bootstrap') return bootstrap_(b);
   if (a === 'logout') { endSession_(b.token); return { ok: true }; }
 
   var me = session_(b.token, b.touch !== false);
   if (!me) return { ok: false, error: 'signed_out' };
 
-  if (a === 'check' || a === 'touch') return { ok: true, user: pubUser_(me), idle: idleMinutes_() };
+  if (a === 'check' || a === 'touch') return { ok: true, user: { name: me.name }, idle: idleMinutes_() };
   if (a === 'post') return postAll_();
-  if (a === 'activity') return me.role === 'admin' ? readActivity_() : { ok: false, error: 'not_allowed' };
-  if (a === 'users') return me.role === 'admin' ? listUsers_() : { ok: false, error: 'not_allowed' };
+  if (a === 'activity') return readActivity_();
 
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) return { ok: false, error: 'busy' };
@@ -122,11 +122,11 @@ function write_(a, b, me) {
     return { ok: true };
   }
   if (a === 'password') return changePassword_(b, me);
-  if (me.role !== 'admin' && /^user/.test(a)) return { ok: false, error: 'not_allowed' };
-  if (a === 'userAdd') return userAdd_(b, me);
-  if (a === 'userReset') return userReset_(b, me);
-  if (a === 'userRemove') return userRemove_(b, me);
-  if (a === 'userRole') return userRole_(b, me);
+  if (a === 'signoutAll') {
+    props_().setProperty('SESS_GEN', String(gen_() + 1));
+    log_(me.name, 'Signed everyone out', 'Every device has to sign in again');
+    return { ok: true };
+  }
   return { ok: false, error: 'bad_request' };
 }
 
@@ -142,10 +142,12 @@ function setup() {
   sheet_(); DriveApp.getFolderById(LOG_ROOT_ID).getName();
   repeatsTab_();
   if (!PropertiesService.getScriptProperties().getProperty('PASSCODE')) {
-    throw new Error('Setup stopped: add PASSCODE in Project Settings > Script Properties, then run setup again.');
+    throw new Error('Setup stopped: add PASSCODE (the admin password) in Project Settings > Script Properties, then run setup again.');
   }
+  props_().deleteProperty('USERS');            // name-and-password accounts from version 6 are no longer used
   var logs = linkMissingLogs(), scripts = refreshScripts(240000);
-  console.log('Version ' + VERSION + ' ready. Log sheets attached now: ' + logs + '. Episode scripts found: ' + scripts + '.');
+  var withScenes = tabRows_(SpreadsheetApp.getActive().getSheetByName(SCRIPTS_TAB), 5).filter(function (r) { return r[4]; }).length;
+  console.log('Version ' + VERSION + ' ready. Log sheets attached now: ' + logs + '. Episode scripts found: ' + scripts + ', scene numbers read for ' + withScenes + '.');
   CacheService.getScriptCache().remove('PRIVATE');
   if (sheetPrivate_()) { activityTab_(); console.log('The Sheet is private. The Activity tab is on.'); }
   else console.log('NEXT STEP: make the Sheet private (Share > General access > Restricted). Until then the Activity tab stays off.');
@@ -210,78 +212,48 @@ function getChunks_(key) {
 }
 function clearReadCache_() { try { CacheService.getScriptCache().remove('READ_N'); } catch (e) {} }
 
-/* ---------- accounts and sign-in ---------- */
+/* ---------- sign-in: one admin password ---------- */
 
 function props_() { return PropertiesService.getScriptProperties(); }
 function idleMinutes_() { var n = Number(props_().getProperty('IDLE_MINUTES')); return n >= 5 && n <= 720 ? n : IDLE_MINUTES_DEFAULT; }
-function nameKey_(n) { return String(n || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
 function cleanName_(n) { return String(n || '').replace(/[\u0000-\u001F<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40); }
-function users_() { try { return JSON.parse(props_().getProperty('USERS') || '{}'); } catch (e) { return {}; } }
-function saveUsers_(u) { props_().setProperty('USERS', JSON.stringify(u)); }
-function pubUser_(u) { return { name: u.name, role: u.role }; }
 function now_() { return Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm'); }
-
-function hex_(bytes) { return bytes.map(function (b) { return ('0' + ((b + 256) % 256).toString(16)).slice(-2); }).join(''); }
-function hash_(pw, salt) {
-  var v = salt + ':' + pw;
-  for (var i = 0; i < 300; i++) v = hex_(Utilities.computeHmacSha256Signature(v, salt));
-  return v;
-}
-function newSalt_() { return Utilities.getUuid().replace(/-/g, ''); }
-
-function weakPassword_(pw) { return String(pw || '').length < 6; }
+/** Goes up by one when the password changes or someone taps "Sign everyone out". */
+function gen_() { return Number(props_().getProperty('SESS_GEN')) || 0; }
 
 function login_(b) {
-  var key = nameKey_(b.name), pw = String(b.password || ''), users = users_(), cache = CacheService.getScriptCache();
-  if (!Object.keys(users).length) return { ok: false, error: 'no_users' };
-  var fails = Number(cache.get('F_' + key)) || 0;
-  if (fails >= 8) { log_(cleanName_(b.name) || '(blank)', 'Sign-in blocked', 'Too many wrong passwords. Try again in 15 minutes.'); return { ok: false, error: 'locked' }; }
-  var u = users[key];
-  if (!u || !same_(hash_(pw, u.salt), u.hash)) {
-    cache.put('F_' + key, String(fails + 1), 900);
-    Utilities.sleep(2000);                     // makes guessing slow
-    log_(cleanName_(b.name) || '(blank)', 'Failed sign-in', u ? 'Wrong password' : 'No account with this name');
+  var who = cleanName_(b.name) || 'Admin', cache = CacheService.getScriptCache();
+  if (!props_().getProperty('PASSCODE')) return { ok: false, error: 'no_passcode' };
+  // Many wrong passwords in 15 minutes, from anywhere: pause all sign-ins for a while.
+  var fails = Number(cache.get('LOGIN_FAILS')) || 0;
+  if (fails >= 20) { return { ok: false, error: 'locked' }; }
+  if (!same_(String(b.password || ''), props_().getProperty('PASSCODE'))) {
+    cache.put('LOGIN_FAILS', String(fails + 1), 900);
+    Utilities.sleep(3000);                     // makes guessing slow
+    log_(who, 'Failed sign-in', 'Wrong password');
     return { ok: false, error: 'wrong_login' };
   }
-  cache.remove('F_' + key);
-  u.last = now_(); users[key] = u; saveUsers_(users);
-  log_(u.name, 'Signed in', '');
-  return startSession_(key, u);
+  log_(who, 'Signed in', '');
+  return startSession_(who);
 }
 
-/** Owner only: makes (or resets) an admin account using the master PASSCODE. */
-function bootstrap_(b) {
-  var gate = checkPasscode_(b.passcode);
-  if (gate) { log_(cleanName_(b.name) || '(blank)', 'Failed owner setup', 'Wrong setup passcode'); return { ok: false, error: gate }; }
-  var name = cleanName_(b.name), key = nameKey_(name), pw = String(b.password || '');
-  if (name.length < 2) return { ok: false, error: 'bad_name' };
-  if (weakPassword_(pw)) return { ok: false, error: 'weak_password' };
-  var users = users_(), u = users[key] || { name: name, gen: 0, added: now_() };
-  u.name = name; u.role = 'admin'; u.salt = newSalt_(); u.hash = hash_(pw, u.salt); u.gen = (u.gen || 0) + 1; u.last = now_();
-  users[key] = u; saveUsers_(users);
-  log_(name, 'Owner setup', 'Admin account set with the setup passcode');
-  return startSession_(key, u);
-}
-
-function startSession_(key, u) {
+function startSession_(who) {
   var token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
-  var s = { k: key, g: u.gen || 0, c: Date.now(), a: Date.now() };
+  var s = { n: who, g: gen_(), c: Date.now(), a: Date.now() };
   CacheService.getScriptCache().put('S_' + token, JSON.stringify(s), idleMinutes_() * 60);
-  return { ok: true, token: token, user: pubUser_(u), idle: idleMinutes_() };
+  return { ok: true, token: token, user: { name: who }, idle: idleMinutes_() };
 }
 
-/** The signed-in user, or null. touch=false checks without counting as use. */
+/** The signed-in person, or null. touch=false checks without counting as use. */
 function session_(token, touch) {
   if (!token || !/^[a-f0-9]{64}$/.test(String(token))) return null;
   var cache = CacheService.getScriptCache(), raw = cache.get('S_' + token);
   if (!raw) return null;
   var s; try { s = JSON.parse(raw); } catch (e) { return null; }
-  var idle = idleMinutes_() * 60000, now = Date.now();
-  if (now - s.a > idle || now - s.c > SESSION_MAX_HOURS * 3600000) { cache.remove('S_' + token); return null; }
-  var u = users_()[s.k];
-  if (!u || (u.gen || 0) !== s.g) { cache.remove('S_' + token); return null; }   // removed, or password reset
+  var now = Date.now();
+  if (now - s.a > idleMinutes_() * 60000 || now - s.c > SESSION_MAX_HOURS * 3600000 || s.g !== gen_()) { cache.remove('S_' + token); return null; }
   if (touch) { s.a = now; cache.put('S_' + token, JSON.stringify(s), idleMinutes_() * 60); }
-  return { key: s.k, name: u.name, role: u.role };
+  return { name: s.n };
 }
 
 function endSession_(token) {
@@ -289,80 +261,18 @@ function endSession_(token) {
   var cache = CacheService.getScriptCache(), raw = cache.get('S_' + token);
   if (!raw) return;
   cache.remove('S_' + token);
-  try { var u = users_()[JSON.parse(raw).k]; if (u) log_(u.name, 'Signed out', ''); } catch (e) {}
+  try { log_(JSON.parse(raw).n, 'Signed out', ''); } catch (e) {}
 }
 
-function listUsers_() {
-  var users = users_();
-  return { ok: true, idle: idleMinutes_(), users: Object.keys(users).sort().map(function (k) {
-    var u = users[k]; return { name: u.name, role: u.role, last: u.last || '', added: u.added || '' };
-  }) };
-}
-
-function userAdd_(b, me) {
-  var name = cleanName_(b.name), key = nameKey_(name), pw = String(b.password || ''), role = b.role === 'admin' ? 'admin' : 'member';
-  if (name.length < 2) return { ok: false, error: 'bad_name' };
-  if (weakPassword_(pw)) return { ok: false, error: 'weak_password' };
-  var users = users_();
-  if (users[key]) return { ok: false, error: 'name_taken' };
-  if (Object.keys(users).length >= 60) return { ok: false, error: 'bad_request' };
-  var salt = newSalt_();
-  users[key] = { name: name, role: role, salt: salt, hash: hash_(pw, salt), gen: 1, added: now_(), last: '' };
-  saveUsers_(users);
-  log_(me.name, 'Added a team member', name + (role === 'admin' ? ' (admin)' : ''));
-  return listUsers_();
-}
-
-function userReset_(b, me) {
-  var key = nameKey_(b.name), pw = String(b.password || ''), users = users_(), u = users[key];
-  if (!u) return { ok: false, error: 'not_found' };
-  if (weakPassword_(pw)) return { ok: false, error: 'weak_password' };
-  u.salt = newSalt_(); u.hash = hash_(pw, u.salt); u.gen = (u.gen || 0) + 1;
-  saveUsers_(users);
-  log_(me.name, 'Reset a password', u.name);
-  return listUsers_();
-}
-
-function admins_(users) { return Object.keys(users).filter(function (k) { return users[k].role === 'admin'; }); }
-
-function userRemove_(b, me) {
-  var key = nameKey_(b.name), users = users_(), u = users[key];
-  if (!u) return { ok: false, error: 'not_found' };
-  if (key === me.key) return { ok: false, error: 'not_self' };
-  if (u.role === 'admin' && admins_(users).length < 2) return { ok: false, error: 'last_admin' };
-  delete users[key]; saveUsers_(users);
-  log_(me.name, 'Removed a team member', u.name);
-  return listUsers_();
-}
-
-function userRole_(b, me) {
-  var key = nameKey_(b.name), users = users_(), u = users[key], role = b.role === 'admin' ? 'admin' : 'member';
-  if (!u) return { ok: false, error: 'not_found' };
-  if (key === me.key && role !== 'admin') return { ok: false, error: 'not_self' };
-  if (u.role === 'admin' && role !== 'admin' && admins_(users).length < 2) return { ok: false, error: 'last_admin' };
-  u.role = role; saveUsers_(users);
-  log_(me.name, 'Changed a role', u.name + ' is now ' + (role === 'admin' ? 'an admin' : 'a team member'));
-  return listUsers_();
-}
-
+/** Changes the admin password for everyone. Every other device is signed out. */
 function changePassword_(b, me) {
-  var users = users_(), u = users[me.key];
-  if (!u || !same_(hash_(String(b.current || ''), u.salt), u.hash)) { Utilities.sleep(1500); return { ok: false, error: 'wrong_current' }; }
-  if (weakPassword_(b.password)) return { ok: false, error: 'weak_password' };
-  u.salt = newSalt_(); u.hash = hash_(String(b.password), u.salt); u.gen = (u.gen || 0) + 1;
-  saveUsers_(users);
-  log_(u.name, 'Changed own password', '');
-  return startSession_(me.key, u);              // the old sign-in ends; this one carries on
-}
-
-/* ---------- master passcode (owner setup only) ---------- */
-
-function checkPasscode_(given) {
-  var real = props_().getProperty('PASSCODE');
-  if (!real) return 'not_set_up';
-  if (same_(String(given || ''), real)) return '';
-  Utilities.sleep(3000);
-  return 'wrong_passcode';
+  if (!same_(String(b.current || ''), props_().getProperty('PASSCODE') || '')) { Utilities.sleep(2000); return { ok: false, error: 'wrong_current' }; }
+  var pw = String(b.password || '');
+  if (pw.length < 8) return { ok: false, error: 'weak_password' };
+  props_().setProperty('PASSCODE', pw);
+  props_().setProperty('SESS_GEN', String(gen_() + 1));
+  log_(me.name, 'Changed the admin password', 'Every other device was signed out');
+  return startSession_(me.name);              // this device carries on
 }
 
 function same_(a, b) {
@@ -699,22 +609,32 @@ function scenesOf_(file, mayRead) {
   return list;
 }
 
-/** The words in a script. A Google Doc is read directly. A PDF is uploaded as a
- *  temporary Google Doc (Google turns it into text), read, then deleted. */
+/** The words in a script. A PDF is first copied as a temporary Google Doc (Google
+ *  turns it into text), then that copy is exported as plain text and deleted.
+ *  A script that is already a Google Doc is exported directly. */
 function scriptText_(file) {
   var mime = file.getMimeType();
   try {
-    if (mime === MimeType.GOOGLE_DOCS) return file.getAs('text/markdown').getDataAsString();
+    if (mime === MimeType.GOOGLE_DOCS) return exportText_(file.getId());
     if (mime !== MimeType.PDF) return null;
     var tmp = Drive.Files.create({ name: 'njoro-tracker temp (safe to delete)', mimeType: MimeType.GOOGLE_DOCS }, file.getBlob());
-    try { return DriveApp.getFileById(tmp.id).getAs('text/markdown').getDataAsString(); }
+    try { return exportText_(tmp.id); }
     finally {
-      try { Drive.Files.remove(tmp.id); } catch (e) { DriveApp.getFileById(tmp.id).setTrashed(true); }
+      try { Drive.Files.remove(tmp.id); } catch (e) { try { DriveApp.getFileById(tmp.id).setTrashed(true); } catch (e2) {} }
     }
   } catch (err) {
     console.warn('Could not read ' + file.getName() + ': ' + err);
     return null;
   }
+}
+
+/** Google Doc to plain text, through Drive's own export address. */
+function exportText_(id) {
+  var res = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(id) + '/export?mimeType=text%2Fplain', {
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true
+  });
+  if (res.getResponseCode() !== 200) throw new Error('Drive export answered ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 200));
+  return res.getContentText();
 }
 
 /** Scene numbers from scene headings: "1 INT. CAB - DAY 1", "INT. CAB - DAY 1 1",
