@@ -93,7 +93,7 @@
   }
   function pageNum(t){var m=/^\s*(\d+(?:\.\d+)?)?\s*(?:(\d)\s*\/\s*8)?/.exec(t||'');if(!m||(!m[1]&&!m[2]))return 0;return (m[1]?parseFloat(m[1]):0)+(m[2]?+m[2]/8:0)}
   function pageFmt(n){var w=Math.floor(n),e=Math.round((n-w)*8);if(e===8){w++;e=0}return (w||!e?String(w):'')+(e?(w?' ':'')+e+'/8':'')}
-  var TAG_LABEL={Check:'Reshoot or duplicate?'};
+  var TAG_LABEL={Check:'Reshoot, duplicate or continued?',Completed:'Continued'};
   function tagsHtml(tags){return (tags||[]).map(function(t){return '<span class="tag '+esc(t)+'">'+esc(TAG_LABEL[t]||t)+'</span>'}).join('')}
   /* Forgiving word search: ignores case, punctuation and small typos, matches word starts and common short forms. */
   var ABBR={rd:'road',st:'street',str:'street',ave:'avenue',av:'avenue',hse:'house',bldg:'building',htl:'hotel',mkt:'market',hosp:'hospital',sch:'school',apt:'apartment',apts:'apartments',est:'estate',ext:'exterior',int:'interior',estb:'establishing',broll:'broll'};
@@ -576,10 +576,10 @@
     var ed=isEditor(),html='<section class="repeats'+(r.pending.length?' pending':'')+'" aria-label="Repeated scenes">';
     if(r.pending.length){
       html+='<div class="rphead"><b>'+r.pending.length+' repeated scene'+(r.pending.length===1?'':'s')+' to check</b>'
-        +'<span>Logged on two days. <b>Reshoot</b>: shot again on purpose, both days count. <b>Duplicate</b>: logged twice by mistake, only the first day counts. Not sure, or a wrong scene number? <b>Edit</b> the report.</span></div><ul class="rplist">'
+        +'<span>Logged on two days. <b>Reshoot</b>: shot again on purpose. <b>Duplicate</b>: logged twice by mistake, only the first day counts. <b>Continued</b>: the same scene finished on another day, like a phone-call voice over. Not sure, or a wrong scene number? <b>Edit</b> the report.</span></div><ul class="rplist">'
         +r.pending.map(function(it){
           return '<li><div class="rpwhat"><span class="mono rpsc">'+esc(it.key)+'</span><span>First on <b>'+esc(it.first?dayRef(it.first):'an earlier day')+'</b>, again on <b>'+esc(dayRef(it.day))+'</b>'+(it.note?' <span class="muted">('+esc(it.note)+')</span>':'')+'</span></div>'
-            +(ed?'<div class="rpacts"><button type="button" class="btn small rpre" data-decide="Reshoot" data-scene="'+esc(it.key)+'" data-day="'+it.day.day+'">Reshoot</button><button type="button" class="btn small rpdup" data-decide="Duplicate" data-scene="'+esc(it.key)+'" data-day="'+it.day.day+'">Duplicate</button>'+editBtns(it)+'</div>'
+            +(ed?'<div class="rpacts"><button type="button" class="btn small rpre" data-decide="Reshoot" data-scene="'+esc(it.key)+'" data-day="'+it.day.day+'">Reshoot</button><button type="button" class="btn small rpdup" data-decide="Duplicate" data-scene="'+esc(it.key)+'" data-day="'+it.day.day+'">Duplicate</button>'+'<button type="button" class="btn small rpcont" data-decide="Continued" data-scene="'+esc(it.key)+'" data-day="'+it.day.day+'">Continued</button>'+editBtns(it)+'</div>'
               :'<span class="muted rpsign">Sign in to decide</span>')+'</li>';
         }).join('')+'</ul>';
     }
@@ -594,6 +594,10 @@
   }
   function decideRepeat(scene,day,decision){
     if(!isEditor()){openLogin();return}
+    if(decision==='Continued'&&ui.robot&&ui.robot<9){
+      openDlg('<div class="dlgbody"><h2 id="dlg-title">Continued needs the Google update</h2><p>The Google robot is on version '+ui.robot+'. Continued works from version 9 (paste the new Code.gs and deploy a New version).</p><p>For now, edit the Day '+day+' report and add the word <b>continued</b> to the '+esc(scene)+' line, for example <span class="mono">Purity VO - '+esc(scene)+' continued</span>. It then counts as continued straight away.</p><div class="dlgacts"><button type="button" class="btn" data-dlg="close">Close</button><button type="button" class="btn primary" data-dlg="editday" data-day="'+day+'">Edit Day '+day+' report</button></div></div>');
+      return;
+    }
     var k=scene+'@'+day,before=state.repeats[k];
     if(decision)state.repeats[k]={decision:decision,by:auth.name,when:'now'};else delete state.repeats[k];
     state.days=buildDays(state.rows,[]);renderMain();
@@ -777,7 +781,7 @@
   /* Repeats tab rows: Scene | Day | Decision | By | When. Key "7/16@10". */
   function repeatsFromRows(rows){
     var out={};(rows||[]).forEach(function(v){var m=/^(\d{1,3})\s*\/\s*(\d{1,3}[A-Za-z]?)$/.exec(String(v[0]||'').trim()),d=parseInt(v[1],10);
-      if(m&&d>0&&(v[2]==='Reshoot'||v[2]==='Duplicate'))out[keyOf(m[1],m[2])+'@'+d]={decision:v[2],by:String(v[3]||''),when:String(v[4]||'')}});
+      if(m&&d>0&&(v[2]==='Reshoot'||v[2]==='Duplicate'||v[2]==='Continued'))out[keyOf(m[1],m[2])+'@'+d]={decision:v[2],by:String(v[3]||''),when:String(v[4]||'')}});
     return out;
   }
   function buildDays(sheetRows,formRows){
@@ -809,6 +813,7 @@
             s.firstDay=seen[k];var x=dec[k+'@'+d.day];
             if(x&&x.decision==='Reshoot'){s.tags.push('Reshoot');s.decided=x}
             else if(x&&x.decision==='Duplicate'){s.tags.push('Duplicate');s.decided=x}
+            else if(x&&x.decision==='Continued'){s.tags.push('Continued');s.decided=x}
             else{s.tags.push('Check');s.decided=null}
           }
         }
@@ -1273,6 +1278,7 @@
     var b=e.target.closest&&e.target.closest('[data-dlg]');if(!b)return;
     var a=b.dataset.dlg;
     if(a==='close'){closeDlg();return}
+    if(a==='editday'){var dd=dayByNum(+b.dataset.day);if(dd)openAdd(dd.raw,dd.day);return}
     if(a==='relogin'){openLogin();return}
     if(a==='clear'){var ta=document.getElementById('rep');ta.value='';if(draftKey()){try{localStorage.removeItem(draftKey())}catch(e){}}preview();ta.focus();return}
     if(a==='paste'){navigator.clipboard.readText().then(function(t){var ta=document.getElementById('rep');ta.value=t;if(draftKey()){try{localStorage.setItem(draftKey(),t)}catch(e){}}preview()},function(){var ta=document.getElementById('rep');ta.focus();document.getElementById('dlgerr').textContent='Paste was blocked. Long-press in the box and choose Paste.'});return}

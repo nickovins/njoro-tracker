@@ -541,3 +541,7 @@ input.cell.unsaved{border-color:#E7B43C!important;border-style:solid;background:
 @media (prefers-color-scheme:dark) and (max-width:640px){:root:not([data-theme="light"]) .posttbl tr.pe.airing{background:#22351A}}
 @media (max-width:640px){.posttbl tr.pe.expanded td.sum{display:none!important}}
 @media (min-width:641px){.posttbl tr.pe td.sum{display:none!important}}
+.tag.Continued,.tag.Completed{background:var(--done-bg);color:var(--done-fg)}
+.btn.rpcont{border-color:var(--leaf)}
+.rpacts{flex-wrap:wrap;justify-content:flex-end}
+@media (max-width:560px){.rpacts{width:100%;justify-content:stretch}.rpacts>.btn{flex:1 1 30%;min-width:0;padding-inline:8px}}

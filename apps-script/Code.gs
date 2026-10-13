@@ -46,7 +46,7 @@ var SCRIPTS_TAB = 'Scripts';
 var REPEATS_TAB = 'Repeats';
 var ACTIVITY_TAB = 'Activity';
 var TZ = 'Africa/Nairobi';
-var VERSION = 8;
+var VERSION = 9;
 var EPISODES = 52;
 var IDLE_MINUTES_DEFAULT = 30;   // change with Script Property IDLE_MINUTES
 var SESSION_MAX_HOURS = 12;      // even an active sign-in ends after this
@@ -376,7 +376,10 @@ function decide_(b, me) {
   var m = /^(\d{1,3})\s*\/\s*(\d{1,3}[A-Za-z]?)$/.exec(String(b.scene || '').trim()), day = Number(b.day);
   if (!m || !(day >= 1 && day <= 999)) return { ok: false, error: 'bad_request' };
   var scene = Number(m[1]) + '/' + m[2].toUpperCase().replace(/^0+(?=\d)/, '');
-  var decision = b.decision === 'Reshoot' || b.decision === 'Duplicate' ? b.decision : '';
+  // Reshoot: shot again on purpose. Duplicate: logged twice by mistake.
+  // Continued: the same scene finished on another day (for example a phone-call voice over).
+  var decision = ['Reshoot', 'Duplicate', 'Continued'].indexOf(b.decision) >= 0 ? b.decision : '';
+  if (b.decision && !decision) return { ok: false, error: 'bad_request' };
   var sh = repeatsTab_(), rows = tabRows_(sh, 2), found = 0;
   for (var i = rows.length - 1; i >= 0; i--) {
     if (rows[i][0] === scene && Number(rows[i][1]) === day) { sh.deleteRow(i + 2); found++; }

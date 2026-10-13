@@ -1,4 +1,4 @@
-# Installing the tracker update (Google robot version 8)
+# Installing the tracker update (Google robot version 9)
 
 About 10 minutes, on a computer, signed in to the Google account that owns the
 "Njoro wa Uba Scene Tracker Data" Sheet (nicholaskibathi@gmail.com).
@@ -6,7 +6,7 @@ About 10 minutes, on a computer, signed in to the Google account that owns the
 Sheet: https://docs.google.com/spreadsheets/d/13mpLW2iFSSqDja--dwxXEEz_jVpjOeDudyWYy0fvT3I/edit
 App: https://nickovins.github.io/njoro-tracker/
 
-What version 8 changes: Team sign-in is one master password (no names, no
+What changed: version 9 adds the Continued choice for repeated scenes (the same scene finished on another day). Version 8: Team sign-in is one master password (no names, no
 second password). Changing that password in Google signs every device out.
 Script Properties are cleaned up. The app (the website) is already updated and keeps its usual layout.
 
@@ -16,18 +16,18 @@ Script Properties are cleaned up. The app (the website) is already updated and k
 2. Open https://raw.githubusercontent.com/nickovins/njoro-tracker/main/apps-script/Code.gs
    Press Ctrl+A then Ctrl+C (Mac: Cmd+A, Cmd+C).
    In the editor click **Code.gs**, press Ctrl+A, then Ctrl+V. Press **Ctrl+S**.
-   Check: press Ctrl+F, search `VERSION`, it says `var VERSION = 8;`.
+   Check: press Ctrl+F, search `VERSION`, it says `var VERSION = 9;`.
    (appsscript.json did not change since version 7. If you skipped version 7,
    also paste https://raw.githubusercontent.com/nickovins/njoro-tracker/main/apps-script/appsscript.json
    into **appsscript.json**.)
 3. Choose **cleanUp** in the function list at the top and click **Run**.
    The log says how many unused lines it removed and lists what is left (step 6 explains them).
 4. Choose **setup** and click **Run**. If Google asks for permission, allow it as before.
-   The log should end with `Version 8 ready. ... scene numbers read for 11.`
+   The log should end with `Version 9 ready. ... scene numbers read for 11.`
 5. **Deploy > Manage deployments** > the Web app whose ID starts with `AKfycbzts4XJrONLd9`
    > **pencil** > Version: **New version** > **Deploy**.
-   Check https://script.google.com/macros/s/AKfycbzts4XJrONLd9LMRi_MgDsfK4_LqBLTRXAv7nuQpKHXOF88zw7x2-hbwTpZa8jZNFbk/exec?x=8
-   says `"version":8`.
+   Check https://script.google.com/macros/s/AKfycbzts4XJrONLd9LMRi_MgDsfK4_LqBLTRXAv7nuQpKHXOF88zw7x2-hbwTpZa8jZNFbk/exec?x=9
+   says `"version":9`.
 
 ## Part B: Script Properties
 
