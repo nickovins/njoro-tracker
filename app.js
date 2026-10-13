@@ -4,7 +4,7 @@
 (function(){
   "use strict";
   var SHEET_ID='13mpLW2iFSSqDja--dwxXEEz_jVpjOeDudyWYy0fvT3I';
-  var TABS=['Reports','Scripts'];
+  var TABS=['Reports','Scripts','Repeats'];
   /* Address of the Apps Script web app attached to the Sheet (apps-script/Code.gs).
      Not secret: every change it makes needs the continuity passcode, which only Google checks. */
   var SCRIPT_URL='https://script.google.com/macros/s/AKfycbzts4XJrONLd9LMRi_MgDsfK4_LqBLTRXAv7nuQpKHXOF88zw7x2-hbwTpZa8jZNFbk/exec';
@@ -12,17 +12,26 @@
   var MONTHS=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
   var CYCLE='Cycle 7 | Season 1-4';
 
-  var state={days:[],scripts:{},fetchedAt:null};
-  var ui={view:'scenes',show:'all',openEp:null,openDay:null,loading:false,offline:!navigator.onLine,error:'',confirmDel:null,busy:false};
-  var ed={code:''};try{ed.code=localStorage.getItem('njw-pass')||''}catch(e){}
-  function isEditor(){return !!(SCRIPT_URL&&ed.code)}
+  var state={days:[],scripts:{},repeats:{},rows:[],fetchedAt:null};
+  var ui={view:'scenes',show:'all',openEp:null,openDay:null,loading:false,offline:!navigator.onLine,error:'',confirmDel:null,busy:false,season:1,showDecided:false};
+  /* Sign-in: name and password, checked by the Google robot. Only a sign-in token is kept on
+     the device, never the password. A sign-in ends after IDLE minutes without use. */
+  var auth={token:'',name:'',role:'',idle:30};
+  try{var au=JSON.parse(localStorage.getItem('njw-auth')||'null');if(au&&au.token)auth=au;localStorage.removeItem('njw-pass')}catch(e){}
+  var lastAct=Date.now(),lastPing=0;try{lastAct=+localStorage.getItem('njw-last')||Date.now()}catch(e){}
+  function isEditor(){return !!(SCRIPT_URL&&auth.token)}
+  function isAdmin(){return isEditor()&&auth.role==='admin'}
   var installPrompt=null;
-  try{var v=localStorage.getItem('njw-view');if(v==='scenes'||v==='days'||v==='post')ui.view=v}catch(e){}
-  if(ui.view==='post'&&!isEditor())ui.view='scenes';
-  /* Post production: passcode only. Kept by the Google robot, never in the public Sheet. */
+  try{var v=localStorage.getItem('njw-view');if(v==='scenes'||v==='days'||v==='post'||v==='admin')ui.view=v}catch(e){}
+  try{var sv=+localStorage.getItem('njw-season');if(sv>=1&&sv<=4)ui.season=sv}catch(e){}
+  /* Post production: signed-in team only. Kept by the Google robot, never in the Sheet. */
   var EPISODES=52,PER_SEASON=13,SEASONS=4;
-  var post={tx:'',eps:{},loaded:false,loading:false,err:'',at:0,season:0,openDrop:null,openMove:null};
-  try{var pc=JSON.parse(localStorage.getItem('njw-post')||'null');if(pc&&pc.eps&&ed.code){post.tx=pc.tx||'';post.eps=pc.eps;post.loaded=true;post.at=pc.at||0}}catch(e){}
+  function seasonOf(ep){return Math.min(SEASONS,Math.max(1,Math.ceil(ep/PER_SEASON)))}
+  function seasonEps(s){var a=[];for(var n=(s-1)*PER_SEASON+1;n<=s*PER_SEASON;n++)a.push(n);return a}
+  function setSeason(s){ui.season=s;try{localStorage.setItem('njw-season',String(s))}catch(e){}}
+  var post={tx:'',eps:{},loaded:false,loading:false,err:'',at:0,openDrop:null,openMove:null};
+  try{var pc=JSON.parse(localStorage.getItem('njw-post')||'null');if(pc&&pc.eps&&auth.token){post.tx=pc.tx||'';post.eps=pc.eps;post.loaded=true;post.at=pc.at||0}}catch(e){}
+  var admin={users:null,activity:null,private:null,err:'',busy:false,resetFor:null,removeFor:null};
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function normSc(sc){return String(sc).toUpperCase().replace(/^0+(?=\d)/,'')}
   function keyOf(ep,sc){return Number(ep)+'/'+normSc(sc)}
@@ -48,17 +57,22 @@
   var LOG_FOLDER='https://drive.google.com/drive/folders/1KQgFJwqSnT5e3fR0aS7sNptej30-5Bs9?usp=sharing';
   var SCRIPTS_FOLDER='https://drive.google.com/drive/folders/1keWRPeybj1YUOr8c6MtPNM-tHS-zmnjZ?usp=sharing';
   /* Scripts found on 09.10.2026. Used until the Apps Script writes the Scripts tab, which then takes over. */
-  var SCRIPT_SEED={"1":{"url":"https://drive.google.com/file/d/1h1cAMNHBmJMRAIrUrWy0MkGey5zmwK5i/view","name":"EPISODE 1.pdf"},"2":{"url":"https://drive.google.com/file/d/1KuVpCzPWDxe7qjauTwRf54n4htM3NNo1/view","name":"EPISODE 2.pdf"},"3":{"url":"https://drive.google.com/file/d/1sMdHvFZx6vyPP-3VWA4wtBdH8OZ1KtTz/view","name":"EPISODE 3.pdf"},"4":{"url":"https://drive.google.com/file/d/15sqGsYtc7PyhxUcPUJjbAwyS0CUN0GUg/view","name":"EPISODE 4.pdf"},"5":{"url":"https://drive.google.com/file/d/1EFwA0n0w2RUkeLPI77hTuCJIL7ZC2C-_/view","name":"EPISODE 5.pdf"},"6":{"url":"https://drive.google.com/file/d/1WR2ASggbojN7txYiNlbpnCKBTmGQ0fB0/view","name":"EPISODE 6.pdf"},"7":{"url":"https://drive.google.com/file/d/1hhq-4FzgDySJv3ZbfZT_gG7VDIcjqyOR/view","name":"EPISODE 7.pdf"},"8":{"url":"https://drive.google.com/file/d/1QecGLJVOesXV61RK_iRqHQFt_3w-3z9Y/view","name":"EPISODE 8.pdf"},"9":{"url":"https://drive.google.com/file/d/1SeEoTN0EuRMrPN4-KJlhZZP9zirL--kW/view","name":"EPISODE 9-6.pdf"}};
+  var SCRIPT_SEED={"1":{"url":"https://drive.google.com/file/d/1h1cAMNHBmJMRAIrUrWy0MkGey5zmwK5i/view","name":"EPISODE 1.pdf"},"2":{"url":"https://drive.google.com/file/d/1KuVpCzPWDxe7qjauTwRf54n4htM3NNo1/view","name":"EPISODE 2.pdf"},"3":{"url":"https://drive.google.com/file/d/1sMdHvFZx6vyPP-3VWA4wtBdH8OZ1KtTz/view","name":"EPISODE 3.pdf"},"4":{"url":"https://drive.google.com/file/d/15sqGsYtc7PyhxUcPUJjbAwyS0CUN0GUg/view","name":"EPISODE 4.pdf"},"5":{"url":"https://drive.google.com/file/d/1EFwA0n0w2RUkeLPI77hTuCJIL7ZC2C-_/view","name":"EPISODE 5.pdf"},"6":{"url":"https://drive.google.com/file/d/1WR2ASggbojN7txYiNlbpnCKBTmGQ0fB0/view","name":"EPISODE 6.pdf"},"7":{"url":"https://drive.google.com/file/d/1hhq-4FzgDySJv3ZbfZT_gG7VDIcjqyOR/view","name":"EPISODE 7.pdf"},"8":{"url":"https://drive.google.com/file/d/1QecGLJVOesXV61RK_iRqHQFt_3w-3z9Y/view","name":"EPISODE 8.pdf"},"9":{"url":"https://drive.google.com/file/d/1SeEoTN0EuRMrPN4-KJlhZZP9zirL--kW/view","name":"EPISODE 9.pdf"},"12":{"url":"https://drive.google.com/file/d/1nX0gBt6v9fIf3P-T17CcEdBwWNDBgpMD/view","name":"EPISODE 12.pdf"},"13":{"url":"https://drive.google.com/file/d/1KBgIIb7ji5a1MVF1u3oFJ50kL_cV7G43/view","name":"EPISODE 13.pdf"}};
+  /* Log sheets found in Drive on 13.10.2026 for days that had no link yet. The robot fills the
+     Sheet itself once version 6 runs; a link already in the Sheet always wins over these. */
+  var LOG_SEED={9:{iso:'2026-10-09',url:'https://drive.google.com/file/d/1w3ZbfyRHPNAA476kJkVmLya7buysg5FA/view'}};
   /* Scene numbers per episode. The Google robot reads every script in the Scripts folder and
      writes them to the Scripts tab (Scenes column). These counts are only a fallback, read by hand
-     on 10.10.2026, for when that tab is missing. */
-  var SCENE_COUNT={1:19,2:32,3:19,4:16,5:25,6:19,7:19,8:23,9:26};
+     on 10.10.2026 and 13.10.2026, for when that tab is missing. */
+  var SCENE_COUNT={1:19,2:32,3:19,4:16,5:25,6:19,7:19,8:23,9:26,12:25,13:24};
   function sceneList(ep){
     var sc=state.scripts&&state.scripts[ep],out=[],seen={};
     var raw=sc&&sc.scenes&&sc.scenes.length?sc.scenes:null;
     if(raw&&raw.length>=3)raw.forEach(function(x){var n=scParts(x)[0];if(n<9999&&!seen[n]){seen[n]=1;out.push(n)}});
-    if(!out.length&&SCENE_COUNT[ep])for(var i=1;i<=SCENE_COUNT[ep];i++)out.push(i);
-    return out.sort(function(a,b){return a-b});
+    /* Scripts number scenes 1, 2, 3 ... so a heading the reader missed is still counted. */
+    var top=Math.max.apply(null,out.concat([SCENE_COUNT[ep]||0]));
+    if(top>0&&top<=300){out=[];for(var i=1;i<=top;i++)out.push(i)}
+    return out;
   }
   /* Shot / still-to-shoot per episode. A lettered take (29A) covers scene 29. */
   function progress(ep,rows){
@@ -78,7 +92,8 @@
   }
   function pageNum(t){var m=/^\s*(\d+(?:\.\d+)?)?\s*(?:(\d)\s*\/\s*8)?/.exec(t||'');if(!m||(!m[1]&&!m[2]))return 0;return (m[1]?parseFloat(m[1]):0)+(m[2]?+m[2]/8:0)}
   function pageFmt(n){var w=Math.floor(n),e=Math.round((n-w)*8);if(e===8){w++;e=0}return (w||!e?String(w):'')+(e?(w?' ':'')+e+'/8':'')}
-  function tagsHtml(tags){return (tags||[]).map(function(t){return '<span class="tag '+esc(t)+'">'+esc(t)+'</span>'}).join('')}
+  var TAG_LABEL={Check:'Reshoot or duplicate?'};
+  function tagsHtml(tags){return (tags||[]).map(function(t){return '<span class="tag '+esc(t)+'">'+esc(TAG_LABEL[t]||t)+'</span>'}).join('')}
   /* Forgiving word search: ignores case, punctuation and small typos, matches word starts and common short forms. */
   var ABBR={rd:'road',st:'street',str:'street',ave:'avenue',av:'avenue',hse:'house',bldg:'building',htl:'hotel',mkt:'market',hosp:'hospital',sch:'school',apt:'apartment',apts:'apartments',est:'estate',ext:'exterior',int:'interior',estb:'establishing',broll:'broll'};
   function words(t){return String(t||'').toLowerCase().replace(/['’]/g,'').replace(/b[\s-]?roll/g,'broll').split(/[^a-z0-9]+/).filter(Boolean).map(function(w){w=ABBR[w]||w;return w.length>3&&/s$/.test(w)&&!/ss$/.test(w)?w.slice(0,-1):w})}
@@ -104,7 +119,7 @@
   /* One row per time a scene was shot. Repeats tagged Reshoot are numbered: Reshoot, Reshoot 2 ... */
   function takes(){
     var by={};
-    daysAsc().forEach(function(d){entriesOf(d).forEach(function(s){var k=keyOf(s.ep,s.sc);(by[k]=by[k]||[]).push({key:k,ep:+s.ep,day:d,note:s.note,tags:s.tags})})});
+    daysAsc().forEach(function(d){entriesOf(d).forEach(function(s){if(s.tags.indexOf('Duplicate')>=0)return;var k=keyOf(s.ep,s.sc);(by[k]=by[k]||[]).push({key:k,ep:+s.ep,day:d,note:s.note,tags:s.tags})})});
     var out=[];
     Object.keys(by).sort(cmpKey).forEach(function(k){
       var n=0;by[k].forEach(function(t){if(t.tags.indexOf('Reshoot')>=0){n++;t.ext=n>1?'Reshoot '+n:'Reshoot'}else t.ext='';out.push(t)});
@@ -147,7 +162,7 @@
       if(!hasScene){
         if(/re-?shoot/i.test(line)){mode='shot';secTag='Reshoot';return}
         if(/pulled/i.test(line)){mode='shot';secTag='Pulled';return}
-        if(/dropped|not shot|moved|carried|postponed|cancel/i.test(line)){mode='skip';secTag='';return}
+        if(/dropped|not shot|already|moved|carried|postponed|cancel/i.test(line)){mode='skip';secTag='';return}
         if(/scenes?/i.test(line)){mode='shot';secTag='';return}
       }
       if((m=/^([a-z][a-z ]{1,24}?)\s*[:\-]\s*(\d{1,2}[:.]\d{2}\s*[ap]\.?m\.?)\s*$/i.exec(line))){
@@ -172,7 +187,7 @@
     if(out.day==null)out.warnings.push('No shoot day number found. Type it in below.');
     if(!out.iso)out.warnings.push('Could not read the date. Pick it below.');
     if(!out.shot.length)out.warnings.push('No scenes found. Scenes must be written as episode/scene, for example 7/4.');
-    if(out.ignored.length)out.warnings.push('Not logged, because the report lists them as not shot: '+out.ignored.join(', ')+'.');
+    if(out.ignored.length)out.warnings.push('Not logged, because the report lists them as not shot or already shot: '+out.ignored.join(', ')+'.');
     return out;
   }
   function locQuery(){var e=document.getElementById('loc');return e?e.value.trim():''}
@@ -216,15 +231,18 @@
       +'</ul></div>';
   }
 
+  function seasonSeg(){
+    return '<div class="seg" role="group" aria-label="Season">'+[1,2,3,4].map(function(n){return '<button type="button" data-season="'+n+'" aria-pressed="'+(ui.season===n)+'"><span class="hide-xs">Season </span><span class="show-xs">S</span>'+n+'</button>'}).join('')+'</div>';
+  }
   function renderControls(){
-    if(ui.view==='post'&&!isEditor())ui.view='scenes';
-    var vs=[['scenes','Scenes'],['days','Daily reports']];if(isEditor())vs.push(['post','Post production']);
+    if((ui.view==='post'&&!isEditor())||(ui.view==='admin'&&!isAdmin()))ui.view='scenes';
+    var vs=[['scenes','Scenes'],['days','Daily reports']];if(isEditor())vs.push(['post','Post production']);if(isAdmin())vs.push(['admin','Admin']);
     document.getElementById('views').innerHTML=vs.map(function(v){return '<button type="button" data-view="'+v[0]+'" aria-pressed="'+(ui.view===v[0])+'">'+v[1]+'</button>'}).join('');
-    var srch=document.querySelector('.search');if(srch)srch.hidden=ui.view==='post';
+    var srch=document.querySelector('.search');if(srch)srch.hidden=ui.view==='post'||ui.view==='admin';
     var f=document.getElementById('filters');
-    if(ui.view==='post'){var cs=curSeason();f.innerHTML='<div class="seg" role="group" aria-label="Season">'+[1,2,3,4].map(function(s){return '<button type="button" data-season="'+s+'" aria-pressed="'+(cs===s)+'"><span class="hide-xs">Season </span><span class="show-xs">S</span>'+s+'</button>'}).join('')+'</div>';return}
+    if(ui.view==='post'){f.innerHTML=seasonSeg();return}
     if(ui.view!=='scenes'){f.innerHTML='';return}
-    f.innerHTML='<label for="f-show">Show</label><select id="f-show"><option value="all">All scenes</option><option value="todo"'+(ui.show==='todo'?' selected':'')+'>Not shot yet</option><option value="Pulled"'+(ui.show==='Pulled'?' selected':'')+'>Pulled</option><option value="Reshoot"'+(ui.show==='Reshoot'?' selected':'')+'>Reshoots</option></select>';
+    f.innerHTML=seasonSeg()+'<label for="f-show" class="sr">Show</label><select id="f-show"><option value="all">All scenes</option><option value="todo"'+(ui.show==='todo'?' selected':'')+'>Not shot yet</option><option value="Check"'+(ui.show==='Check'?' selected':'')+'>Needs a check</option><option value="Pulled"'+(ui.show==='Pulled'?' selected':'')+'>Pulled</option><option value="Reshoot"'+(ui.show==='Reshoot'?' selected':'')+'>Reshoots</option></select>';
   }
 
   function row(t,hit,showEp){
@@ -232,30 +250,35 @@
     return '<tr'+(hit===t.key?' class="hit"':'')+'><td class="sc">'+esc(t.key)+(t.ext?'<span class="ext">'+esc(t.ext)+'</span>':'')+'</td><td class="when">'+esc(dayRef(t.day))+' '+logLink(t.day,'Log')+'<div class="sub show-sm">'+esc(t.day.location||'')+(other.length||t.note?'<br>':'')+tagsHtml(other)+(t.note?'<span class="muted">'+esc(t.note)+'</span>':'')+'</div></td><td class="loc hide-sm">'+esc(t.day.location||'')+'</td><td class="note hide-sm">'+tagsHtml(other)+(t.note?'<span class="muted">'+esc(t.note)+'</span>':'')+'</td></tr>';
   }
   var HEAD='<thead><tr><th>Scene</th><th>Shot on</th><th class="hide-sm">Location</th><th class="hide-sm">Notes</th></tr></thead>';
+  /* Scenes, one season at a time: 13 episodes, numbered 1 to 52 the same way as Post production. */
   function renderScenes(){
     var q=parseQuery(),all=takes(),rows=all,notShot=ui.show==='todo';
     if(ui.show!=='all'&&!notShot)rows=rows.filter(function(t){return t.tags.indexOf(ui.show)>=0});
     var hit=null,only=null;
     if(q&&q.type==='scene'){only=+q.key.split('/')[0];ui.openEp=only;hit=q.key;if(!all.some(function(t){return t.key===q.key}))return ''}
     else if(q&&q.type==='ep'){only=q.ep;ui.openEp=q.ep}
-    if(only!=null)rows=rows.filter(function(t){return t.ep===only});
-    var by={},eps=[];
-    rows.forEach(function(t){if(!by[t.ep]){by[t.ep]=[];eps.push(t.ep)}by[t.ep].push(t)});
-    /* Every episode with a script is listed, even before anything is shot. */
-    var known={};Object.keys(SCENE_COUNT).concat(Object.keys(state.scripts||{})).forEach(function(k){known[k]=1});
-    if(ui.show==='all'||notShot)Object.keys(known).forEach(function(k){k=+k;if((only==null||only===k)&&!by[k]){by[k]=[];eps.push(k)}});
+    var by={};rows.forEach(function(t){(by[t.ep]=by[t.ep]||[]).push(t)});
+    var season=only!=null&&only>=1&&only<=EPISODES?seasonOf(only):ui.season;
+    var eps=only!=null?[only]:seasonEps(season);
     if(notShot)eps=eps.filter(function(ep){var pr=progress(ep,all);return pr&&pr.left.length});
-    eps.sort(function(a,b){return a-b});
+    else if(ui.show!=='all')eps=eps.filter(function(ep){return by[ep]&&by[ep].length});
+    var a=(season-1)*PER_SEASON+1,b=season*PER_SEASON,tot=0,done=0,scripted=0;
+    seasonEps(season).forEach(function(ep){var pr=progress(ep,all);if(pr){tot+=pr.total;done+=pr.shot;scripted++}});
+    var head='<div class="seasonhead"><b>Season '+season+'</b><span class="muted">Episodes '+a+' to '+b+(scripted?' \u00b7 '+done+' of '+tot+' scenes shot in the '+scripted+' episode'+(scripted===1?'':'s')+' with a script':' \u00b7 no scripts in Drive yet')+'</span></div>';
+    if(only!=null&&(only<1||only>EPISODES))head='';
     if(!eps.length){
-      var msg=notShot?'Every scene in the scripts has been shot.':(state.days.length?'No scenes match this filter.':'No reports logged yet. Add the first daily report to start the list.');
-      return '<div class="tablewrap"><p class="empty">'+esc(msg)+'</p></div>';
+      var msg=notShot?'Every scene in the Season '+season+' scripts has been shot.':'Nothing in Season '+season+' matches this filter.';
+      return '<div class="tablewrap">'+head+'<p class="empty">'+esc(msg)+'</p></div>';
     }
-    var html='<div class="tablewrap"><table>'+(notShot?'':HEAD)+'<tbody>';
+    var html='<div class="tablewrap">'+head+'<table>'+(notShot?'':HEAD)+'<tbody>';
     eps.forEach(function(ep){
-      var g=by[ep],open=ui.openEp===ep,pr=progress(ep,all),sc=scriptFor(ep),sub;
+      var g=by[ep]||[],open=ui.openEp===ep,pr=progress(ep,all),sc=scriptFor(ep),sub;
       if(pr)sub='<span class="prog"><b>'+pr.shot+'</b> of '+pr.total+' shot'+(pr.left.length?'':' ✓')+'</span>';
-      else{var u={};g.forEach(function(x){u[x.key]=1});var n=Object.keys(u).length;sub='<span class="prog">'+n+' scene'+(n===1?'':'s')+' shot</span>'}
-      html+='<tr class="grp'+(open?' open':'')+'"><td colspan="4"><div class="grprow"><button type="button" class="grpbtn" data-ep="'+ep+'" aria-expanded="'+open+'">Episode '+ep+sub+'</button>'
+      else if(g.length){var u={};g.forEach(function(x){u[x.key]=1});var n=Object.keys(u).length;sub='<span class="prog">'+n+' scene'+(n===1?'':'s')+' shot \u00b7 no script yet</span>'}
+      else sub='<span class="prog noscript">No script in Drive yet</span>';
+      var checks=g.filter(function(t){return t.tags.indexOf('Check')>=0}).length;
+      html+='<tr class="grp'+(open?' open':'')+(pr||g.length?'':' empty')+'"><td colspan="4"><div class="grprow"><button type="button" class="grpbtn" data-ep="'+ep+'" aria-expanded="'+open+'">Episode '+ep+sub+'</button>'
+        +(checks?'<span class="needcheck">'+checks+' to check</span>':'')
         +(pr&&pr.left.length?'<span class="togo">'+pr.left.length+' to shoot</span>':'')
         +(sc?'<a class="scriptlink" href="'+esc(sc.url)+'" target="_blank" rel="noopener" title="'+esc(sc.name)+'">Script ↗</a>':'')
         +'<button type="button" class="grpfill" data-ep="'+ep+'" tabindex="-1" aria-hidden="true"><span class="chev">›</span></button></div>'
@@ -265,7 +288,7 @@
       if(pr&&pr.left.length)html+='<tr class="left"><td colspan="4"><span class="lbl">Not shot yet</span>'+pr.left.map(function(n){return '<span class="chip">'+ep+'/'+n+'</span>'}).join('')+'</td></tr>';
       if(!notShot){
         if(g.length)html+=g.map(function(t){return row(t,hit)}).join('');
-        else html+='<tr><td colspan="4" class="muted">Nothing from Episode '+ep+' is in the reports logged so far.</td></tr>';
+        else html+='<tr><td colspan="4" class="muted">'+(sc?'Nothing from Episode '+ep+' is in the reports logged so far.':'No script for Episode '+ep+' in the Scripts folder yet, and nothing logged. Name the file like EPISODE '+ep+'.pdf and it appears within 30 minutes, or use Check Drive now.')+'</td></tr>';
       }
     });
     return html+'</tbody></table></div>';
@@ -321,7 +344,7 @@
   function shiftLabel(x){if(x>0&&x%7===0)return (x/7)+' week break before';return x>0?x+' days later':(-x)+' days early'}
   function movedCount(){var c=0;for(var n=2;n<=EPISODES;n++)if(shiftOf(n))c++;return c}
   function nextEp(){if(!post.tx)return 0;var t=todayIso();for(var n=1;n<=EPISODES;n++)if(txOf(n)>=t)return n;return EPISODES+1}
-  function curSeason(){if(post.season)return post.season;var n=nextEp();return n&&n<=EPISODES?Math.ceil(n/PER_SEASON):1}
+  function curSeason(){return ui.season}
   function txHtml(iso){return iso?'<span class="txdate"><span class="wd">'+esc(weekday(iso).slice(0,3))+'</span> '+esc(fmtDate(iso))+'</span>':'<span class="tbc">TBC</span>'}
   function trailerUrl(u){return /^https:\/\/[^\s"'<>]+$/.test(u||'')?u:''}
 
@@ -333,6 +356,7 @@
     }
     var s=curSeason(),a=(s-1)*PER_SEASON+1,b=s*PER_SEASON,t=todayIso(),nx=nextEp();
     var html='<div class="txbar"><div class="txfld"><label for="tx">Episode 1 TX</label><input id="tx" type="date" value="'+esc(post.tx)+'"></div>'
+      +'<button type="button" class="btn small exportbtn" data-act="export"><span aria-hidden="true">\u2913</span> Export to Excel</button>'
       +'<p class="muted">'+(post.tx?'One episode a week, every '+esc(weekday(post.tx))+(movedCount()?', with '+movedCount()+' episode'+(movedCount()===1?'':'s')+' moved':'')+'. Episode 52 airs '+esc(weekday(txOf(EPISODES)).slice(0,3)+' '+fmtDate(txOf(EPISODES)))+'.'
         :'Not confirmed by the broadcaster yet. Set it here and all 52 dates fill in, one week apart.')+'</p></div>';
     if(post.err)html+='<p class="sync err">'+esc(postErrText(post.err))+'</p>';
@@ -385,7 +409,7 @@
       +'<button type="submit" class="btn small primary">Add</button></form>';
   }
   function postErrText(code){
-    if(code==='old')return 'Post production needs the latest Google robot (version 5). Paste the new Code.gs and deploy a New version.';
+    if(code==='old'||code==='old_robot')return ERR.old_robot;
     return ERR[code]||ERR.server;
   }
   function cachePost(){try{localStorage.setItem('njw-post',JSON.stringify({tx:post.tx,eps:post.eps,at:post.at}))}catch(e){}}
@@ -403,14 +427,15 @@
     if(clearForm){var f=main.querySelector('form.dropadd [name="sc"]');if(f)f.focus()}
   }
   function applyPost(r){post.tx=r.tx||'';post.eps=r.eps||{};post.loaded=true;post.err='';post.at=Date.now();cachePost()}
-  function loadPost(){
+  /* quiet: the 30-second background refresh, which must not keep a sign-in alive. */
+  function loadPost(quiet){
     if(!isEditor()||post.loading)return;
     post.loading=true;var ver=post.ver||0;
-    callScript({action:'post'}).then(function(r){
+    callScript({action:'post'},quiet).then(function(r){
       post.loading=false;
       if(!isEditor()){renderAll();return}
       if((post.ver||0)!==ver)return;            /* a save finished meanwhile; its answer is newer */
-      if(r.ok)applyPost(r);else post.err=r.error==='bad_request'?'old':r.error;
+      if(r.ok)applyPost(r);else if(r.error!=='network'||!post.loaded)post.err=r.error==='bad_request'?'old':r.error;
       renderPostKeep();
     });
   }
@@ -449,6 +474,139 @@
       if(r&&r.ok)toast(warn?'Added. Note: scene '+sc+' is not in the Episode '+n+' script.':n+'/'+sc+' added to dropped scenes');
       var b2=document.querySelector('form.dropadd button');if(b2){b2.disabled=false;b2.textContent='Add'}
     });
+  }
+
+  /* ---------- repeated scenes: reshoot or duplicate ---------- */
+  function repeatList(){
+    var pending=[],decided=[];
+    daysAsc().forEach(function(d){(d.shot||[]).forEach(function(x){
+      if(!x.firstDay)return;
+      var it={key:keyOf(x.ep,x.sc),day:d,first:dayByNum(x.firstDay),note:x.note,decided:x.decided};
+      if(x.tags.indexOf('Check')>=0)pending.push(it);else if(x.decided)decided.push(it);
+    })});
+    return {pending:pending,decided:decided};
+  }
+  function renderRepeats(){
+    if(ui.view!=='scenes'&&ui.view!=='days')return '';
+    var r=repeatList();if(!r.pending.length&&!r.decided.length)return '';
+    var ed=isEditor(),html='<section class="repeats'+(r.pending.length?' pending':'')+'" aria-label="Repeated scenes">';
+    if(r.pending.length){
+      html+='<div class="rphead"><b>'+r.pending.length+' repeated scene'+(r.pending.length===1?'':'s')+' to check</b>'
+        +'<span>Logged on two days. <b>Reshoot</b>: shot again on purpose, both days count. <b>Duplicate</b>: logged twice by mistake, only the first day counts.</span></div><ul class="rplist">'
+        +r.pending.map(function(it){
+          return '<li><div class="rpwhat"><span class="mono rpsc">'+esc(it.key)+'</span><span>First on <b>'+esc(it.first?dayRef(it.first):'an earlier day')+'</b>, again on <b>'+esc(dayRef(it.day))+'</b>'+(it.note?' <span class="muted">('+esc(it.note)+')</span>':'')+'</span></div>'
+            +(ed?'<div class="rpacts"><button type="button" class="btn small rpre" data-decide="Reshoot" data-scene="'+esc(it.key)+'" data-day="'+it.day.day+'">Reshoot</button><button type="button" class="btn small rpdup" data-decide="Duplicate" data-scene="'+esc(it.key)+'" data-day="'+it.day.day+'">Duplicate</button></div>'
+              :'<span class="muted rpsign">Sign in to decide</span>')+'</li>';
+        }).join('')+'</ul>';
+    }
+    if(r.decided.length){
+      html+='<button type="button" class="linkbtn rptoggle" data-act="show-decided" aria-expanded="'+!!ui.showDecided+'">'+(ui.showDecided?'Hide':'Show')+' '+r.decided.length+' decided repeat'+(r.decided.length===1?'':'s')+'</button>';
+      if(ui.showDecided)html+='<ul class="rplist decided">'+r.decided.map(function(it){
+        return '<li><div class="rpwhat"><span class="mono rpsc">'+esc(it.key)+'</span><span>Day '+it.day.day+(it.first?' (first on Day '+it.first.day+')':'')+'</span>'+tagsHtml([it.decided.decision])+'<span class="muted">'+esc(it.decided.by)+(it.decided.when?', '+esc(it.decided.when):'')+'</span></div>'
+          +(ed?'<div class="rpacts"><button type="button" class="btn small" data-decide="" data-scene="'+esc(it.key)+'" data-day="'+it.day.day+'">Undo</button></div>':'')+'</li>';
+      }).join('')+'</ul>';
+    }
+    return html+'</section>';
+  }
+  function decideRepeat(scene,day,decision){
+    if(!isEditor()){openLogin();return}
+    var k=scene+'@'+day,before=state.repeats[k];
+    if(decision)state.repeats[k]={decision:decision,by:auth.name,when:'now'};else delete state.repeats[k];
+    state.days=buildDays(state.rows,[]);renderMain();
+    callScript({action:'decide',scene:scene,day:day,decision:decision}).then(function(r){
+      if(!r.ok){if(before)state.repeats[k]=before;else delete state.repeats[k];state.days=buildDays(state.rows,[]);renderMain();toast(errText(r));return}
+      applyServerRows(r);
+      toast(decision?scene+' on Day '+day+' marked '+decision:'Decision undone for '+scene+' on Day '+day);
+    });
+  }
+  function checkDrive(){
+    if(!isEditor()){openLogin();return}
+    toast('Checking Drive for new log sheets and scripts. This can take a minute.');
+    callScript({action:'drive'}).then(function(r){
+      if(!r.ok){toast(errText(r));return}
+      applyServerRows(r);
+      toast('Drive checked: '+(r.logs||0)+' log sheet'+(r.logs===1?'':'s')+' attached, '+(r.scripts||0)+' episode scripts found');
+    });
+  }
+
+  /* ---------- post production export (Excel) ---------- */
+  function loadXlsx(){
+    if(window.XLSX)return Promise.resolve(window.XLSX);
+    return new Promise(function(res,rej){var sc=document.createElement('script');sc.src='vendor/xlsx.full.min.js';sc.onload=function(){window.XLSX?res(window.XLSX):rej(new Error('xlsx'))};sc.onerror=function(){rej(new Error('xlsx'))};document.head.appendChild(sc)});
+  }
+  function exportPost(){
+    if(!post.loaded){toast('Post production has not loaded yet.');return}
+    loadXlsx().then(function(X){
+      var rows=[['Season','Episode','TX date','TX day','Moved','Editor','Sound','Trailer link','Dropped scenes']],drops=[['Season','Episode','Scene','Reason','Note']];
+      for(var n=1;n<=EPISODES;n++){
+        var e=post.eps[n]||{},tx=txOf(n),sh=shiftOf(n),dr=(e.dropped||[]).slice().sort(function(x,y){return cmpKey(n+'/'+x.sc,n+'/'+y.sc)});
+        rows.push([seasonOf(n),n,tx?fmtDate(tx):'TBC',tx?weekday(tx):'',sh?shiftLabel(sh):'',e.editor||'',e.sound||'',e.trailer||'',dr.length]);
+        dr.forEach(function(d){drops.push([seasonOf(n),n,n+'/'+d.sc,WHY[d.why]||d.why,d.note||''])});
+      }
+      var info=[['Njoro wa Uba: post production backup'],[''],['Exported',new Date().toLocaleString('en-GB')],['Exported by',auth.name],['Episode 1 TX',post.tx?fmtDate(post.tx)+' ('+weekday(post.tx)+')':'Not confirmed'],['Episodes',EPISODES+' in '+SEASONS+' seasons of '+PER_SEASON],['Moved episodes',movedCount()]];
+      var wb=X.utils.book_new();
+      var w1=X.utils.aoa_to_sheet(rows);w1['!cols']=[{wch:7},{wch:8},{wch:11},{wch:10},{wch:20},{wch:22},{wch:22},{wch:44},{wch:14}];w1['!freeze']={xSplit:0,ySplit:1};
+      var w2=X.utils.aoa_to_sheet(drops);w2['!cols']=[{wch:7},{wch:8},{wch:8},{wch:18},{wch:50}];
+      var w3=X.utils.aoa_to_sheet(info);w3['!cols']=[{wch:16},{wch:40}];
+      X.utils.book_append_sheet(wb,w1,'Post production');X.utils.book_append_sheet(wb,w2,'Dropped scenes');X.utils.book_append_sheet(wb,w3,'About');
+      X.writeFile(wb,'Njoro wa Uba Post Production '+todayIso()+'.xlsx');
+      callScript({action:'note',what:'export'});
+      toast('Excel file saved to your downloads');
+    }).catch(function(){toast('Could not build the Excel file. Check your connection and try again.')});
+  }
+
+  /* ---------- admin: team and recent activity ---------- */
+  function loadAdmin(){
+    if(!isAdmin())return;
+    admin.err='';
+    callScript({action:'users'}).then(function(r){if(r.ok){admin.users=r.users;admin.idle=r.idle}else admin.err=errText(r);if(ui.view==='admin')renderMain()});
+    callScript({action:'activity'},true).then(function(r){if(r.ok){admin.activity=r.rows;admin.private=r.private}else admin.err=errText(r);if(ui.view==='admin')renderMain()});
+  }
+  function renderAdmin(){
+    if(!isAdmin())return '';
+    var u=admin.users,html='';
+    if(admin.err)html+='<p class="sync err">'+esc(admin.err)+'</p>';
+    html+='<section class="tablewrap adm"><div class="seasonhead"><b>Team</b><span class="muted">Who can sign in. Sign-ins end after '+esc(admin.idle||auth.idle||30)+' minutes without use.</span></div>';
+    if(!u)html+='<p class="empty">Loading team\u2026</p>';
+    else html+='<table class="admtbl"><thead><tr><th>Name</th><th>Role</th><th class="hide-sm">Last sign-in</th><th></th></tr></thead><tbody>'+u.map(function(x){
+      var me=x.name.toLowerCase()===auth.name.toLowerCase(),k=esc(x.name);
+      var row='<tr><td><b>'+k+'</b>'+(me?' <span class="muted">(you)</span>':'')+'</td><td>'+(me?(x.role==='admin'?'Admin':'Team'):'<select data-role-for="'+k+'" aria-label="Role for '+k+'"><option value="member"'+(x.role!=='admin'?' selected':'')+'>Team</option><option value="admin"'+(x.role==='admin'?' selected':'')+'>Admin</option></select>')+'</td><td class="hide-sm muted">'+esc(x.last||'Never')+'</td>'
+        +'<td class="admacts">'+(me?'':'<button type="button" class="btn small" data-act="adm-reset" data-name="'+k+'">Reset password</button><button type="button" class="btn small" data-act="adm-remove" data-name="'+k+'">Remove</button>')+'</td></tr>';
+      if(admin.resetFor===x.name)row+='<tr class="admform"><td colspan="4"><form data-form="reset" data-name="'+k+'"><label>New password for '+k+'<input name="pw" type="text" minlength="6" required autocomplete="off"></label><button type="submit" class="btn small primary">Save password</button><button type="button" class="btn small" data-act="adm-cancel">Cancel</button><span class="muted">Tell them in person. They can change it after signing in.</span></form></td></tr>';
+      if(admin.removeFor===x.name)row+='<tr class="admform"><td colspan="4"><span>Remove <b>'+k+'</b>? They are signed out at once.</span> <button type="button" class="btn small danger" data-act="adm-remove-yes" data-name="'+k+'">Remove</button><button type="button" class="btn small" data-act="adm-cancel">Keep</button></td></tr>';
+      return row;
+    }).join('')+'</tbody></table>';
+    html+='<form class="addusr" data-form="add"><b>Add someone</b><input name="name" placeholder="Name, e.g. Wanjiru K" maxlength="40" required autocomplete="off" aria-label="Name"><input name="pw" type="text" placeholder="First password (6+)" minlength="6" required autocomplete="off" aria-label="First password"><select name="role" aria-label="Role"><option value="member">Team</option><option value="admin">Admin</option></select><button type="submit" class="btn small primary">Add</button></form></section>';
+    var act=admin.activity;
+    html+='<section class="tablewrap adm"><div class="seasonhead"><b>Recent activity</b><span class="muted">Sign-ins and changes, newest first. Also kept in the Activity tab of the Google Sheet.</span><button type="button" class="linkbtn" data-act="adm-refresh">Refresh</button></div>';
+    if(admin.private===false)html+='<p class="warnbar">The Google Sheet is still shared with anyone who has the link, so the Activity tab is off and only the last few entries are kept. In the Sheet: Share > General access > <b>Restricted</b>.</p>';
+    if(!act)html+='<p class="empty">Loading activity\u2026</p>';
+    else if(!act.length)html+='<p class="empty">Nothing yet.</p>';
+    else html+='<table class="acttbl"><thead><tr><th>When</th><th>Who</th><th>What</th><th class="hide-sm">Details</th></tr></thead><tbody>'+act.map(function(r){
+      return '<tr class="'+(/fail|block/i.test(r[2])?'bad':'')+'"><td class="mono when">'+esc(r[0])+'</td><td>'+esc(r[1])+'</td><td>'+esc(r[2])+'<div class="sub show-sm">'+esc(r[3]||'')+'</div></td><td class="hide-sm muted">'+esc(r[3]||'')+'</td></tr>';
+    }).join('')+'</tbody></table>';
+    return html+'</section>';
+  }
+  function adminDone(r,msg){
+    admin.busy=false;
+    if(!r.ok){toast(errText(r));return false}
+    if(r.users)admin.users=r.users;
+    admin.resetFor=null;admin.removeFor=null;renderMain();if(msg)toast(msg);
+    callScript({action:'activity'},true).then(function(x){if(x.ok){admin.activity=x.rows;admin.private=x.private;if(ui.view==='admin')renderMain()}});
+    return true;
+  }
+  function adminAction(act,b){
+    var name=b.dataset.name;
+    if(act==='adm-refresh'){admin.activity=null;renderMain();loadAdmin();return}
+    if(act==='adm-cancel'){admin.resetFor=null;admin.removeFor=null;renderMain();return}
+    if(act==='adm-reset'){admin.resetFor=name;admin.removeFor=null;renderMain();var i=document.querySelector('form[data-form="reset"] input');if(i)i.focus();return}
+    if(act==='adm-remove'){admin.removeFor=name;admin.resetFor=null;renderMain();return}
+    if(act==='adm-remove-yes'){b.disabled=true;callScript({action:'userRemove',name:name}).then(function(r){adminDone(r,name+' removed')});return}
+  }
+  function onAdminSubmit(f){
+    var kind=f.dataset.form,btn=f.querySelector('button[type="submit"]');if(btn)btn.disabled=true;
+    if(kind==='add'){var nm=f.name.value.trim();callScript({action:'userAdd',name:nm,password:f.pw.value,role:f.role.value}).then(function(r){if(btn)btn.disabled=false;if(adminDone(r,nm+' added. Give them their password in person.'))f.reset()});return}
+    if(kind==='reset'){var who=f.dataset.name;callScript({action:'userReset',name:who,password:f.pw.value}).then(function(r){if(btn)btn.disabled=false;adminDone(r,'Password reset for '+who+'. Their old sign-ins have ended.')});return}
   }
 
   /* ---------- loading from the Google Sheet ---------- */
@@ -498,13 +656,23 @@
   /* sheetRows: the Reports tab, in sheet order. formRows: Google Form replies, if a form is linked.
      The report that comes last wins: lower rows beat higher rows, form replies beat the sheet. */
   /* Scripts tab: Episode | Script | Link | Updated, written by the Apps Script. */
-  function scriptsOf(res){
-    var out={};if(!res||res.status==='error'||!res.table)return out;
-    var labels=(res.table.cols||[]).map(function(c){return String(c.label||'').toLowerCase()});
-    var iE=labels.indexOf('episode'),iL=labels.indexOf('link'),iN=labels.indexOf('script'),iS=labels.indexOf('scenes');
-    if(iE<0||iL<0)return out;
-    (res.table.rows||[]).forEach(function(r){var c=r.c||[],ep=parseInt(cellText(c[iE]),10),url=cellText(c[iL]).trim();
-      if(ep>0&&safeUrl(url))out[ep]={url:url,name:iN>=0?cellText(c[iN]):'',scenes:iS>=0?cellText(c[iS]).split(/[\s,]+/).filter(function(x){return /^\d{1,3}[A-Za-z]?$/.test(x)}):[]}});
+  /* Scripts tab rows: Episode | Script | Link | Updated | Scenes, written by the robot. */
+  function scriptsFromRows(rows){
+    var out={};(rows||[]).forEach(function(v){var ep=parseInt(v[0],10),url=String(v[2]||'').trim();
+      if(ep>0&&safeUrl(url))out[ep]={url:url,name:String(v[1]||''),scenes:String(v[4]||'').split(/[\s,]+/).filter(function(x){return /^\d{1,3}[A-Za-z]?$/.test(x)})}});
+    return out;
+  }
+  function gvizRows(res,want){
+    if(!res||res.status==='error'||!res.table)return null;
+    var labels=(res.table.cols||[]).map(function(c){return String(c.label||'').toLowerCase().trim()});
+    var idx=want.map(function(w){return labels.indexOf(w)});if(idx[0]<0)return null;
+    return (res.table.rows||[]).map(function(r){var c=r.c||[];return idx.map(function(i){return i>=0?cellText(c[i]):''})});
+  }
+  function scriptsOf(res){return scriptsFromRows(gvizRows(res,['episode','script','link','updated','scenes'])||[])}
+  /* Repeats tab rows: Scene | Day | Decision | By | When. Key "7/16@10". */
+  function repeatsFromRows(rows){
+    var out={};(rows||[]).forEach(function(v){var m=/^(\d{1,3})\s*\/\s*(\d{1,3}[A-Za-z]?)$/.exec(String(v[0]||'').trim()),d=parseInt(v[1],10);
+      if(m&&d>0&&(v[2]==='Reshoot'||v[2]==='Duplicate'))out[keyOf(m[1],m[2])+'@'+d]={decision:v[2],by:String(v[3]||''),when:String(v[4]||'')}});
     return out;
   }
   function buildDays(sheetRows,formRows){
@@ -518,49 +686,85 @@
       var p=parseReport(r.raw);if(!p.day||!p.shot.length)return;
       var d={day:p.day,date:p.date,iso:p.iso,cast:p.cast,location:p.location,times:p.times,pages:p.pages,shot:p.shot,pulled:[],raw:r.raw.trim(),log:safeUrl(r.log)};
       var prev=byDay[p.day];if(prev&&!d.log)d.log=prev.log;
+      if(!d.log&&LOG_SEED[p.day]&&LOG_SEED[p.day].iso===p.iso)d.log=LOG_SEED[p.day].url;
       byDay[p.day]=d;
     });
     var days=Object.keys(byDay).map(function(k){return byDay[k]}).sort(function(a,b){return a.day-b.day});
-    /* A scene that shows up again on a later day is a reshoot, unless the line says it was completed. */
-    var seen={};
+    /* A scene that shows up again on a later day needs a person to say what it is:
+       a Reshoot (shot again, both takes count) or a Duplicate (logged twice by mistake).
+       Until then it is tagged Check. A line that says "reshoot" or "completed" needs no check. */
+    var seen={},dec=state.repeats||{};
     days.forEach(function(d){
       d.shot.forEach(function(s){
         var k=keyOf(s.ep,s.sc);
+        s.tags=s.tags.filter(function(t){return t!=='Check'&&t!=='Duplicate'});s.firstDay=0;
         if(seen[k]&&s.tags.indexOf('Reshoot')<0&&s.tags.indexOf('Completed')<0){
           if(/\bcomplet|\bcont(inued)?\b|\bfinish/i.test(s.note)){s.tags.push('Completed');s.note=s.note.replace(/\b(completed?|continued|cont|finished)\b/ig,'').replace(/^[\s\-:,]+|[\s\-:,]+$/g,'')}
-          else s.tags.push('Reshoot');
+          else{
+            s.firstDay=seen[k];var x=dec[k+'@'+d.day];
+            if(x&&x.decision==='Reshoot'){s.tags.push('Reshoot');s.decided=x}
+            else if(x&&x.decision==='Duplicate'){s.tags.push('Duplicate');s.decided=x}
+            else{s.tags.push('Check');s.decided=null}
+          }
         }
-        seen[k]=1;
+        if(!seen[k])seen[k]=d.day;
       });
     });
     return days;
   }
-  function saveCache(){try{localStorage.setItem(CACHE_KEY,JSON.stringify({days:state.days,scripts:state.scripts,fetchedAt:state.fetchedAt}))}catch(e){}}
-  function loadCache(){try{var c=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');if(c&&c.days){state.days=c.days;state.scripts=c.scripts||{};state.fetchedAt=c.fetchedAt}}catch(e){}}
+  function saveCache(){try{localStorage.setItem(CACHE_KEY,JSON.stringify({rows:state.rows,scripts:state.scripts,repeats:state.repeats,fetchedAt:state.fetchedAt}))}catch(e){}}
+  function loadCache(){try{var c=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');if(c&&c.rows){state.rows=c.rows;state.scripts=c.scripts||{};state.repeats=c.repeats||{};state.fetchedAt=c.fetchedAt;state.days=buildDays(state.rows,[])}}catch(e){}}
 
   function sigOf(days){return days.map(function(d){return d.day+':'+d.raw.length+':'+(d.log?1:0)}).join(',')}
   /* After a save the app shows Google's own copy of the sheet straight away. For a couple of
      minutes after that, an older copy of the sheet from the normal reader is not allowed to undo it. */
   var wrote={at:0,sig:''};
-  function applyServerRows(rows){
-    if(!Array.isArray(rows))return false;
-    var list=rows.map(function(v,i){var t=Date.parse(String(v[0]||'').replace(' ','T'));return {raw:String(v[1]||''),log:String(v[2]||'').trim(),time:isNaN(t)?0:t,order:i}});
-    state.days=buildDays(list,[]);state.fetchedAt=Date.now();saveCache();
-    wrote={at:Date.now(),sig:sigOf(state.days)};ui.stale=false;ui.offline=false;ui.error='';
-    renderAll();return true;
+  function reportRows(rows){return (rows||[]).map(function(v,i){var t=Date.parse(String(v[0]||'').replace(' ','T'));return {raw:String(v[1]||''),log:String(v[2]||'').trim(),time:isNaN(t)?0:t,order:i}})}
+  /* Everything the robot sends: reports, scripts and repeat decisions. */
+  function applyData(d,fromWrite){
+    if(!d||!d.ok||!Array.isArray(d.reports))return false;
+    state.rows=reportRows(d.reports);state.scripts=scriptsFromRows(d.scripts);state.repeats=repeatsFromRows(d.repeats);
+    state.days=buildDays(state.rows,[]);state.fetchedAt=Date.now();saveCache();
+    if(fromWrite)wrote={at:Date.now(),sig:sigOf(state.days)};
+    ui.stale=false;ui.offline=false;ui.error='';ui.via='robot';
+    return true;
+  }
+  function applyServerRows(r){
+    if(r&&r.data&&applyData(r.data,true)){renderAll();return true}
+    if(r&&Array.isArray(r.rows)){state.rows=reportRows(r.rows);state.days=buildDays(state.rows,[]);state.fetchedAt=Date.now();saveCache();wrote={at:Date.now(),sig:sigOf(state.days)};renderAll();return true}
+    return false;
+  }
+  /* The robot's public read (version 6 and later). Works even when the Sheet is private. */
+  function robotRead(){
+    if(!SCRIPT_URL)return Promise.reject(new Error('none'));
+    var ctl=window.AbortController?new AbortController():null,t=setTimeout(function(){if(ctl)ctl.abort()},20000);
+    return fetch(SCRIPT_URL+'?read=1&_='+Date.now(),{redirect:'follow',signal:ctl?ctl.signal:undefined})
+      .then(function(r){clearTimeout(t);return r.json()})
+      .then(function(d){if(!d||!d.ok||!(d.version>=6)||!Array.isArray(d.reports))throw new Error('old');return d});
   }
   async function refresh(quiet){
     if(ui.loading){ui.again=true;return}
     ui.loading=true;ui.error='';if(!quiet)renderStatus();
-    var before=sigOf(state.days)+'|'+JSON.stringify(state.scripts),changed=true;
+    var before=sigOf(state.days)+'|'+JSON.stringify(state.scripts)+'|'+JSON.stringify(state.repeats),changed=true;
     try{
-      var results=await Promise.all(TABS.map(function(t,i){return loadTab(t).catch(function(e){return i===0?Promise.reject(e):null})}));
-      if(!results[0]||results[0].status==='error')throw new Error('sheet');
-      var days=buildDays(rowsOf(results[0]),[]);
-      if(!(Date.now()-wrote.at<150000&&sigOf(days)!==wrote.sig))state.days=days;
-      /* If the Scripts tab does not exist yet, Google sends the first tab instead; scriptsOf ignores it. */
-      if(results[1])state.scripts=scriptsOf(results[1]);state.fetchedAt=Date.now();saveCache();
-      changed=before!==sigOf(state.days)+'|'+JSON.stringify(state.scripts)||ui.stale;
+      var d=null;
+      try{d=await robotRead()}catch(e){d=null}
+      if(d){
+        var keep=Date.now()-wrote.at<150000&&sigOf(buildDays(reportRows(d.reports),[]))!==wrote.sig;
+        if(!keep)applyData(d,false);
+      }else{
+        /* Robot not on version 6 yet: read the Sheet directly (only works while it is shared by link). */
+        var results=await Promise.all(TABS.map(function(t,i){return loadTab(t).catch(function(e){return i===0?Promise.reject(e):null})}));
+        if(!results[0]||results[0].status==='error')throw new Error('sheet');
+        var rows=rowsOf(results[0]);
+        /* A missing tab makes Google send the first tab instead; the readers ignore it. */
+        var sc=results[1]?scriptsOf(results[1]):{};if(Object.keys(sc).length)state.scripts=sc;
+        var rp=results[2]?gvizRows(results[2],['scene','day','decision','by','when']):null;if(rp)state.repeats=repeatsFromRows(rp);
+        var days=buildDays(rows,[]);
+        if(!(Date.now()-wrote.at<150000&&sigOf(days)!==wrote.sig)){state.rows=rows.map(function(r){return {raw:r.raw,log:r.log,time:r.time,order:r.order}});state.days=days}
+        state.fetchedAt=Date.now();saveCache();ui.via='sheet';
+      }
+      changed=before!==sigOf(state.days)+'|'+JSON.stringify(state.scripts)+'|'+JSON.stringify(state.repeats)||ui.stale;
       ui.offline=false;ui.stale=false;
     }catch(e){
       ui.offline=!navigator.onLine;ui.stale=true;
@@ -596,12 +800,16 @@
       +'<div class="bar"><div class="seg" role="group" aria-label="View" id="views"></div><div class="filters" id="filters"></div></div>'
       +'<div id="main"></div>'
       +'<p class="foot" id="foot"></p>';
-    document.getElementById('q').addEventListener('input',function(){if(this.value){document.getElementById('loc').value='';ui.view='scenes';renderControls()}renderAnswer();renderMain()});
+    document.getElementById('q').addEventListener('input',function(){if(this.value){document.getElementById('loc').value='';ui.view='scenes';var pq=parseQuery(),pe=pq&&pq.type==='ep'?pq.ep:(pq&&pq.type==='scene'?+pq.key.split('/')[0]:0);if(pe>=1&&pe<=EPISODES)setSeason(seasonOf(pe));renderControls()}renderAnswer();renderMain()});
     document.getElementById('loc').addEventListener('input',function(){if(this.value){document.getElementById('q').value='';ui.view='days';var h=locHits(this.value.trim());ui.openDay=h.length===1?h[0].day:null;renderControls()}renderAnswer();renderMain()});
     var app=document.getElementById('app');
     app.addEventListener('click',onClick);
-    app.addEventListener('change',function(e){if(e.target.id==='f-show'){ui.show=e.target.value;renderMain();return}if(ui.view==='post')onPostChange(e.target)});
-    app.addEventListener('submit',function(e){var f=e.target.closest&&e.target.closest('form.dropadd');if(f){e.preventDefault();onDropAdd(f)}});
+    app.addEventListener('change',function(e){
+      if(e.target.id==='f-show'){ui.show=e.target.value;renderMain();return}
+      if(e.target.dataset&&e.target.dataset.roleFor){var nm=e.target.dataset.roleFor,rl=e.target.value;callScript({action:'userRole',name:nm,role:rl}).then(function(r){adminDone(r,nm+' is now '+(rl==='admin'?'an admin':'on the team'))||renderMain()});return}
+      if(ui.view==='post')onPostChange(e.target);
+    });
+    app.addEventListener('submit',function(e){var f=e.target.closest&&e.target.closest('form.dropadd');if(f){e.preventDefault();onDropAdd(f);return}var af=e.target.closest&&e.target.closest('form[data-form]');if(af){e.preventDefault();onAdminSubmit(af)}});
     app.addEventListener('keydown',function(e){if(e.key==='Enter'&&e.target.matches&&e.target.matches('input.cell')){e.preventDefault();e.target.blur();return}var r=e.target.closest&&e.target.closest('tr.d');if(r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();toggleDay(+r.dataset.day)}});
   }
 
@@ -616,13 +824,17 @@
           +'<button type="button" role="menuitem" data-act="add"><b>Add a day</b><span>Paste one report</span></button>'
           +'<button type="button" role="menuitem" data-act="add-many"><b>Add several days</b><span>Paste many reports at once</span></button>'
           +'<button type="button" role="menuitem" data-act="pick-edit"><b>Update a day</b><span>Fix or replace a report</span></button>'
+          +'<button type="button" role="menuitem" data-act="drive"><b>Check Drive now</b><span>Attach new log sheets and scripts</span></button>'
           +'<button type="button" role="menuitem" data-act="pick-del" class="del"><b>Delete a day</b><span>Take a day out of the tracker</span></button>'
           +'</div>':'')+'</div>':'')
       +'<a class="btn" href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Log sheets ↗</a>'
       +(SCRIPTS_FOLDER?'<a class="btn" href="'+esc(SCRIPTS_FOLDER)+'" target="_blank" rel="noopener">Scripts ↗</a>':'')
-      +(SCRIPT_URL?(signed?'<button type="button" class="btn ghost wide" data-act="logout">Sign out</button>'
-        :'<button type="button" class="btn ghost wide" data-act="login"><span aria-hidden="true">\uD83D\uDD12</span> Team sign-in</button>'):'');
-    document.getElementById('stats').innerHTML+=signed?'<div class="mode">Signed in</div>':'';
+      +(SCRIPT_URL?(signed?'<div class="menuwrap wide"><button type="button" class="btn ghost acct" data-act="acct" aria-haspopup="true" aria-expanded="'+!!ui.acct+'"><span class="who">'+esc(auth.name)+'</span> <span class="caret2" aria-hidden="true">\u25BE</span></button>'
+          +(ui.acct?'<div class="menu" role="menu"><p class="menuhead">Signed in as <b>'+esc(auth.name)+'</b>'+(isAdmin()?' (admin)':'')+'<br><span>Signs out by itself after '+esc(auth.idle||30)+' minutes without use.</span></p>'
+            +'<button type="button" role="menuitem" data-act="pw"><b>Change password</b><span>Pick a new one</span></button>'
+            +'<button type="button" role="menuitem" data-act="logout" class="del"><b>Sign out</b><span>On this device</span></button></div>':'')+'</div>'
+        :'<button type="button" class="btn ghost wide" data-act="login"><span aria-hidden="true">\uD83D\uDD12</span> Sign in</button>'):'');
+    document.getElementById('stats').innerHTML+=signed?'<div class="mode">'+(isAdmin()?'Admin':'Signed in')+'</div>':'';
     document.getElementById('foot').innerHTML='Created by Nicholas Kibathi';
     var hint=document.getElementById('installhint'),dismissed=false;
     try{dismissed=localStorage.getItem('njw-ios-hint')==='1'}catch(e){}
@@ -641,29 +853,41 @@
   }
 
   function toggleDay(day){ui.openDay=ui.openDay===day?null:day;renderMain()}
-  function renderMain(){if(ui.view==='post'){renderPostKeep();return}document.getElementById('main').innerHTML=ui.view==='scenes'?renderScenes():renderDays()}
+  function renderMain(){
+    if(ui.view==='post'){renderPostKeep();return}
+    var m=document.getElementById('main');
+    if(ui.view==='admin'){m.innerHTML=renderAdmin();return}
+    m.innerHTML=renderRepeats()+(ui.view==='scenes'?renderScenes():renderDays());
+  }
   function renderAll(){renderHeader();renderStatus();renderAnswer();renderControls();renderMain()}
 
   function onClick(ev){
     var b=ev.target.closest('button,tr.d');if(!b)return;
     if(b.matches('tr.d')){toggleDay(+b.dataset.day);return}
     if(b.dataset.ep){var e=+b.dataset.ep;ui.openEp=ui.openEp===e?null:e;var q=document.getElementById('q');if(q.value){q.value='';renderAnswer()}renderMain();return}
-    if(b.dataset.view){ui.view=b.dataset.view;try{localStorage.setItem('njw-view',ui.view)}catch(e){}if(ui.view==='post'){var qq=document.getElementById('q'),ll=document.getElementById('loc');if(qq.value||ll.value){qq.value='';ll.value='';renderAnswer()}loadPost()}renderControls();renderMain();return}
-    if(b.dataset.season){post.season=+b.dataset.season;post.openDrop=null;post.openMove=null;renderControls();renderMain();return}
+    if(b.dataset.view){ui.view=b.dataset.view;try{localStorage.setItem('njw-view',ui.view)}catch(e){}if(ui.view==='post'||ui.view==='admin'){var qq=document.getElementById('q'),ll=document.getElementById('loc');if(qq.value||ll.value){qq.value='';ll.value='';renderAnswer()}}if(ui.view==='post')loadPost();if(ui.view==='admin')loadAdmin();renderControls();renderMain();return}
+    if(b.dataset.season){setSeason(+b.dataset.season);post.openDrop=null;post.openMove=null;ui.openEp=null;var q2=document.getElementById('q');if(q2&&q2.value&&ui.view==='scenes'){q2.value='';renderAnswer()}renderControls();renderMain();return}
+    if(b.hasAttribute('data-decide')){decideRepeat(b.dataset.scene,+b.dataset.day,b.dataset.decide);return}
     if(b.dataset.move){var mn=+b.dataset.move;post.openMove=post.openMove===mn?null:mn;post.openDrop=null;renderMain();return}
     if(b.dataset.skip){var sn=+b.dataset.skip;moveTo(sn,isoAdd(txOf(sn),7));return}
     if(b.dataset.unmove){var un=+b.dataset.unmove;moveTo(un,isoAdd(txOf(un-1),7));return}
     if(b.dataset.drop){var dn=+b.dataset.drop;post.openDrop=post.openDrop===dn?null:dn;post.openMove=null;renderMain();if(post.openDrop){var fi=document.querySelector('form.dropadd [name="sc"]');if(fi&&window.matchMedia('(min-width:561px)').matches)fi.focus()}return}
     if(b.dataset.dropdel){savePost({ep:+b.dataset.pep,set:{dropRemove:b.dataset.dropdel}},'');return}
     var act=b.dataset.act;
-    if(act==='menu'){ui.menu=!ui.menu;renderHeader();return}
-    if(ui.menu){ui.menu=false;renderHeader()}
+    if(act==='menu'){ui.menu=!ui.menu;ui.acct=false;renderHeader();return}
+    if(act==='acct'){ui.acct=!ui.acct;ui.menu=false;renderHeader();return}
+    if(ui.menu||ui.acct){ui.menu=false;ui.acct=false;renderHeader()}
+    if(act==='drive'){checkDrive();return}
+    if(act==='pw'){openPassword();return}
+    if(act==='show-decided'){ui.showDecided=!ui.showDecided;renderMain();return}
+    if(act==='export'){exportPost();return}
+    if(act&&act.indexOf('adm-')===0){adminAction(act,b);return}
     if(act==='refresh'){refresh();if(ui.view==='post')loadPost();return}
     if(act==='add-many'){openAdd('',null,true);return}
     if(act==='pick-edit'||act==='pick-del'){openPicker(act==='pick-del');return}
     if(act==='hide-hint'){try{localStorage.setItem('njw-ios-hint','1')}catch(e){}renderHeader();return}
     if(act==='login'){openLogin();return}
-    if(act==='logout'){ed.code='';try{localStorage.removeItem('njw-pass');localStorage.removeItem('njw-post')}catch(e){}post.tx='';post.eps={};post.loaded=false;post.err='';post.openDrop=null;ui.confirmDel=null;if(ui.view==='post')ui.view='scenes';renderAll();toast('Signed out on this device');return}
+    if(act==='logout'){signOut('');return}
     if(act==='add'){openAdd('',null);return}
     if(act==='replace'){var rd=dayByNum(+b.dataset.day);if(rd)openAdd(rd.raw,rd.day);return}
     if(act==='copy'){var cd=dayByNum(+b.dataset.day);if(cd)copyText(cd.raw).then(function(ok){toast(ok?'Day '+cd.day+' report copied':'Could not copy on this phone')});return}
@@ -682,14 +906,59 @@
     return Promise.resolve(legacyCopy(txt));
   }
   function legacyCopy(txt){try{var ta=document.createElement('textarea');ta.value=txt;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();var ok=document.execCommand('copy');ta.remove();return ok}catch(e){return false}}
-  var ERR={wrong_passcode:'That passcode is not right.',not_set_up:'Uploads are not set up on the Google side yet.',no_day:'No shoot day number found in the report.',no_scenes:'No scenes found in the report. Scenes are written as episode/scene, like 7/4.',bad_link:'The log sheet link must be a Google Drive link.',busy:'Someone else is saving right now. Try again in a moment.',not_found:'That day is not in the tracker any more.',network:'No connection to Google. Check your signal and try again.',server:'Google had a problem saving. Try again in a moment.',bad_link_any:'The trailer link must be a full web link, like https://youtu.be/...',bad_scene:'Type a scene number, like 12 or 12A.',bad_move:'That date could not be saved. Pick a date after the episode before.'};
+  var ERR={wrong_passcode:'That setup passcode is not right.',not_set_up:'The Google robot is not set up yet (no PASSCODE).',wrong_login:'That name and password do not match.',no_users:'No accounts yet. The owner sets up the first one with the setup passcode.',locked:'Too many wrong tries for this name. Wait 15 minutes.',signed_out:'You were signed out. Sign in again.',not_allowed:'Only an admin can do that.',bad_name:'Type a name of at least 2 letters.',weak_password:'Passwords need at least 6 characters.',name_taken:'Someone already has that name. Add a surname or initial.',wrong_current:'Your current password is not right.',not_self:'You cannot do that to your own account.',last_admin:'Keep at least one admin.',old_robot:'The Google robot is still an old version. Follow the install steps to update it to version 6.',no_day:'No shoot day number found in the report.',no_scenes:'No scenes found in the report. Scenes are written as episode/scene, like 7/4.',bad_link:'The log sheet link must be a Google Drive link.',busy:'Someone else is saving right now. Try again in a moment.',not_found:'That day is not in the tracker any more.',network:'No connection to Google. Check your signal and try again.',server:'Google had a problem saving. Try again in a moment.',bad_link_any:'The trailer link must be a full web link, like https://youtu.be/...',bad_scene:'Type a scene number, like 12 or 12A.',bad_move:'That date could not be saved. Pick a date after the episode before.'};
   function errText(r){return ERR[r&&r.error]||ERR.server}
-  function callScript(body){
+  /* quiet: a background check that must not count as someone using the app. */
+  function callScript(body,quiet){
     if(!navigator.onLine)return Promise.resolve({ok:false,error:'network'});
-    body.passcode=body.passcode!=null?body.passcode:ed.code;
+    if(auth.token&&body.token==null)body.token=auth.token;
+    if(quiet)body.touch=false;
     return fetch(SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body),redirect:'follow'})
       .then(function(r){return r.json()}).catch(function(){return {ok:false,error:'network'}})
-      .then(function(r){if(r&&r.error==='wrong_passcode'&&body.action!=='check'){ed.code='';try{localStorage.removeItem('njw-pass')}catch(e){}renderHeader()}return r||{ok:false,error:'server'}});
+      .then(function(r){
+        r=r||{ok:false,error:'server'};
+        /* An old robot (before version 6) answers every sign-in request this way. */
+        if(!r.ok&&(r.error==='wrong_passcode'||r.error==='not_set_up')&&body.action!=='bootstrap')r.error='old_robot';
+        if(!r.ok&&r.error==='signed_out'&&auth.token&&body.action!=='login')signOut('expired');
+        return r;
+      });
+  }
+
+  /* ---------- signing in and out ---------- */
+  function saveAuth(){try{if(auth.token)localStorage.setItem('njw-auth',JSON.stringify(auth));else localStorage.removeItem('njw-auth')}catch(e){}}
+  function signedIn(r){
+    auth={token:r.token,name:r.user.name,role:r.user.role,idle:r.idle||30};saveAuth();
+    lastAct=Date.now();lastPing=Date.now();try{localStorage.setItem('njw-last',String(lastAct))}catch(e){}
+    post.loaded=false;admin.users=null;admin.activity=null;
+    closeDlg();renderAll();loadPost();
+    toast('Signed in as '+auth.name);
+  }
+  /* why: '' (they tapped Sign out), 'idle' (no use for too long), 'expired' (Google ended it). */
+  function signOut(why){
+    var tok=auth.token;if(!tok&&!why)return;
+    if(tok&&why!=='expired')fetch(SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'logout',token:tok}),redirect:'follow'}).catch(function(){});
+    var mins=auth.idle||30;
+    auth={token:'',name:'',role:'',idle:mins};saveAuth();
+    try{localStorage.removeItem('njw-post')}catch(e){}
+    post.tx='';post.eps={};post.loaded=false;post.err='';post.openDrop=null;post.openMove=null;
+    admin.users=null;admin.activity=null;ui.confirmDel=null;ui.menu=false;ui.acct=false;
+    if(ui.view==='post'||ui.view==='admin')ui.view='scenes';
+    closeDlg();renderAll();
+    if(why==='idle'||why==='expired')openDlg('<div class="dlgbody"><h2 id="dlg-title">Signed out</h2><p>'+(why==='idle'?'You were signed out after '+esc(mins)+' minutes without using the app.':'Your sign-in ended. This happens after '+esc(mins)+' minutes without use, after 12 hours, or when an admin resets your password.')+'</p><p class="muted">Anyone can still see scenes and daily reports. Sign in again to make changes.</p><div class="dlgacts"><button type="button" class="btn" data-dlg="close">OK</button><button type="button" class="btn primary" data-act="login" data-dlg="relogin">Sign in again</button></div></div>');
+    else toast('Signed out on this device');
+  }
+  /* Real use (taps, typing, scrolling) keeps the sign-in alive. Background refreshes do not. */
+  function markActive(){
+    var now=Date.now();
+    if(now-lastAct>15000){try{localStorage.setItem('njw-last',String(now))}catch(e){}}
+    lastAct=now;
+    if(auth.token&&now-lastPing>5*60000){lastPing=now;callScript({action:'touch'})}
+  }
+  function idleCheck(){
+    if(!auth.token)return;
+    var stored=0;try{stored=+localStorage.getItem('njw-last')||0}catch(e){}
+    var last=Math.max(lastAct,stored);
+    if(Date.now()-last>(auth.idle||30)*60000)signOut('idle');
   }
 
   var dlg=null;
@@ -708,21 +977,47 @@
   function openDlg(html){var d=dialog();d.innerHTML=html;if(!d.open){if(d.showModal)d.showModal();else d.setAttribute('open','')}document.documentElement.classList.add('modal-open')}
   function closeDlg(){if(dlg&&dlg.open){if(dlg.close)dlg.close();else dlg.removeAttribute('open')}document.documentElement.classList.remove('modal-open')}
 
-  function openLogin(){
-    openDlg('<form class="dlgbody" id="loginform"><h2 id="dlg-title">Team sign-in</h2>'
-      +'<p class="muted">For the continuity and post teams. Turns on the daily report tools and Post production on this device.</p>'
-      +'<label class="fld">Passcode<input id="pass" type="password" autocomplete="current-password" required></label>'
+  function openLogin(owner){
+    var last='';try{last=localStorage.getItem('njw-name')||''}catch(e){}
+    openDlg('<form class="dlgbody" id="loginform" autocomplete="on"><div class="dlghead"><h2 id="dlg-title">'+(owner?'Owner setup':'Sign in')+'</h2><button type="button" class="x" data-dlg="close" aria-label="Close">\u2715</button></div>'
+      +'<p class="muted">'+(owner?'Only for the owner. Creates or resets an admin account using the setup passcode kept in Google. Admins then add the team.':'For the continuity and post teams. Signs out by itself after a while without use.')+'</p>'
+      +'<label class="fld">Name<input id="lname" type="text" autocomplete="username" autocapitalize="words" spellcheck="false" maxlength="40" required value="'+esc(last)+'"></label>'
+      +'<label class="fld">'+(owner?'New password':'Password')+'<input id="lpass" type="password" autocomplete="'+(owner?'new-password':'current-password')+'" minlength="'+(owner?6:1)+'" required></label>'
+      +(owner?'<label class="fld">Setup passcode<input id="lcode" type="password" autocomplete="off" required></label>':'')
       +'<p class="dlgerr" id="dlgerr" role="alert"></p>'
-      +'<div class="dlgacts"><button type="button" class="btn" data-dlg="close">Cancel</button><button type="submit" class="btn primary" id="loginbtn">Sign in</button></div></form>');
-    var f=document.getElementById('loginform');document.getElementById('pass').focus();
+      +'<div class="dlgacts"><button type="button" class="btn" data-dlg="close">Cancel</button><button type="submit" class="btn primary" id="loginbtn">'+(owner?'Set up and sign in':'Sign in')+'</button></div>'
+      +'<p class="dlgfoot">'+(owner?'<button type="button" class="linkbtn" data-dlg="login-normal">Back to sign in</button>':'Forgot your password? Ask an admin to reset it. <button type="button" class="linkbtn" data-dlg="login-owner">Owner setup</button>')+'</p></form>');
+    var f=document.getElementById('loginform');(last&&!owner?document.getElementById('lpass'):document.getElementById('lname')).focus();
     f.addEventListener('submit',function(e){
-      e.preventDefault();var code=document.getElementById('pass').value.trim(),btn=document.getElementById('loginbtn');if(!code)return;
-      btn.disabled=true;btn.textContent='Checking…';
-      callScript({action:'check',passcode:code}).then(function(r){
-        btn.disabled=false;btn.textContent='Sign in';
+      e.preventDefault();
+      var name=document.getElementById('lname').value.trim(),pw=document.getElementById('lpass').value,btn=document.getElementById('loginbtn'),err=document.getElementById('dlgerr');
+      if(!name||!pw)return;
+      var body={action:owner?'bootstrap':'login',name:name,password:pw};
+      if(owner)body.passcode=document.getElementById('lcode').value.trim();
+      btn.disabled=true;btn.textContent='Checking…';err.textContent='';
+      callScript(body).then(function(r){
+        btn.disabled=false;btn.textContent=owner?'Set up and sign in':'Sign in';
+        if(r.ok&&!r.token)r={ok:false,error:'old_robot'};
+        if(!r.ok){err.textContent=errText(r);if(r.error==='no_users'&&!owner)setTimeout(function(){openLogin(true)},1600);return}
+        try{localStorage.setItem('njw-name',r.user.name)}catch(e){}
+        signedIn(r);
+      });
+    });
+  }
+  function openPassword(){
+    openDlg('<form class="dlgbody" id="pwform"><div class="dlghead"><h2 id="dlg-title">Change password</h2><button type="button" class="x" data-dlg="close" aria-label="Close">\u2715</button></div>'
+      +'<input type="text" autocomplete="username" value="'+esc(auth.name)+'" hidden>'
+      +'<label class="fld">Current password<input id="pwcur" type="password" autocomplete="current-password" required></label>'
+      +'<label class="fld">New password<input id="pwnew" type="password" autocomplete="new-password" minlength="6" required></label>'
+      +'<p class="dlgerr" id="dlgerr" role="alert"></p>'
+      +'<div class="dlgacts"><button type="button" class="btn" data-dlg="close">Cancel</button><button type="submit" class="btn primary" id="pwbtn">Change password</button></div></form>');
+    document.getElementById('pwcur').focus();
+    document.getElementById('pwform').addEventListener('submit',function(e){
+      e.preventDefault();var btn=document.getElementById('pwbtn');btn.disabled=true;
+      callScript({action:'password',current:document.getElementById('pwcur').value,password:document.getElementById('pwnew').value}).then(function(r){
+        btn.disabled=false;
         if(!r.ok){document.getElementById('dlgerr').textContent=errText(r);return}
-        ed.code=code;try{localStorage.setItem('njw-pass',code)}catch(e){}
-        closeDlg();renderAll();loadPost();toast('Signed in. Daily reports and Post production are on.');
+        auth.token=r.token;saveAuth();closeDlg();toast('Password changed');
       });
     });
   }
@@ -778,7 +1073,7 @@
         var ex=p.day&&dayByNum(p.day);
         return '<li class="'+(bad?'skip':'')+'"><div><strong>'+(p.day?esc(dayRef({day:p.day,iso:p.iso,date:p.date})):'Report '+(i+1))+'</strong>'
           +(bad?'':'<span class="pill'+(ex?' upd':'')+'">'+(ex?'Updates':'New')+'</span>')+'</div>'
-          +'<span class="muted">'+(bad?esc(bad)+'. Skipped.':p.shot.length+' scene'+(p.shot.length===1?'':'s')+(p.location?' · '+esc(p.location):'')+(rep.length?' · '+rep.length+' reshoot'+(rep.length===1?'':'s'):''))+'</span></li>';
+          +'<span class="muted">'+(bad?esc(bad)+'. Skipped.':p.shot.length+' scene'+(p.shot.length===1?'':'s')+(p.location?' · '+esc(p.location):'')+(rep.length?' · '+rep.length+' repeat'+(rep.length===1?'':'s')+' to check':''))+'</span></li>';
       }).join('')+'</ul>';
       btn.disabled=!good.length||ui.busy;btn.textContent=good.length?'Save '+good.length+' day'+(good.length===1?'':'s'):'Save days';
       return;
@@ -793,7 +1088,7 @@
     else if(ex&&!editDay)warn.push('Day '+p.day+' is already in the tracker. Saving updates it with this version.');
     if(p.ignored.length)warn.push('Left out because the report lists them as not shot: '+esc(p.ignored.join(', '))+'.');
     var rep=p.day?earlierRepeats(p):[];
-    if(rep.length)warn.push('Already shot on an earlier day, so these will show as <strong>Reshoot</strong>: '+esc(rep.join(', '))+'. If a scene was only finished today, add “completed” to its line, like <span class="mono">7/5 - completed</span>.');
+    if(rep.length)warn.push('Already logged on an earlier day: '+esc(rep.join(', '))+'. After saving, they show at the top of the tracker for someone to mark <strong>Reshoot</strong> or <strong>Duplicate</strong>. If a scene was only finished today, add “completed” to its line, like <span class="mono">7/5 - completed</span>.');
     box.innerHTML=(p.day?'<div class="pv"><div class="pvhead"><strong>'+esc(dayRef({day:p.day,iso:p.iso,date:p.date}))+'</strong>'+(p.location?'<span class="muted">'+esc(p.location)+'</span>':'')+'</div>'
       +(p.shot.length?'<p class="pvsc">'+p.shot.length+' scene'+(p.shot.length===1?'':'s')+': '+p.shot.map(function(s){return '<span class="mono">'+esc(keyOf(s.ep,s.sc))+'</span>'+(s.tags.length?' '+tagsHtml(s.tags):'')}).join(', ')+'</p>':'')
       +'</div>':'')
@@ -815,7 +1110,7 @@
       ui.busy=false;
       if(!r.ok){btn.disabled=false;preview();err.textContent=errText(r);if(r.error==='wrong_passcode'){closeDlg();openLogin()}return}
       if(!editDay){try{localStorage.removeItem('njw-draft')}catch(e){}}
-      if(!applyServerRows(r.rows))refresh();
+      if(!applyServerRows(r))refresh();
       var body;
       if(many){
         var res=r.results||[],okd=res.filter(function(x){return x.ok}),bad=res.filter(function(x){return !x.ok});
@@ -872,7 +1167,7 @@
       }
       if(fromDlg)closeDlg();
       if(ui.openDay===n)ui.openDay=null;
-      if(!applyServerRows(r.rows)){state.days=state.days.filter(function(d){return d.day!==n});wrote={at:Date.now(),sig:sigOf(state.days)};saveCache();renderAll()}
+      if(!applyServerRows(r)){state.days=state.days.filter(function(d){return d.day!==n});wrote={at:Date.now(),sig:sigOf(state.days)};saveCache();renderAll()}
       toast('Day '+n+' deleted');
     });
   }
@@ -881,6 +1176,8 @@
     var b=e.target.closest&&e.target.closest('[data-dlg]');if(!b)return;
     var a=b.dataset.dlg;
     if(a==='close'){closeDlg();return}
+    if(a==='login-owner'){openLogin(true);return}
+    if(a==='login-normal'||a==='relogin'){openLogin(false);return}
     if(a==='clear'){var ta=document.getElementById('rep');ta.value='';if(draftKey()){try{localStorage.removeItem(draftKey())}catch(e){}}preview();ta.focus();return}
     if(a==='paste'){navigator.clipboard.readText().then(function(t){var ta=document.getElementById('rep');ta.value=t;if(draftKey()){try{localStorage.setItem(draftKey(),t)}catch(e){}}preview()},function(){var ta=document.getElementById('rep');ta.focus();document.getElementById('dlgerr').textContent='Paste was blocked. Long-press in the box and choose Paste.'});return}
     if(a==='save'){saveReport();return}
@@ -895,15 +1192,22 @@
   window.addEventListener('offline',function(){ui.offline=true;renderStatus()});
   /* Stay current while the app is open: check every 30 seconds, and straight away when it comes back to the front. */
   document.addEventListener('visibilitychange',function(){if(!document.hidden&&navigator.onLine&&Date.now()-(state.fetchedAt||0)>15000)refresh(true)});
-  setInterval(function(){if(!document.hidden&&navigator.onLine){refresh(true);if(ui.view==='post'&&!post.saving)loadPost()}},30000);
+  setInterval(function(){if(!document.hidden&&navigator.onLine){refresh(true);if(ui.view==='post'&&!post.saving)loadPost(true)}},30000);
   document.addEventListener('click',function(e){if(ui.menu&&!(e.target.closest&&e.target.closest('.menuwrap'))){ui.menu=false;renderHeader()}});
   document.addEventListener('keydown',function(e){if(e.key==='Escape'&&ui.menu){ui.menu=false;renderHeader()}});
+
+  ['pointerdown','keydown','touchstart','wheel','scroll'].forEach(function(ev){window.addEventListener(ev,markActive,{passive:true,capture:true})});
+  setInterval(idleCheck,20000);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)idleCheck()});
+  window.addEventListener('focus',idleCheck);
 
   loadCache();
   renderShell();
   renderAll();
+  idleCheck();
   refresh();
   if(ui.view==='post')loadPost();
+  if(ui.view==='admin')loadAdmin();
   if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').catch(function(){});
   window.__njw={state:state,buildDays:buildDays,parseReport:parseReport,refresh:refresh};
 })();

@@ -422,3 +422,76 @@ tr.dropdet td{background:var(--bg);padding:12px 14px 14px;border-left:4px solid 
 .datebtn:hover{border-bottom-color:var(--green)}
 .datebtn:focus-visible{outline:2px solid var(--green);outline-offset:2px}
 @media (min-width:641px){.movebtn:not(.moved):not([aria-expanded="true"]){display:none}}
+
+/* ---------- v14: seasons in Scenes, repeats, sign-in, admin, export ---------- */
+.filters .seg{flex:none}
+.filters select{min-height:36px}
+.tablewrap .seasonhead .linkbtn{margin-left:auto}
+tr.grp td span.prog.noscript{font-style:italic}
+tr.grp.empty td{border-left-color:var(--line)}
+tr.grp.empty .grpbtn{color:var(--muted)}
+tr.grp td span.needcheck{flex:none;font:700 12px var(--body);color:#7A4A00;background:#FFE7A8;border:1px solid #E7B43C;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.tag.Check{background:#FFE7A8;color:#6B4200;box-shadow:0 0 0 1.5px #E7B43C inset}
+.tag.Duplicate{background:var(--line);color:var(--muted);text-decoration:line-through}
+
+/* Repeated scenes waiting for a decision: loud on purpose */
+.repeats{border-radius:14px;padding:12px 14px;background:var(--surface);border:1px solid var(--line);display:grid;gap:10px;margin-bottom:12px}
+.repeats.pending{background:#FFF6DC;border:2px solid #E7B43C;box-shadow:0 0 0 4px rgba(231,180,60,.18)}
+.rphead{display:grid;gap:3px}
+.rphead>b{font-family:var(--round);font-size:18px;color:#6B4200}
+.rphead>span{font-size:14px;color:#5C4A1E}
+.rplist{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.rplist li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;background:var(--surface);border:1px solid #EBD39A;border-radius:12px;padding:8px 10px 8px 12px}
+.rplist.decided li{border-color:var(--line)}
+.rpwhat{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-size:14px;min-width:0}
+.rpsc{font-size:16px;font-weight:600}
+.rpacts{display:flex;gap:6px}
+.rpacts .btn{min-height:36px;padding:6px 14px}
+.btn.rpre{background:#176F38;border-color:#176F38;color:#FFFFFF}
+.btn.rpdup{border-color:#C9A227}
+.rptoggle{justify-self:start}
+.rpsign{font-size:13px}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .repeats.pending{background:#2B2410;border-color:#B98A1F}:root:not([data-theme="light"]) .rphead>b{color:#F2CF6B}:root:not([data-theme="light"]) .rphead>span{color:#E6D7A8}:root:not([data-theme="light"]) .rplist li{border-color:#5B4A1C}}
+:root[data-theme="dark"] .repeats.pending{background:#2B2410;border-color:#B98A1F}:root[data-theme="dark"] .rphead>b{color:#F2CF6B}:root[data-theme="dark"] .rphead>span{color:#E6D7A8}:root[data-theme="dark"] .rplist li{border-color:#5B4A1C}
+@media (max-width:560px){.rplist li{display:grid}.rpacts .btn{flex:1;min-height:44px}}
+
+/* Account menu */
+.btn.acct{border-style:solid;max-width:100%}
+.btn.acct .who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px}
+.menuhead{margin:0;padding:8px 12px 10px;font-size:14px;border-bottom:1px solid var(--line);margin-bottom:4px}
+.menuhead span{font-size:12px;color:var(--muted)}
+.dlgfoot{font-size:13px;color:var(--muted);border-top:1px solid var(--line);padding-top:10px}
+.dlgfoot .linkbtn{margin-left:4px}
+
+/* Post production export */
+.exportbtn{order:3;margin-left:auto;align-self:center}
+@media (max-width:640px){.exportbtn{order:0;width:100%;min-height:42px;margin-left:0}}
+
+/* Admin */
+.adm{margin-bottom:14px}
+.admtbl td,.acttbl td{vertical-align:middle}
+.admacts{text-align:right;white-space:nowrap}
+.admacts .btn{margin-left:6px}
+.admtbl select{padding:5px 8px;font-size:13px}
+tr.admform td{background:var(--bg)}
+tr.admform form{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 10px}
+tr.admform label{display:grid;gap:4px;font-size:13px;font-weight:700}
+tr.admform input,.addusr input{font:600 14px var(--body);padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);min-height:40px;min-width:0}
+.addusr{display:grid;grid-template-columns:auto minmax(0,1.3fr) minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:12px 14px;border-top:1px solid var(--line)}
+.addusr select{min-height:40px}
+.acttbl td.when{white-space:nowrap;font-size:13px;width:1%}
+.acttbl tr.bad td{background:rgba(193,31,38,.06)}
+.warnbar{margin:0;padding:10px 14px;background:var(--pulled-bg);color:var(--pulled-fg);font-size:14px;border-bottom:1px solid var(--line)}
+@media (max-width:640px){
+  .addusr{grid-template-columns:1fr 1fr}
+  .addusr b{grid-column:1/-1}
+  .addusr input[name="name"]{grid-column:1/-1}
+  .addusr .btn{min-height:42px}
+  .admacts{white-space:normal}
+  .admacts .btn{margin:2px 0 2px 4px}
+}
+/* Phones: dialogs sit at the bottom and only grow as tall as they need */
+@media (max-width:560px){
+  dialog.sheet{height:auto;max-height:100dvh;margin:0;top:auto;bottom:0;border-radius:18px 18px 0 0}
+  dialog.sheet .dlgbody{padding-bottom:calc(18px + env(safe-area-inset-bottom,0px))}
+}

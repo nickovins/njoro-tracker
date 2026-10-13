@@ -9,26 +9,32 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Log sheets folder: https://drive.google.com/drive/folders/1KQgFJwqSnT5e3fR0aS7sNptej30-5Bs9
 - Scripts folder: https://drive.google.com/drive/folders/1keWRPeybj1YUOr8c6MtPNM-tHS-zmnjZ
 
-## State on 10.10.2026
-- App live with: per-episode shot / to-shoot progress, Daily reports menu (add one, add several, update, delete), 30 s auto refresh, instant update after a save, Script buttons for Episodes 1 to 9, "Created by Nicholas Kibathi" footer.
-- Robot (apps-script/Code.gs, VERSION 5) is written and tested against mocks only. Nick has NOT yet pasted it, set PASSCODE, run setup or redeployed as a New version. Until then sign-in returns not_set_up and the Scripts tab does not exist.
-- Logged: Days 1 to 8 (30.09 to 08.10.2026).
+## State on 13.10.2026
+- Live robot is still VERSION 1 (Nick's check on 10.10 showed version 1). Everything automatic (log sheets, scripts tab, sign-in) waits on it. App v14 handles that: reads the public Sheet when the robot is old, and says "update the robot" on sign-in.
+- Robot VERSION 6 written: name + password accounts, 30 min idle sign-out, Activity tab, Repeats tab, public read (?read=1), Check Drive now, forgiving log/scene matching. Tested in a Node mock of Google (unit.js) and Playwright e2e (e2e.js, 390 and 1280 px) with the real reports and Drive names.
+- Logged: Days 1 to 10. Day 9 log sheet ("Day 9 9.10.2026.pdf", October/Week 2) not linked in the Sheet yet; LOG_SEED in app.js shows it until the robot writes it.
+- Scripts in Drive: Episodes 1 to 9, 12, 13 (no 10, 11). SCRIPT_SEED and SCENE_COUNT (12:25, 13:24) cover them until the Scripts tab exists. Episode 13 has a typo heading "2 NT." which sceneNumbers_ now catches.
+- 7/16 (Day 7 and Day 10) is the first repeat waiting for a Reshoot/Duplicate decision.
+- Sheet is still "anyone with the link"; SETUP.md Part B makes it Restricted after the robot is on 6.
 
 ## Post production (added 10.10.2026)
-- Tab only shows after sign-in. Same passcode as continuity.
+- Tab only shows after sign-in (name + password since v6).
 - Stored in Script Properties (POST_TX, POST_EP_<n> JSON: editor, sound, trailer, dropped[{sc,why,note}]). Not in the Sheet, which is public to anyone with the link.
 - Robot actions: post (read, no lock) and postSave (one field, or dropAdd/dropRemove, merged server side so two editors do not undo each other).
 - TX dates are worked out in the app: Episode 1 = POST_TX; Episode n = Episode n-1 + 7 + shift(n). shift is stored per episode in days (Skip a week = +7), so a move carries every later episode and survives a change to Episode 1 TX. Desktop: click the date. Phone: Move pill.
 - Install steps for Nick: apps-script/SETUP.md.
-- Needs robot VERSION 5. With an older robot the tab says so instead of failing.
+- Excel export: vendor/xlsx.full.min.js (SheetJS 0.18.5, Apache 2.0), loaded only when Export is tapped. Sheets: Post production, Dropped scenes, About.
+- Season picker is shared with Scenes (ui.season, localStorage njw-season).
 
 ## Architecture
-- Reads: gviz JSONP from the Sheet (tabs Reports and Scripts). Writes: POST text/plain JSON to the robot (actions check, save, saveMany, remove; responses carry `rows` so the saving phone updates at once).
-- Robot every 30 min: links missing log sheets (PDF named "Day N D.M.YYYY"), rewrites the Scripts tab (Episode | Script | Link | Updated | Scenes). Scene numbers come from converting each script PDF to a temporary Google Doc (drive.file + advanced Drive v3), cached per file version in Script Properties.
-- Fallbacks in app.js: SCRIPT_SEED (Ep 1 to 9 links), SCENE_COUNT (1:19 2:32 3:19 4:16 5:25 6:19 7:19 8:23 9:26).
+- Reads: robot GET ?read=1 (reports, scripts, repeats; 30 s cache in CacheService). Falls back to gviz JSONP from the Sheet while the robot is older than 6.
+- Writes: POST text/plain JSON with a session token. Actions: login, bootstrap (PASSCODE), logout, touch, check, save, saveMany, remove, drive, decide, post, postSave, note, password, users/userAdd/userReset/userRemove/userRole (admin), activity (admin). Writes return `data` (same as the read) so the saving phone updates at once.
+- Sessions: CacheService S_<token> {k,g,c,a}; idle limit IDLE_MINUTES (default 30), max 12 h; touch:false for background polls. USERS in Script Properties (salted HMAC-SHA256 x300). gen bump on reset ends old sessions.
+- Activity: ACT_RING in Script Properties (last ~8 KB) always; Activity tab only when the Sheet is PRIVATE (checked every 10 min).
+- Robot every 30 min: links missing log sheets, rewrites the Scripts tab (Episode | Script | Link | Updated | Scenes). Scene numbers come from converting each script PDF to a temporary Google Doc (drive.file + advanced Drive v3), cached per file version in Script Properties.
 - Scopes: spreadsheets.currentonly, drive.readonly, drive.file, script.scriptapp. No Gmail.
 
 ## Rules
-- Bump sw.js VERSION and index.html ?v= on each release (now njw-v13 / v=13).
+- Bump sw.js VERSION and index.html ?v= on each release (now njw-v14 / v=14).
 - Commit as Nick Kibathi <nicholaskibathi@gmail.com>. Test with Playwright at 390 px and 1280 px.
-- Never ask for or store the passcode. Plain language, no em/en dashes, honest pushback.
+- Never ask for or store the passcode or anyone's password. Plain language, no em/en dashes, honest pushback.

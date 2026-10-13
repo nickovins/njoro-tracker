@@ -14,11 +14,14 @@ Put scripts in the scripts folder in Drive, with the episode in the name (`Ep 7`
 
 ## Who can change what
 
-- **Everyone else:** read only. The app has no edit controls for them, and the Sheet is view-only.
-- **Continuity team:** sign in once per phone with the continuity passcode (footer link). That turns on the **Add daily report** pop-up, plus Edit report and Remove day on each day. Anyone with the passcode can add, edit or remove any day.
-- **Post production:** the same passcode opens a Post production tab. 52 episodes in 4 seasons of 13, with editor, sound, TX date, trailer link and dropped scenes per episode, all edited in place. Set the Episode 1 TX date once and every other episode is one week after the one before. This data is kept in the Google robot's Script Properties, not in the Sheet, because the Sheet can be read by anyone with its link.
-- The passcode is checked by the Apps Script in `apps-script/Code.gs`, which runs as the Sheet's owner. It is never in the app's code. Each wrong try waits 3 seconds before it is answered, so guessing is too slow to work.
-- Log sheets are attached automatically: on save, and every 30 minutes for days that are still missing one. The PDF must be in the log sheets folder (any subfolder) and named with the day and date, like `Day 9 9.10.2026.pdf`.
+- **Everyone:** sees Scenes (Season 1 to 4, 13 episodes each) and Daily reports. No edit controls.
+- **Team (signed in by name and password):** adds, updates and deletes daily reports, marks repeated scenes as Reshoot or Duplicate, runs Check Drive now, and uses Post production (52 episodes, editor, sound, weekly TX dates, trailer, dropped scenes, Excel export).
+- **Admin:** also adds and removes people, resets passwords, and sees Recent activity (also written to the Activity tab of the Sheet once the Sheet is private).
+- A sign-in ends after 30 minutes without use (Script Property IDLE_MINUTES), after 12 hours, or when an admin resets that person's password. Passwords are stored only as salted hashes in Script Properties. Wrong passwords are slowed down and lock the name for 15 minutes after 8 tries.
+- PASSCODE (Script Properties) is the owner's master key, only for Owner setup (create or reset an admin).
+- The robot also serves the public read (`?read=1`), so the Sheet can be private.
+- Log sheets attach automatically: on save, and every 30 minutes for days still missing one. Any PDF or image in the log sheets folder (any subfolder) named with the day and date (`Day 9 9.10.2026.pdf`), or the day alone if uploaded within 5 days of the shoot.
+- A scene logged on two days is flagged at the top of the app until someone marks it Reshoot (both count) or Duplicate (only the first day counts). Decisions are in the Repeats tab.
 
 The script can edit only this one spreadsheet and can only look at Drive (never change it). It has no Gmail access. See `apps-script/appsscript.json`.
 
