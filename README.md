@@ -15,7 +15,7 @@ Put scripts in the scripts folder in Drive, with the episode in the name (`Ep 7`
 ## Who can change what
 
 - **Everyone:** sees Scenes (Season 1 to 4, 13 episodes each) and Daily reports. No edit controls.
-- **Team (signed in with the one master password):** adds, updates and deletes daily reports, marks repeated scenes as Reshoot or Duplicate, runs Check Drive now, uses Post production (52 episodes, editor, sound, weekly TX dates, trailer, dropped scenes, Excel export with a crew summary) and sees Activity.
+- **Team (signed in with the one master password):** adds, updates and deletes daily reports, marks repeated scenes as Reshoot, Duplicate or Continued, runs Check Drive now, uses Post production (52 episodes, editor, sound, weekly TX dates, trailer, dropped scenes, a formatted Excel export with a crew summary) and sees Activity.
 - The master password is the Script Property PASSCODE. Changing it there signs every device out. Activity > Sign everyone out does the same without changing it.
 - A sign-in ends after 30 minutes without use (Script Property IDLE_MINUTES) or after 12 hours. 20 wrong passwords in 15 minutes pause sign-in for 15 minutes. The activity log names the device (for example "Team (iPhone, Safari)").
 - The robot also serves the public read (`?read=1`), so the Sheet can be private.

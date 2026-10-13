@@ -31,7 +31,9 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Robot actions: post (read, no lock) and postSave (one field, or dropAdd/dropRemove, merged server side so two editors do not undo each other).
 - TX dates are worked out in the app: Episode 1 = POST_TX; Episode n = Episode n-1 + 7 + shift(n). shift is stored per episode in days (Skip a week = +7), so a move carries every later episode and survives a change to Episode 1 TX. Desktop: click the date. Phone: Move pill.
 - Install steps for Nick: apps-script/SETUP.md.
-- Excel export: vendor/xlsx.full.min.js (SheetJS 0.18.5, Apache 2.0), loaded only when Export is tapped. Sheets: Post production, Dropped scenes, About.
+- Excel export: vendor/exceljs.min.js (ExcelJS 4.4.0, MIT), loaded only when Export is tapped. buildPostWorkbook() lays out formatted tables in the app colours (Arial, title bands, bordered banded rows, coloured status labels, totals, frozen headers, filters, print setup). Sheets: Summary (tiles plus crew tables), All episodes, Editors, Sound, Dropped scenes.
+- Continued on a robot older than version 9: the app writes "continued" into that day's report (reportWithContinued) instead of a decision, so the flag clears on any version.
+- Post production: the airing episode row is dark-edged; the next to air gets a full lime row highlight (tr.pe.nextup), also on phones.
 - Season picker is shared with Scenes (ui.season, localStorage njw-season).
 
 ## Architecture

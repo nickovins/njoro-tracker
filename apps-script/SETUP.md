@@ -6,7 +6,7 @@ About 10 minutes, on a computer, signed in to the Google account that owns the
 Sheet: https://docs.google.com/spreadsheets/d/13mpLW2iFSSqDja--dwxXEEz_jVpjOeDudyWYy0fvT3I/edit
 App: https://nickovins.github.io/njoro-tracker/
 
-What changed: version 9 adds the Continued choice for repeated scenes (the same scene finished on another day). Version 8: Team sign-in is one master password (no names, no
+What changed: version 9 adds the Continued choice for repeated scenes (the same scene finished on another day). Until you install it, the app still clears the flag by writing "continued" into that day's report. Version 8: Team sign-in is one master password (no names, no
 second password). Changing that password in Google signs every device out.
 Script Properties are cleaned up. The app (the website) is already updated and keeps its usual layout.
 

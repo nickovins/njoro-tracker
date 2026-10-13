@@ -507,7 +507,10 @@ tr.admform input,.addusr input{font:600 14px var(--body);padding:8px 10px;border
 tr.grp td span.onairchip{flex:none;font:700 11.5px var(--body);color:#CEE05C;background:#13522B;padding:3px 9px;border-radius:999px;white-space:nowrap;margin-left:0}
 .posttbl tr.pe.airing td{background:#EEF7D3;box-shadow:inset 0 2px 0 #9FC63B,inset 0 -2px 0 #9FC63B}
 .posttbl tr.pe.airing td:first-child{box-shadow:inset 5px 0 0 #13522B,inset 0 2px 0 #9FC63B,inset 0 -2px 0 #9FC63B}
-.posttbl tr.pe.nextup td:first-child{box-shadow:inset 4px 0 0 #9FC63B}
+.posttbl tr.pe.nextup td{background:#F4F9DC;box-shadow:inset 0 2px 0 #CEE05C,inset 0 -2px 0 #CEE05C}
+.posttbl tr.pe.nextup td:first-child{box-shadow:inset 5px 0 0 #9FC63B,inset 0 2px 0 #CEE05C,inset 0 -2px 0 #CEE05C}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .posttbl tr.pe.nextup td{background:#2A3317}}
+:root[data-theme="dark"] .posttbl tr.pe.nextup td{background:#2A3317}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .posttbl tr.pe.airing td{background:#22351A}}
 :root[data-theme="dark"] .posttbl tr.pe.airing td{background:#22351A}
 .onairnow{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;flex:1 1 100%;font:700 14px var(--body);color:var(--deep);padding:8px 10px;border-radius:10px;background:var(--hit)}
@@ -535,10 +538,11 @@ input.cell.unsaved{border-color:#E7B43C!important;border-style:solid;background:
   .posttbl tr.pe.expanded{box-shadow:inset 4px 0 0 var(--deep)}
   .posttbl tr.pe.airing{background:#EEF7D3;box-shadow:inset 5px 0 0 #13522B}
   .posttbl tr.pe.airing td{box-shadow:none!important;background:none}
-  .posttbl tr.pe.nextup td:first-child{box-shadow:none}
-  .posttbl tr.pe.nextup{box-shadow:inset 4px 0 0 #9FC63B}
+  .posttbl tr.pe.nextup{background:#F4F9DC;box-shadow:inset 5px 0 0 #9FC63B,inset 0 0 0 1px #CEE05C}
+  .posttbl tr.pe.nextup td{box-shadow:none!important;background:none}
 }
-@media (prefers-color-scheme:dark) and (max-width:640px){:root:not([data-theme="light"]) .posttbl tr.pe.airing{background:#22351A}}
+@media (prefers-color-scheme:dark) and (max-width:640px){:root:not([data-theme="light"]) .posttbl tr.pe.airing{background:#22351A}:root:not([data-theme="light"]) .posttbl tr.pe.nextup{background:#2A3317}}
+@media (max-width:640px){:root[data-theme="dark"] .posttbl tr.pe.nextup{background:#2A3317}}
 @media (max-width:640px){.posttbl tr.pe.expanded td.sum{display:none!important}}
 @media (min-width:641px){.posttbl tr.pe td.sum{display:none!important}}
 .tag.Continued,.tag.Completed{background:var(--done-bg);color:var(--done-fg)}

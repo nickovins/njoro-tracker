@@ -151,7 +151,7 @@
   function parseReport(raw){
     var out={day:null,date:'',iso:'',cast:'',location:'',times:[],pages:'',shot:[],ignored:[],raw:raw,warnings:[]};
     var mode=null,secTag='',seen={};
-    raw.split(/\r?\n/).forEach(function(line0){
+    raw.split(/\r?\n/).forEach(function(line0,li){
       var line=line0.replace(/[*_~]/g,'').replace(/[⌛⏳]/g,'').replace(/\s+/g,' ').trim().replace(/^[^A-Za-z0-9]+(?=[A-Za-z])/,'');
       if(!line)return;
       var m,hasScene=/\d+\s*\/\s*\d/.test(line);
@@ -182,7 +182,7 @@
         var k=keyOf(f.ep,f.sc);
         if(mode==='skip'){out.ignored.push(k);return}
         if(seen[k]){tags.forEach(function(t){if(seen[k].tags.indexOf(t)<0)seen[k].tags.push(t)});return}
-        f.note=note;f.tags=tags.slice();seen[k]=f;out.shot.push(f);
+        f.note=note;f.tags=tags.slice();f.line=li;seen[k]=f;out.shot.push(f);
       });
     });
     if(out.day==null)out.warnings.push('No shoot day number found. Type it in below.');
@@ -263,9 +263,8 @@
     var eps=only!=null?[only]:seasonEps(season);
     if(notShot)eps=eps.filter(function(ep){var pr=progress(ep,all);return pr&&pr.left.length});
     else if(ui.show!=='all')eps=eps.filter(function(ep){return by[ep]&&by[ep].length});
-    var a=(season-1)*PER_SEASON+1,b=season*PER_SEASON,tot=0,done=0,scripted=0;
-    seasonEps(season).forEach(function(ep){var pr=progress(ep,all);if(pr){tot+=pr.total;done+=pr.shot;scripted++}});
-    var head='<div class="seasonhead"><b>Season '+season+'</b><span class="muted">Episodes '+a+' to '+b+(scripted?' \u00b7 '+done+' of '+tot+' scenes shot in the '+scripted+' episode'+(scripted===1?'':'s')+' with a script':' \u00b7 no scripts in Drive yet')+'</span></div>';
+    var a=(season-1)*PER_SEASON+1,b=season*PER_SEASON;
+    var head='<div class="seasonhead"><b>Season '+season+'</b><span class="muted">Episodes '+a+' to '+b+'</span></div>';
     if(only!=null&&(only<1||only>EPISODES))head='';
     if(!eps.length){
       var msg=notShot?'Every scene in the Season '+season+' scripts has been shot.':'Nothing in Season '+season+' matches this filter.';
@@ -382,7 +381,7 @@
       var st=n===air?'<span class="st onair">'+(tx===t?'On air today':'On air')+'</span>':(tx?(tx<t?'<span class="st aired">Aired</span>':(n===nx?'<span class="st next">Next</span>':'')):'');
       var exp=post.openEp===n,ed0=pendingOr(n,'editor',e.editor),sd0=pendingOr(n,'sound',e.sound);
       var sum=[ed0?'Editor: '+esc(ed0):'No editor yet',sd0?'Sound: '+esc(sd0):'No sound yet'].concat(drop.length?[drop.length+' dropped']:[]).concat(trailerUrl(pendingOr(n,'trailer',e.trailer))?['Trailer \u2713']:[]).join(' \u00b7 ');
-      html+='<tr class="pe'+(open?' open':'')+(exp?' expanded':' collapsed')+(n===air?' airing':'')+(n===nx&&!air?' nextup':'')+(tx&&tx<t&&n!==air?' past':'')+'" id="pe'+n+'">'
+      html+='<tr class="pe'+(open?' open':'')+(exp?' expanded':' collapsed')+(n===air?' airing':'')+(n===nx?' nextup':'')+(tx&&tx<t&&n!==air?' past':'')+'" id="pe'+n+'">'
         +'<td class="epn"><button type="button" class="pexp" data-pexp="'+n+'" aria-expanded="'+exp+'"><b>'+n+'</b>'+st+'</button></td>'
         +'<td class="sum"><button type="button" class="pexp sumbtn" data-pexp="'+n+'" aria-expanded="'+exp+'"><span>'+sum+'</span><span class="chev" aria-hidden="true">\u203A</span></button></td>'
         +'<td data-l="Editor">'+cellInput(n,'editor',e.editor,'Who is editing')+'</td>'
@@ -592,18 +591,48 @@
     }
     return html+'</section>';
   }
+  /* The day's report with "continued" written on the scene's line. A line that also lists other
+     scenes keeps them, and the scene moves to its own line just below. */
+  function reportWithContinued(raw,scene){
+    var p=parseReport(raw),hit=p.shot.filter(function(s){return keyOf(s.ep,s.sc)===scene})[0];
+    if(!hit||hit.line==null)return '';
+    var lines=raw.split(/\r?\n/),line=lines[hit.line],re=/(?:^|[^\d\/])(\d{1,3})\s*\/\s*(\d{1,3}[A-Za-z]?)(?![\d\/A-Za-z])/g,m,n=0;
+    while((m=re.exec(line)))n++;
+    if(n<=1)lines[hit.line]=line.replace(/\s+$/,'')+' continued';
+    else{
+      var rm=new RegExp('(^|[^\\d\\/])'+hit.ep+'\\s*\\/\\s*0*'+hit.sc.replace(/[^0-9A-Za-z]/g,'')+'(?![\\d\\/A-Za-z])','i');
+      lines[hit.line]=line.replace(rm,'$1').replace(/\s*[,;&]\s*(?=[,;&]|$)/g,'').replace(/^\s*[,;&]\s*/,'').replace(/\s{2,}/g,' ');
+      lines.splice(hit.line+1,0,scene+' continued');
+    }
+    return lines.join('\n');
+  }
+  /* Continued on a robot older than version 9 (or one that did not keep the choice):
+     the app writes "continued" into that day's report, which every version understands. */
+  function continuedViaReport(scene,day){
+    var d=dayByNum(+day),txt=d&&reportWithContinued(d.raw,scene);
+    if(!txt){toast('Could not find '+scene+' in the Day '+day+' report. Edit the report and add the word continued to that line.');return}
+    toast('Marking '+scene+' on Day '+day+' as continued\u2026');
+    callScript({action:'save',report:txt,log:'',originalDay:+day}).then(function(r){
+      if(!r.ok){toast(errText(r));return}
+      if(!applyServerRows(r))refresh();
+      toast(scene+' on Day '+day+' marked Continued');
+    });
+  }
   function decideRepeat(scene,day,decision){
     if(!isEditor()){openLogin();return}
-    if(decision==='Continued'&&ui.robot&&ui.robot<9){
-      openDlg('<div class="dlgbody"><h2 id="dlg-title">Continued needs the Google update</h2><p>The Google robot is on version '+ui.robot+'. Continued works from version 9 (paste the new Code.gs and deploy a New version).</p><p>For now, edit the Day '+day+' report and add the word <b>continued</b> to the '+esc(scene)+' line, for example <span class="mono">Purity VO - '+esc(scene)+' continued</span>. It then counts as continued straight away.</p><div class="dlgacts"><button type="button" class="btn" data-dlg="close">Close</button><button type="button" class="btn primary" data-dlg="editday" data-day="'+day+'">Edit Day '+day+' report</button></div></div>');
-      return;
-    }
+    if(decision==='Continued'&&ui.robot&&ui.robot<9){continuedViaReport(scene,day);return}
     var k=scene+'@'+day,before=state.repeats[k];
     if(decision)state.repeats[k]={decision:decision,by:auth.name,when:'now'};else delete state.repeats[k];
     state.days=buildDays(state.rows,[]);renderMain();
     callScript({action:'decide',scene:scene,day:day,decision:decision}).then(function(r){
-      if(!r.ok){if(before)state.repeats[k]=before;else delete state.repeats[k];state.days=buildDays(state.rows,[]);renderMain();toast(errText(r));return}
+      if(!r.ok){
+        if(before)state.repeats[k]=before;else delete state.repeats[k];state.days=buildDays(state.rows,[]);renderMain();
+        if(decision==='Continued'&&r.error==='bad_request'){continuedViaReport(scene,day);return}
+        toast(errText(r));return;
+      }
       applyServerRows(r);
+      /* An older robot answers ok but drops a choice it does not know. */
+      if(decision==='Continued'&&!(state.repeats[k]&&state.repeats[k].decision==='Continued')){continuedViaReport(scene,day);return}
       toast(decision?scene+' on Day '+day+' marked '+decision:'Decision undone for '+scene+' on Day '+day);
     });
   }
@@ -619,12 +648,11 @@
 
   /* ---------- post production export (Excel) ---------- */
   function loadXlsx(){
-    if(window.XLSX)return Promise.resolve(window.XLSX);
-    return new Promise(function(res,rej){var sc=document.createElement('script');sc.src='vendor/xlsx.full.min.js';sc.onload=function(){window.XLSX?res(window.XLSX):rej(new Error('xlsx'))};sc.onerror=function(){rej(new Error('xlsx'))};document.head.appendChild(sc)});
+    if(window.ExcelJS)return Promise.resolve(window.ExcelJS);
+    return new Promise(function(res,rej){var sc=document.createElement('script');sc.src='vendor/exceljs.min.js';sc.onload=function(){window.ExcelJS?res(window.ExcelJS):rej(new Error('xlsx'))};sc.onerror=function(){rej(new Error('xlsx'))};document.head.appendChild(sc)});
   }
   /* One cell can hold two people: "Wanjiru / Otieno", "Wanjiru & Otieno", "Wanjiru, Otieno", "Wanjiru and Otieno". */
   function peopleIn(v){return String(v||'').split(/\s*(?:[,\/&+;]|\band\b)\s*/i).map(function(x){return x.replace(/\s+/g,' ').trim()}).filter(Boolean)}
-  function txStatus(tx){if(!tx)return 'TX date not set';return tx<todayIso()?'Aired':(tx===todayIso()?'Airs today':'Upcoming')}
   /* Who did which episodes, for one role. Names are grouped ignoring capitals and extra spaces. */
   function crewFor(field){
     var by={},order=[];
@@ -641,48 +669,167 @@
     while(i<eps.length){var j=i;while(j+1<eps.length&&eps[j+1]===eps[j]+1)j++;out.push(j>i+1?eps[i]+' to '+eps[j]:(j===i+1?eps[i]+', '+eps[j]:String(eps[i])));i=j+1}
     return out.join(', ');
   }
+  /* The Excel backup, laid out as formatted tables in the tracker's own colours. */
+  var XC={forest:'FF13522B',deep:'FF176F38',green:'FF409646',leaf:'FF9FC63B',lime:'FFCEE05C',head:'FFEBF2E0',band:'FFF6F9F1',line:'FFDCE6D2',air:'FFEEF7D3',next:'FFF4F9DC',white:'FFFFFFFF',ink:'FF1F2A20',muted:'FF5E6B5E',grey:'FFF0F1EE',red:'FFC11F26',redbg:'FFFBE9EA'};
+  function epStatus(n,air,nx){var tx=txOf(n),t=todayIso();if(!tx)return 'TBC';if(n===air)return tx===t?'Airs today':'On air';if(n===nx)return 'Next';return tx<t?'Aired':'Upcoming'}
+  function buildPostWorkbook(ExcelJS){
+    var wb=new ExcelJS.Workbook(),t=todayIso(),air=airingEp(),nx=upNextEp(),C=XC;
+    wb.creator='Njoro wa Uba Scene Tracker';wb.created=new Date();
+    function fill(c){return {type:'pattern',pattern:'solid',fgColor:{argb:c}}}
+    function font(o){var f={name:'Arial',size:10,color:{argb:C.ink}};for(var k in o)f[k]=o[k];return f}
+    var thin={style:'thin',color:{argb:C.line}};
+    function grid(cell){cell.border={top:thin,left:thin,bottom:thin,right:thin}}
+    function xdate(iso){var p=isoParts(iso);return p?new Date(Date.UTC(p[0],p[1]-1,p[2])):null}
+    function sheet(name,widths,landscape){
+      var ws=wb.addWorksheet(name,{properties:{tabColor:{argb:C.deep}},pageSetup:{paperSize:9,orientation:landscape?'landscape':'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0,margins:{left:0.4,right:0.4,top:0.5,bottom:0.5,header:0.3,footer:0.3}},headerFooter:{oddFooter:'&L&8Njoro wa Uba post production&R&8Page &P of &N'}});
+      widths.forEach(function(w,i){ws.getColumn(i+1).width=w});
+      ws.views=[{showGridLines:false}];
+      return ws;
+    }
+    /* Title band and the line under it */
+    function title(ws,cols,text,sub){
+      ws.mergeCells(1,1,1,cols);ws.mergeCells(2,1,2,cols);
+      var a=ws.getCell(1,1);a.value=text;a.font=font({size:16,bold:true,color:{argb:C.white}});a.fill=fill(C.forest);a.alignment={vertical:'middle',indent:1};
+      var b=ws.getCell(2,1);b.value=sub;b.font=font({size:10,bold:true,color:{argb:C.lime}});b.fill=fill(C.deep);b.alignment={vertical:'middle',indent:1,wrapText:true};
+      ws.getRow(1).height=32;ws.getRow(2).height=22;ws.getRow(3).height=8;
+      return 4;
+    }
+    /* A section heading across the table */
+    function band(ws,r,cols,text){
+      ws.mergeCells(r,1,r,cols);var c=ws.getCell(r,1);c.value=text;c.font=font({size:12,bold:true,color:{argb:C.white}});c.fill=fill(C.green);c.alignment={vertical:'middle',indent:1};ws.getRow(r).height=22;
+      return r+1;
+    }
+    function header(ws,r,labels,aligns){
+      labels.forEach(function(l,i){var c=ws.getCell(r,i+1);c.value=l;c.font=font({bold:true,color:{argb:C.deep}});c.fill=fill(C.head);c.alignment={vertical:'middle',horizontal:(aligns&&aligns[i])||'left',wrapText:true};c.border={top:thin,left:thin,right:thin,bottom:{style:'medium',color:{argb:C.leaf}}}});
+      ws.getRow(r).height=20;return r+1;
+    }
+    /* One table row: banded, bordered, Arial. Numbers centred. */
+    function row(ws,r,vals,i,aligns,bg){
+      vals.forEach(function(v,j){var c=ws.getCell(r,j+1);c.value=v;c.font=font();c.fill=fill(bg||(i%2?C.band:C.white));c.alignment={vertical:'middle',horizontal:(aligns&&aligns[j])||(typeof v==='number'?'center':'left'),wrapText:true};grid(c)});
+      ws.getRow(r).height=18;return r+1;
+    }
+    function total(ws,r,vals,aligns){
+      vals.forEach(function(v,j){var c=ws.getCell(r,j+1);c.value=v;c.font=font({bold:true,color:{argb:C.forest}});c.fill=fill(C.head);c.alignment={vertical:'middle',horizontal:(aligns&&aligns[j])||(typeof v==='number'?'center':'left')};c.border={top:{style:'medium',color:{argb:C.forest}},bottom:thin,left:thin,right:thin}});
+      ws.getRow(r).height=20;return r+1;
+    }
+    /* Status as a coloured label, the same colours as the app */
+    function status(c,s){
+      var st={'On air':[C.forest,C.lime],'Airs today':[C.forest,C.lime],'Next':[C.lime,C.forest],'Aired':[C.head,C.deep],'Upcoming':[C.white,C.muted],'TBC':[C.grey,C.muted]}[s]||[C.white,C.ink];
+      c.value=s;c.fill=fill(st[0]);c.font=font({bold:s!=='Upcoming'&&s!=='TBC',italic:s==='TBC',color:{argb:st[1]}});c.alignment={vertical:'middle',horizontal:'center'};
+    }
+    function dateCell(c,iso){var d=xdate(iso);if(d){c.value=d;c.numFmt='ddd dd.mm.yyyy'}else{c.value='TBC';c.font=font({italic:true,color:{argb:C.muted}})}c.alignment={vertical:'middle',horizontal:'center'}}
+    var editors=crewFor('editor'),sound=crewFor('sound'),aired=0,withEd=0,withSd=0,trailers=0,drops=0,noEd=[],noSd=[];
+    for(var n=1;n<=EPISODES;n++){
+      var e0=post.eps[n]||{},x=txOf(n);
+      if(x&&x<t&&n!==air)aired++;
+      if(peopleIn(e0.editor).length)withEd++;else noEd.push(n);
+      if(peopleIn(e0.sound).length)withSd++;else noSd.push(n);
+      if(trailerUrl(e0.trailer))trailers++;
+      drops+=(e0.dropped||[]).length;
+    }
+    var who=' · exported '+fmtDate(t)+' by '+(auth.name||'Team');
+    var txLine=post.tx?'Episode 1 TX '+weekday(post.tx)+' '+fmtDate(post.tx)+(nx?' · next to air: Episode '+nx+', '+weekday(txOf(nx)).slice(0,3)+' '+fmtDate(txOf(nx)):''):'Episode 1 TX not confirmed yet';
+
+    /* 1. Summary */
+    var ws=sheet('Summary',[26,12,12,12,34,16,16,10],false),r=title(ws,8,'Njoro wa Uba · Post production',txLine+who);
+    [['Episodes with an editor',withEd+' of '+EPISODES],['Episodes with sound',withSd+' of '+EPISODES],['Aired so far',(aired+(air?1:0))+' of '+EPISODES],['Dropped scenes',String(drops)]].forEach(function(k,i){
+      var c0=i*2+1;ws.mergeCells(r,c0,r,c0+1);ws.mergeCells(r+1,c0,r+1,c0+1);
+      var l=ws.getCell(r,c0),v=ws.getCell(r+1,c0);
+      l.value=k[0].toUpperCase();l.font=font({size:8,bold:true,color:{argb:C.muted}});l.fill=fill(C.head);l.alignment={horizontal:'center',vertical:'middle'};
+      v.value=k[1];v.font=font({size:18,bold:true,color:{argb:C.forest}});v.fill=fill(C.white);v.alignment={horizontal:'center',vertical:'middle'};
+      var side={style:'medium',color:{argb:C.leaf}};
+      [l,ws.getCell(r,c0+1)].forEach(function(c){c.border={top:side,left:c===l?side:undefined,right:c===l?undefined:side}});
+      [v,ws.getCell(r+1,c0+1)].forEach(function(c){c.border={bottom:side,left:c===v?side:undefined,right:c===v?undefined:side}});
+    });
+    ws.getRow(r).height=20;ws.getRow(r+1).height=34;r+=3;
+    var CREW=['Name','Episodes','Aired','Still to air','Episode numbers','First TX','Last TX','Share'],CA=['left','center','center','center','left','center','center','center'];
+    function crewTable(label,list){
+      r=band(ws,r,8,label+' ('+list.length+(list.length===1?' person':' people')+')');r=header(ws,r,CREW,CA);
+      if(!list.length){ws.mergeCells(r,1,r,8);var c=ws.getCell(r,1);c.value='Nobody assigned yet';c.font=font({italic:true,color:{argb:C.muted}});grid(c);r+=2;return}
+      var sumE=0,sumA=0;
+      list.forEach(function(p,i){
+        var a=p.eps.filter(function(m){var y=txOf(m);return y&&y<t}).length;sumE+=p.eps.length;sumA+=a;
+        row(ws,r,[p.name,p.eps.length,a,p.eps.length-a,epList(p.eps),'','',p.eps.length/EPISODES],i,CA);
+        ws.getCell(r,1).font=font({bold:true});
+        dateCell(ws.getCell(r,6),txOf(p.eps[0]));dateCell(ws.getCell(r,7),txOf(p.eps[p.eps.length-1]));
+        ws.getCell(r,8).numFmt='0%';r++;
+      });
+      r=total(ws,r,['Total',sumE,sumA,sumE-sumA,'','','',sumE/EPISODES],CA);ws.getCell(r-1,8).numFmt='0%';
+      r++;
+    }
+    crewTable('Editors',editors);crewTable('Sound',sound);
+    r=band(ws,r,8,'Still to assign');r=header(ws,r,['Role','Episodes','','','Episode numbers','','',''],CA);
+    [['No editor yet',noEd],['No sound yet',noSd]].forEach(function(g,i){
+      row(ws,r,[g[0],g[1].length,'','',g[1].length?epList(g[1]):'All assigned','','',''],i,CA);
+      ws.mergeCells(r,5,r,8);if(g[1].length)ws.getCell(r,2).font=font({bold:true,color:{argb:C.red}});
+      ws.getRow(r).height=Math.max(18,15*Math.ceil(epList(g[1]).length/70));r++;
+    });
+
+    /* 2. Every episode */
+    var EP=['Season','Ep','TX date','Status','TX moved','Editor','Sound','Trailer','Dropped','Dropped scene numbers'],EA=['center','center','center','center','left','left','left','left','center','left'];
+    ws=sheet('All episodes',[9,6,17,12,18,22,22,16,10,28],true);r=title(ws,EP.length,'All 52 episodes',txLine+who);
+    r=header(ws,r,EP,EA);var head0=r-1;
+    for(n=1;n<=EPISODES;n++){
+      var e=post.eps[n]||{},tx=txOf(n),sh=shiftOf(n),tl=trailerUrl(e.trailer),dr=(e.dropped||[]).slice().sort(function(p,q){return cmpKey(n+'/'+p.sc,n+'/'+q.sc)});
+      var bg=n===air?C.air:(n===nx?C.next:null),s=seasonOf(n);
+      row(ws,r,['Season '+s,n,'','',sh?shiftLabel(sh):'',e.editor||'',e.sound||'','',dr.length,dr.map(function(d){return d.sc}).join(', ')],s%2?0:1,EA,bg||(s%2?C.white:C.band));
+      dateCell(ws.getCell(r,3),tx);status(ws.getCell(r,4),epStatus(n,air,nx));
+      ws.getCell(r,2).font=font({bold:true,color:{argb:C.forest}});
+      if(!e.editor)ws.getCell(r,6).font=font({italic:true,color:{argb:C.muted}}),ws.getCell(r,6).value='Not set';
+      if(!e.sound)ws.getCell(r,7).font=font({italic:true,color:{argb:C.muted}}),ws.getCell(r,7).value='Not set';
+      if(tl){var lc=ws.getCell(r,8);lc.value={text:'Open trailer',hyperlink:tl};lc.font=font({underline:true,color:{argb:C.deep}})}
+      ws.getCell(r,9).font=dr.length?font({bold:true,color:{argb:C.red}}):font({color:{argb:C.muted}});
+      if(sh)ws.getCell(r,5).font=font({bold:true,color:{argb:C.deep}});
+      if(n%PER_SEASON===1&&n>1)for(var j=1;j<=EP.length;j++){var bc=ws.getCell(r,j);bc.border=Object.assign({},bc.border,{top:{style:'medium',color:{argb:C.deep}}})}
+      if(bg)for(j=1;j<=EP.length;j++){var hc=ws.getCell(r,j);hc.border=Object.assign({},hc.border,{top:{style:'medium',color:{argb:n===air?C.forest:C.leaf}},bottom:{style:'medium',color:{argb:n===air?C.forest:C.leaf}}})}
+      r++;
+    }
+    r=total(ws,r,['Total',EPISODES,aired+(air?1:0)+' aired','',movedCount()+' moved',withEd+' set',withSd+' set',trailers+' trailers',drops,''],EA);
+    ws.views=[{state:'frozen',ySplit:head0,showGridLines:false}];
+    ws.autoFilter={from:{row:head0,column:1},to:{row:head0+EPISODES,column:EP.length}};
+    ws.pageSetup.printTitlesRow=head0+':'+head0;
+    r++;ws.mergeCells(r,1,r,EP.length);var key=ws.getCell(r,1);
+    key.value='Status: On air = the episode airing this week. Next = the next one to air. Aired, Upcoming, or TBC when the TX date is not set.';key.font=font({size:9,italic:true,color:{argb:C.muted}});
+
+    /* 3 and 4. Each person's episodes */
+    function perPerson(name,list){
+      var W=['Name','Season','Episode','TX date','Status'],A=['left','center','center','center','center'];
+      ws=sheet(name,[26,11,10,17,13],false);r=title(ws,5,name+': episodes by person',(list.length?list.length+(list.length===1?' person':' people'):'Nobody assigned yet')+who);
+      r=header(ws,r,W,A);var h=r-1;
+      if(!list.length){ws.mergeCells(r,1,r,5);ws.getCell(r,1).value='Nobody assigned yet';ws.getCell(r,1).font=font({italic:true,color:{argb:C.muted}});return}
+      list.forEach(function(p){
+        ws.mergeCells(r,1,r,5);var c=ws.getCell(r,1);c.value=p.name+'  ·  '+p.eps.length+' episode'+(p.eps.length===1?'':'s');c.font=font({bold:true,size:11,color:{argb:C.white}});c.fill=fill(C.green);c.alignment={vertical:'middle',indent:1};ws.getRow(r).height=20;r++;
+        p.eps.forEach(function(m,i){row(ws,r,[p.name,'Season '+seasonOf(m),m,'',''],i,A);dateCell(ws.getCell(r,4),txOf(m));status(ws.getCell(r,5),epStatus(m,air,nx));ws.getCell(r,1).font=font({color:{argb:C.muted}});r++});
+        r=total(ws,r,[p.name+' total',p.eps.length+' episode'+(p.eps.length===1?'':'s'),'','',''],A);r++;
+      });
+      ws.views=[{state:'frozen',ySplit:h,showGridLines:false}];ws.pageSetup.printTitlesRow=h+':'+h;
+    }
+    perPerson('Editors',editors);perPerson('Sound',sound);
+
+    /* 5. Dropped scenes */
+    var DW=['Season','Episode','Scene','Reason','Note'],DA=['center','center','center','left','left'];
+    ws=sheet('Dropped scenes',[11,10,10,20,60],true);r=title(ws,5,'Dropped scenes',drops+' scene'+(drops===1?'':'s')+' dropped in the edit'+who);
+    r=header(ws,r,DW,DA);var dh=r-1,k=0;
+    for(n=1;n<=EPISODES;n++)(post.eps[n]&&post.eps[n].dropped||[]).slice().sort(function(p,q){return cmpKey(n+'/'+p.sc,n+'/'+q.sc)}).forEach(function(d){
+      row(ws,r,['Season '+seasonOf(n),n,n+'/'+d.sc,WHY[d.why]||d.why||'',d.note||''],k++,DA);ws.getCell(r,3).font=font({bold:true,color:{argb:C.red}});r++;
+    });
+    if(!k){ws.mergeCells(r,1,r,5);var nc=ws.getCell(r,1);nc.value='No dropped scenes yet';nc.font=font({italic:true,color:{argb:C.muted}});grid(nc)}
+    else{r=total(ws,r,['Total','','',k+' scene'+(k===1?'':'s'),''],DA);ws.autoFilter={from:{row:dh,column:1},to:{row:dh+k,column:5}}}
+    ws.views=[{state:'frozen',ySplit:dh,showGridLines:false}];
+    return wb;
+  }
   function exportPost(){
     if(!post.loaded){toast('Post production has not loaded yet.');return}
-    loadXlsx().then(function(X){
-      var editors=crewFor('editor'),sound=crewFor('sound'),t=todayIso();
-      function txCells(n){var tx=txOf(n);return [tx?fmtDate(tx):'TBC',tx?weekday(tx):'',txStatus(tx)]}
-      /* 1. Summary: how many episodes each person did */
-      var sum=[['Njoro wa Uba post production: crew summary'],['Exported '+fmtDate(t)+' by '+(auth.name||'Admin')+'. Episode 1 TX: '+(post.tx?fmtDate(post.tx)+' ('+weekday(post.tx)+')':'not confirmed yet')+'.'],[],
-        ['Role','Name','Episodes','Aired so far','Still to air','Episode numbers','First TX','Last TX']];
-      function sumRows(role,list){
-        if(!list.length){sum.push([role,'Nobody assigned yet',0,0,0,'','',''])}
-        list.forEach(function(p){
-          var aired=p.eps.filter(function(n){var x=txOf(n);return x&&x<t}).length,first=txOf(p.eps[0]),lastE=txOf(p.eps[p.eps.length-1]);
-          sum.push([role,p.name,p.eps.length,aired,p.eps.length-aired,epList(p.eps),first?fmtDate(first):'TBC',lastE?fmtDate(lastE):'TBC']);
-        });
-      }
-      sumRows('Editor',editors);sumRows('Sound',sound);
-      var noEd=[],noSd=[];for(var n=1;n<=EPISODES;n++){var e0=post.eps[n]||{};if(!peopleIn(e0.editor).length)noEd.push(n);if(!peopleIn(e0.sound).length)noSd.push(n)}
-      sum.push([],['Episodes with no editor yet',noEd.length,epList(noEd)],['Episodes with no sound yet',noSd.length,epList(noSd)]);
-      /* 2 and 3. Each person's episodes, with TX */
-      function perPerson(list,role){
-        var rows=[[role,'Season','Episode','TX date','TX day','Status']];
-        list.forEach(function(p){p.eps.forEach(function(n){rows.push([p.name,seasonOf(n),n].concat(txCells(n)))});rows.push([p.name+' total: '+p.eps.length+' episode'+(p.eps.length===1?'':'s')]);rows.push([])});
-        if(!list.length)rows.push(['Nobody assigned yet']);
-        return rows;
-      }
-      /* 4. Every episode */
-      var all=[['Season','Episode','TX date','TX day','Status','Moved','Editor','Sound','Trailer link','Dropped scenes']],drops=[['Season','Episode','Scene','Reason','Note']];
-      for(var m=1;m<=EPISODES;m++){
-        var e=post.eps[m]||{},sh=shiftOf(m),dr=(e.dropped||[]).slice().sort(function(x,y){return cmpKey(m+'/'+x.sc,m+'/'+y.sc)});
-        all.push([seasonOf(m),m].concat(txCells(m)).concat([sh?shiftLabel(sh):'',e.editor||'',e.sound||'',e.trailer||'',dr.length]));
-        dr.forEach(function(d){drops.push([seasonOf(m),m,m+'/'+d.sc,WHY[d.why]||d.why,d.note||''])});
-      }
-      var wb=X.utils.book_new();
-      function add(rows,name,cols){var w=X.utils.aoa_to_sheet(rows);w['!cols']=cols.map(function(c){return {wch:c}});X.utils.book_append_sheet(wb,w,name)}
-      add(sum,'Summary',[10,24,10,13,12,34,12,12]);
-      add(perPerson(editors,'Editor'),'Editors',[24,8,9,12,11,16]);
-      add(perPerson(sound,'Sound'),'Sound',[24,8,9,12,11,16]);
-      add(all,'All episodes',[7,8,11,10,15,20,22,22,44,14]);
-      add(drops,'Dropped scenes',[7,8,8,18,50]);
-      X.writeFile(wb,'Njoro wa Uba Post Production '+t+'.xlsx');
-      callScript({action:'note',what:'export'});
-      toast('Excel file saved to your downloads');
+    toast('Building the Excel file…');
+    loadXlsx().then(function(ExcelJS){
+      var name='Njoro wa Uba Post Production '+todayIso()+'.xlsx';
+      return buildPostWorkbook(ExcelJS).xlsx.writeBuffer().then(function(buf){
+        var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),u=URL.createObjectURL(blob),a=document.createElement('a');
+        a.href=u;a.download=name;a.rel='noopener';document.body.appendChild(a);a.click();
+        setTimeout(function(){URL.revokeObjectURL(u);a.remove()},8000);
+        callScript({action:'note',what:'export'});
+        toast('Excel file saved to your downloads');
+      });
     }).catch(function(){toast('Could not build the Excel file. Check your connection and try again.')});
   }
 
@@ -1313,5 +1460,5 @@
   if(ui.view==='post')loadPost();
   if(ui.view==='admin')loadAdmin();
   if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').catch(function(){});
-  window.__njw={state:state,buildDays:buildDays,parseReport:parseReport,refresh:refresh};
+  window.__njw={state:state,buildDays:buildDays,parseReport:parseReport,refresh:refresh,reportWithContinued:reportWithContinued};
 })();
