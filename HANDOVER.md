@@ -16,6 +16,13 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - UI: Nick tried the simplified v16 layout and asked to go back. App v17 = the v15 layout (logo plate, green stats bar, two search boxes, segmented views, header Daily reports menu) with v8 behaviour (master password sign-in, no password change in app, Activity times as DD.MM HH:MM).
 - Nick's v7 status unknown; v8 steps in apps-script/SETUP.md (cleanUp, setup, New version deploy).
 
+## App v22 (14.10.2026)
+- Not in script: scene numbers outside the episode's script list are flagged in the paste preview (single and several days) and tagged "Not in script" on the scene line. Saved as written.
+- Part shot: if only lettered parts of a scene are logged (7/7B) and no plain number, Completed or Continued, the scene counts as part shot (amber pill, hatched bar segment, "Part shot, check the rest was shot" chips). Not counted as shot.
+- Season totals under the season heading in Scenes: shot of total, part shot, to shoot (episodes with a script only).
+- Log sheets due by the end of the day after the shoot (logDue). Missing ones: red banner on Daily reports, "No log sheet" tag on the row, "Missing" in the detail.
+- App only, no robot change.
+
 ## Robot v9 / app v19 (13.10.2026, 14:50)
 - Repeats get a third choice, Continued (same scene finished on another day, e.g. 7/16 phone-call VO on Day 10). Counts on both days, tag "Continued". Robot v9 accepts it; unknown choices now return bad_request instead of silently undoing. With an older robot the app explains and offers Edit report (adding "continued" to the scene line gives the same result via the parser; tag Completed now displays as "Continued").
 
@@ -46,6 +53,6 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Scopes: spreadsheets.currentonly, drive.readonly, drive.file, script.scriptapp, script.external_request (Drive export only). No Gmail.
 
 ## Rules
-- Bump sw.js VERSION and index.html ?v= on each release (now njw-v19 / v=19).
+- Bump sw.js VERSION and index.html ?v= on each release (now njw-v22 / v=22).
 - Commit as Nick Kibathi <nicholaskibathi@gmail.com>. Test with Playwright at 390 px and 1280 px.
 - Never ask for or store the passcode or anyone's password. Plain language, no em/en dashes, honest pushback.

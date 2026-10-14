@@ -76,11 +76,32 @@
     return out;
   }
   /* Shot / still-to-shoot per episode. A lettered take (29A) covers scene 29. */
+  /* A scene counts as shot when it is logged under its plain number (7/7) or marked continued.
+     If only lettered parts are logged (7/7B), it is "part shot": some of it may still be missing. */
   function progress(ep,rows){
     var list=sceneList(ep);if(!list.length)return null;
-    var done={};rows.forEach(function(t){if(t.ep===ep)done[scParts(t.key.split('/')[1])[0]]=1});
-    var left=list.filter(function(n){return !done[n]});
-    return {total:list.length,shot:list.length-left.length,left:left,last:list[list.length-1]};
+    var full={},parts={};
+    rows.forEach(function(t){
+      if(t.ep!==ep)return;
+      var sc=t.key.split('/')[1],p=scParts(sc);
+      if(!p[1]||t.tags.indexOf('Completed')>=0||t.tags.indexOf('Continued')>=0)full[p[0]]=1;
+      else{parts[p[0]]=parts[p[0]]||[];if(parts[p[0]].indexOf(sc)<0)parts[p[0]].push(sc)}
+    });
+    var shot=0,part=[],left=[];
+    list.forEach(function(n){if(full[n])shot++;else if(parts[n])part.push({n:n,parts:parts[n].sort()});else left.push(n)});
+    return {total:list.length,shot:shot,part:part,left:left,last:list[list.length-1]};
+  }
+  function inScript(ep,sc){var L=sceneList(+ep);return !L.length||L.indexOf(scParts(sc)[0])>=0}
+  function notInScript(p){return p.shot.filter(function(s){return !inScript(s.ep,s.sc)}).map(function(s){return keyOf(s.ep,s.sc)})}
+  function barHtml(pr){
+    return '<div class="bar2" aria-hidden="true"><i style="width:'+(pr.shot/pr.total*100).toFixed(1)+'%"></i>'
+      +(pr.part.length?'<i class="pt" style="width:'+(pr.part.length/pr.total*100).toFixed(1)+'%"></i>':'')+'</div>';
+  }
+  /* Totals for one season, from the episodes that have a script. */
+  function seasonTotals(eps,all){
+    var t={total:0,shot:0,part:[],left:[]};
+    eps.forEach(function(ep){var pr=progress(ep,all);if(!pr)return;t.total+=pr.total;t.shot+=pr.shot;t.part=t.part.concat(pr.part);t.left=t.left.concat(pr.left)});
+    return t.total?t:null;
   }
   function scriptFor(ep){var x=(state.scripts&&state.scripts[ep])||SCRIPT_SEED[ep];return x&&safeUrl(x.url)?x:null}
   function safeUrl(u){return /^https:\/\/(drive|docs)\.google\.com\//.test(u||'')?u:''}
@@ -94,7 +115,7 @@
   function pageNum(t){var m=/^\s*(\d+(?:\.\d+)?)?\s*(?:(\d)\s*\/\s*8)?/.exec(t||'');if(!m||(!m[1]&&!m[2]))return 0;return (m[1]?parseFloat(m[1]):0)+(m[2]?+m[2]/8:0)}
   function pageFmt(n){var w=Math.floor(n),e=Math.round((n-w)*8);if(e===8){w++;e=0}return (w||!e?String(w):'')+(e?(w?' ':'')+e+'/8':'')}
   var TAG_LABEL={Check:'Reshoot, duplicate or continued?',Completed:'Continued'};
-  function tagsHtml(tags){return (tags||[]).map(function(t){return '<span class="tag '+esc(t)+'">'+esc(TAG_LABEL[t]||t)+'</span>'}).join('')}
+  function tagsHtml(tags){return (tags||[]).map(function(t){return '<span class="tag '+esc(t).replace(/\s+/g,'-')+'">'+esc(TAG_LABEL[t]||t)+'</span>'}).join('')}
   /* Forgiving word search: ignores case, punctuation and small typos, matches word starts and common short forms. */
   var ABBR={rd:'road',st:'street',str:'street',ave:'avenue',av:'avenue',hse:'house',bldg:'building',htl:'hotel',mkt:'market',hosp:'hospital',sch:'school',apt:'apartment',apts:'apartments',est:'estate',ext:'exterior',int:'interior',estb:'establishing',broll:'broll'};
   function words(t){return String(t||'').toLowerCase().replace(/['’]/g,'').replace(/b[\s-]?roll/g,'broll').split(/[^a-z0-9]+/).filter(Boolean).map(function(w){w=ABBR[w]||w;return w.length>3&&/s$/.test(w)&&!/ss$/.test(w)?w.slice(0,-1):w})}
@@ -250,6 +271,7 @@
   function contUndo(t){return t.decided&&t.decided.decision==='Continued'&&isEditor()?'<button type="button" class="linkbtn contundo" data-decide="" data-scene="'+esc(t.key)+'" data-day="'+t.day.day+'" aria-label="Undo Continued for '+esc(t.key)+' on Day '+t.day.day+'">Undo</button>':''}
   function row(t,hit,showEp){
     var other=t.tags.filter(function(x){return x!=='Reshoot'});
+    if(!inScript(t.ep,t.key.split('/')[1]))other=other.concat(['Not in script']);
     return '<tr'+(hit===t.key?' class="hit"':'')+'><td class="sc">'+esc(t.key)+(t.ext?'<span class="ext">'+esc(t.ext)+'</span>':'')+'</td><td class="when">'+esc(dayRef(t.day))+' '+logLink(t.day,'Log')+'<div class="sub show-sm">'+esc(t.day.location||'')+(other.length||t.note?'<br>':'')+tagsHtml(other)+contUndo(t)+(t.note?'<span class="muted">'+esc(t.note)+'</span>':'')+'</div></td><td class="loc hide-sm">'+esc(t.day.location||'')+'</td><td class="note hide-sm">'+tagsHtml(other)+contUndo(t)+(t.note?'<span class="muted">'+esc(t.note)+'</span>':'')+'</td></tr>';
   }
   var HEAD='<thead><tr><th>Scene</th><th>Shot on</th><th class="hide-sm">Location</th><th class="hide-sm">Notes</th></tr></thead>';
@@ -263,10 +285,15 @@
     var by={};rows.forEach(function(t){(by[t.ep]=by[t.ep]||[]).push(t)});
     var season=only!=null&&only>=1&&only<=EPISODES?seasonOf(only):ui.season;
     var eps=only!=null?[only]:seasonEps(season);
-    if(notShot)eps=eps.filter(function(ep){var pr=progress(ep,all);return pr&&pr.left.length});
+    if(notShot)eps=eps.filter(function(ep){var pr=progress(ep,all);return pr&&(pr.left.length||pr.part.length)});
     else if(ui.show!=='all')eps=eps.filter(function(ep){return by[ep]&&by[ep].length});
     var a=(season-1)*PER_SEASON+1,b=season*PER_SEASON;
-    var head='<div class="seasonhead"><b>Season '+season+'</b><span class="muted">Episodes '+a+' to '+b+'</span></div>';
+    var tot=only==null?seasonTotals(seasonEps(season),all):null;
+    var head='<div class="seasonhead"><b>Season '+season+'</b><span class="muted">Episodes '+a+' to '+b+'</span></div>'
+      +(tot?'<div class="season"><div class="seasonline"><span><b>'+tot.shot+'</b> of '+tot.total+' scenes shot</span>'
+        +(tot.part.length?'<span class="partpill">'+tot.part.length+' part shot</span>':'')
+        +(tot.left.length?'<span class="togo">'+tot.left.length+' to shoot</span>':'')+'</div>'+barHtml(tot)
+        +'<p class="muted seasonnote">Counts the episodes that have a script in Drive.</p></div>':'');
     if(only!=null&&(only<1||only>EPISODES))head='';
     if(!eps.length){
       var msg=notShot?'Every scene in the Season '+season+' scripts has been shot.':'Nothing in Season '+season+' matches this filter.';
@@ -275,20 +302,24 @@
     var html='<div class="tablewrap">'+head+'<table>'+(notShot?'':HEAD)+'<tbody>';
     eps.forEach(function(ep){
       var g=by[ep]||[],open=ui.openEp===ep,pr=progress(ep,all),sc=scriptFor(ep),sub;
-      if(pr)sub='<span class="prog"><b>'+pr.shot+'</b> of '+pr.total+' shot'+(pr.left.length?'':' ✓')+'</span>';
+      if(pr)sub='<span class="prog"><b>'+pr.shot+'</b> of '+pr.total+' shot'+(pr.left.length||pr.part.length?'':' ✓')+'</span>';
       else if(g.length){var u={};g.forEach(function(x){u[x.key]=1});var n=Object.keys(u).length;sub='<span class="prog">'+n+' scene'+(n===1?'':'s')+' shot \u00b7 no script yet</span>'}
       else sub='<span class="prog noscript">No script in Drive yet</span>';
       var checks=g.filter(function(t){return t.tags.indexOf('Check')>=0}).length;
       html+='<tr class="grp'+(open?' open':'')+(pr||g.length?'':' empty')+'"><td colspan="4"><div class="grprow"><button type="button" class="grpbtn" data-ep="'+ep+'" aria-expanded="'+open+'">Episode '+ep+sub+'</button>'
         +(post.loaded&&airingEp()===ep?'<span class="onairchip">On air</span>':'')
         +(checks?'<span class="needcheck">'+checks+' to check</span>':'')
-        +(pr&&pr.left.length?'<span class="togo">'+pr.left.length+' to shoot</span>':'')
+        +(pr&&pr.left.length?'<span class="togo">'+pr.left.length+'<span class="lg"> to shoot</span><span class="sm"> left</span></span>':'')
+        +(pr&&pr.part.length?'<span class="partpill">'+pr.part.length+' part<span class="lg"> shot</span></span>':'')
         +(sc?'<a class="scriptlink" href="'+esc(sc.url)+'" target="_blank" rel="noopener" title="'+esc(sc.name)+'">Script ↗</a>':'')
         +'<button type="button" class="grpfill" data-ep="'+ep+'" tabindex="-1" aria-hidden="true"><span class="chev">›</span></button></div>'
-        +(pr?'<div class="bar2" aria-hidden="true"><i style="width:'+Math.round(pr.shot/pr.total*100)+'%"></i></div>':'')
+        +(pr?barHtml(pr):'')
         +'</td></tr>';
       if(!open)return;
-      if(pr&&pr.left.length)html+='<tr class="left"><td colspan="4"><span class="lbl">Not shot yet</span>'+pr.left.map(function(n){return '<span class="chip">'+ep+'/'+n+'</span>'}).join('')+'</td></tr>';
+      if(pr&&(pr.left.length||pr.part.length))html+='<tr class="left"><td colspan="4">'
+        +(pr.left.length?'<div class="leftgrp"><span class="lbl">Not shot yet</span>'+pr.left.map(function(n){return '<span class="chip">'+ep+'/'+n+'</span>'}).join('')+'</div>':'')
+        +(pr.part.length?'<div class="leftgrp"><span class="lbl pt">Part shot, check the rest was shot</span>'+pr.part.map(function(x){return '<span class="chip pt">'+ep+'/'+x.n+' <small>only '+esc(x.parts.join(', '))+'</small></span>'}).join('')+'</div>':'')
+        +'</td></tr>';
       if(!notShot){
         if(g.length)html+=g.map(function(t){return row(t,hit)}).join('');
         else html+='<tr><td colspan="4" class="muted">'+(sc?'Nothing from Episode '+ep+' is in the reports logged so far.':'No script for Episode '+ep+' in the Scripts folder yet, and nothing logged. Name the file like EPISODE '+ep+'.pdf and it appears within 30 minutes, or use Check Drive now.')+'</td></tr>';
@@ -303,18 +334,25 @@
     }).join(' &nbsp;·&nbsp; ');
   }
 
+  /* Log sheets are due by the end of the day after the shoot. */
+  function logDue(d){var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(d.iso||'');return m?new Date(+m[1],+m[2]-1,+m[3]+2).getTime():0}
+  function logMissing(d){var due=logDue(d);return !d.log&&due&&Date.now()>due}
+  function dmy(ms){var x=new Date(ms);return pad(x.getDate())+'.'+pad(x.getMonth()+1)+'.'+x.getFullYear()}
   function renderDays(){
     var kw=locQuery(),days=kw?locHits(kw).reverse():daysAsc().reverse();
     if(kw&&!days.length)return '';
     if(!days.length)return '<div class="tablewrap"><p class="empty">No daily reports logged yet.</p></div>';
-    var html='<div class="tablewrap"><table class="daytbl"><thead><tr><th>Shoot day</th><th>Location</th><th class="num hide-sm">Scenes</th><th class="num hide-sm">Pages</th><th class="num hide-sm">Call to wrap</th></tr></thead><tbody>';
+    var miss=daysAsc().filter(logMissing);
+    var html=(miss.length&&!kw?'<div class="logwarn" role="status"><strong>'+(miss.length===1?'1 day is':miss.length+' days are')+' missing a log sheet:</strong> '+miss.map(function(d){return 'Day '+d.day}).join(', ')
+        +'. Upload the PDF named like <span class="mono">Day '+miss[0].day+' '+esc(fmtDate(miss[0].iso).replace(/^0/,'').replace(/\.0/,'.'))+'.pdf</span> to the <a href="'+LOG_FOLDER+'" target="_blank" rel="noopener">log sheets folder \u2197</a>. It links by itself.</div>':'')
+      +'<div class="tablewrap"><table class="daytbl"><thead><tr><th>Shoot day</th><th>Location</th><th class="num hide-sm">Scenes</th><th class="num hide-sm">Pages</th><th class="num hide-sm">Call to wrap</th></tr></thead><tbody>';
     days.forEach(function(d){
       var open=ui.openDay===d.day,ents=entriesOf(d);
-      html+='<tr class="d" tabindex="0" role="button" aria-expanded="'+open+'" data-day="'+d.day+'"><td class="when"><span class="caret">›</span><strong>'+esc(dayRef(d))+'</strong></td><td class="loc">'+esc(d.location)+'</td><td class="num hide-sm">'+ents.length+'</td><td class="num hide-sm">'+esc(d.pages||'')+'</td><td class="num hide-sm">'+esc(hours(d))+'</td></tr>';
+      html+='<tr class="d" tabindex="0" role="button" aria-expanded="'+open+'" data-day="'+d.day+'"><td class="when"><span class="caret">›</span><strong>'+esc(dayRef(d))+'</strong>'+(logMissing(d)?'<span class="tag nolog">No log sheet</span>':'')+'</td><td class="loc">'+esc(d.location)+'</td><td class="num hide-sm">'+ents.length+'</td><td class="num hide-sm">'+esc(d.pages||'')+'</td><td class="num hide-sm">'+esc(hours(d))+'</td></tr>';
       if(open){
         html+='<tr class="detail"><td colspan="5"><dl class="dl">'
           +(d.location?'<dt>Location</dt><dd>'+esc(d.location)+'</dd>':'')
-          +'<dt>Log sheet</dt><dd>'+(logLink(d,'Open Day '+esc(d.day)+' log sheet')||'<span class="muted">Not linked yet. Find it in the </span><a class="log" href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Log sheets folder \u2197</a>')+'</dd>'
+          +'<dt>Log sheet</dt><dd>'+(logLink(d,'Open Day '+esc(d.day)+' log sheet')||(logMissing(d)?'<span class="bad">Missing. It was due by the end of '+esc(dmy(logDue(d)-864e5))+'.</span> ':'<span class="muted">Waiting for upload. </span>')+'<a class="log" href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Log sheets folder \u2197</a>')+'</dd>'
           +(d.cast?'<dt>Cast</dt><dd>'+esc(d.cast)+'</dd>':'')
           +'<dt>Shot</dt><dd>'+ents.length+' scene'+(ents.length===1?'':'s')+(d.pages?' \u00b7 '+esc(d.pages)+' pages':'')+(hours(d)?' \u00b7 call to wrap '+esc(hours(d)):'')+'</dd>'
           +((d.times&&d.times.length)?'<dt>Times</dt><dd>'+d.times.map(function(t){return esc(t.label)+' <span class="mono">'+esc(t.time)+'</span>'}).join(' · ')+'</dd>':'')
@@ -1321,10 +1359,12 @@
       box.innerHTML='<p class="pvcount">'+good.length+' day'+(good.length===1?'':'s')+' found</p><ul class="pvlist">'+list.map(function(p,i){
         var bad=!p.day?'No shoot day number':(!p.shot.length?'No scenes found':(p.dup?'Pasted twice, the later copy is used':''));
         var rep=bad?[]:earlierRepeats(p,seenDays);if(!bad)seenDays.push(p);
+        var odd=bad?[]:notInScript(p);
         var ex=p.day&&dayByNum(p.day);
         return '<li class="'+(bad?'skip':'')+'"><div><strong>'+(p.day?esc(dayRef({day:p.day,iso:p.iso,date:p.date})):'Report '+(i+1))+'</strong>'
           +(bad?'':'<span class="pill'+(ex?' upd':'')+'">'+(ex?'Updates':'New')+'</span>')+'</div>'
-          +'<span class="muted">'+(bad?esc(bad)+'. Skipped.':p.shot.length+' scene'+(p.shot.length===1?'':'s')+(p.location?' · '+esc(p.location):'')+(rep.length?' · '+rep.length+' repeat'+(rep.length===1?'':'s')+' to check':''))+'</span></li>';
+          +'<span class="muted">'+(bad?esc(bad)+'. Skipped.':p.shot.length+' scene'+(p.shot.length===1?'':'s')+(p.location?' · '+esc(p.location):'')+(rep.length?' · '+rep.length+' repeat'+(rep.length===1?'':'s')+' to check':''))+'</span>'
+          +(odd.length?'<span class="bad">Not in the script: '+esc(odd.join(', '))+'. Check before saving.</span>':'')+'</li>';
       }).join('')+'</ul>';
       btn.disabled=!good.length||ui.busy;btn.textContent=good.length?'Save '+good.length+' day'+(good.length===1?'':'s'):'Save days';
       return;
@@ -1338,6 +1378,8 @@
     if(editDay&&p.day&&p.day!==editDay)warn.push('You changed the shoot day from '+editDay+' to '+p.day+'. Day '+editDay+' will be removed'+(ex?' and the existing Day '+p.day+' replaced':'')+'.');
     else if(ex&&!editDay)warn.push('Day '+p.day+' is already in the tracker. Saving updates it with this version.');
     if(p.ignored.length)warn.push('Left out because the report lists them as not shot: '+esc(p.ignored.join(', '))+'.');
+    var odd=notInScript(p);
+    if(odd.length)warn.unshift('<strong class="bad">Not in the script:</strong> '+esc(odd.join(', '))+'. Check these numbers against the report before saving. They are saved as written but cannot count towards an episode.');
     var rep=p.day?earlierRepeats(p):[];
     if(rep.length)warn.push('Already logged on an earlier day: '+esc(rep.join(', '))+'. After saving, they show at the top of the tracker for someone to mark <strong>Reshoot</strong> or <strong>Duplicate</strong>. If a scene was only finished today, add “completed” to its line, like <span class="mono">7/5 - completed</span>.');
     box.innerHTML=(p.day?'<div class="pv"><div class="pvhead"><strong>'+esc(dayRef({day:p.day,iso:p.iso,date:p.date}))+'</strong>'+(p.location?'<span class="muted">'+esc(p.location)+'</span>':'')+'</div>'

@@ -550,3 +550,32 @@ input.cell.unsaved{border-color:#E7B43C!important;border-style:solid;background:
 .rpacts{flex-wrap:wrap;justify-content:flex-end}
 @media (max-width:560px){.rpacts{width:100%;justify-content:stretch}.rpacts>.btn{flex:1 1 30%;min-width:0;padding-inline:8px}}
 .linkbtn.contundo{font-size:12px;margin:0 6px}
+
+/* Season totals, part-shot scenes, not-in-script, missing log sheets */
+.season{padding:4px 16px 12px}
+.seasonline{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;font:600 15px var(--body);color:var(--muted)}
+.seasonline b{font:800 20px var(--round);color:var(--ink)}
+.seasonline>span:first-child{margin-right:auto}
+.seasonnote{font-size:12px;margin:6px 0 0}
+.season .togo{font:700 12px var(--body);padding:3px 9px;border-radius:999px;white-space:nowrap;color:#C11F26;background:rgba(193,31,38,.08);border:1px solid rgba(193,31,38,.25)}
+.bar2{display:flex}
+.bar2 i{flex:none}
+.bar2 i.pt{background:repeating-linear-gradient(45deg,#E0A526 0 4px,#F2CF7A 4px 8px);border-radius:0}
+.partpill,tr.grp td span.partpill{flex:none;font:700 12px var(--body);color:#8A5A00;background:rgba(224,165,38,.14);border:1px solid rgba(224,165,38,.45);padding:3px 9px;border-radius:999px;white-space:nowrap;margin-left:0}
+tr.grp td .togo span,tr.grp td .partpill span{font:inherit;color:inherit;margin:0}
+.togo .sm{display:none}
+@media (max-width:560px){tr.grp .togo .lg,tr.grp .partpill .lg{display:none}tr.grp .togo .sm{display:inline}.grprow{gap:6px}}
+.leftgrp+.leftgrp{margin-top:6px}
+tr.left .lbl.pt{color:#8A5A00}
+tr.left .chip.pt{color:#8A5A00;border-color:rgba(224,165,38,.6);background:rgba(224,165,38,.08)}
+tr.left .chip small{font:500 11px var(--body);opacity:.85}
+.tag.Not-in-script,.tag.nolog{background:rgba(193,31,38,.1);color:#C11F26;border:1px solid rgba(193,31,38,.3)}
+.tag.nolog{margin-left:8px;font-size:11px}
+.bad{color:#C11F26;font-weight:700}
+.pvlist li .bad{font-size:13px}
+.logwarn{background:rgba(193,31,38,.07);border:1px solid rgba(193,31,38,.3);color:var(--ink);border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:14px}
+.logwarn strong{color:#C11F26}
+.logwarn a{color:var(--deep);font-weight:700}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .partpill,:root:not([data-theme="light"]) tr.left .lbl.pt,:root:not([data-theme="light"]) tr.left .chip.pt{color:#F2CF7A}:root:not([data-theme="light"]) .bad,:root:not([data-theme="light"]) .logwarn strong,:root:not([data-theme="light"]) .season .togo{color:#F07A7F}}
+:root[data-theme="dark"] .partpill,:root[data-theme="dark"] tr.left .lbl.pt,:root[data-theme="dark"] tr.left .chip.pt{color:#F2CF7A}
+:root[data-theme="dark"] .bad,:root[data-theme="dark"] .logwarn strong,:root[data-theme="dark"] .season .togo{color:#F07A7F}
