@@ -898,9 +898,17 @@
       if(bg)for(j=1;j<=EP.length;j++){var hc=ws.getCell(r,j);hc.border=Object.assign({},hc.border,{top:{style:'medium',color:{argb:n===air?C.forest:C.leaf}},bottom:{style:'medium',color:{argb:n===air?C.forest:C.leaf}}})}
       r++;
     }
+    /* One merged Season cell per season instead of the same word on 13 rows. */
+    for(var sq=1;sq<=SEASONS;sq++){
+      var r0=head0+1+(sq-1)*PER_SEASON,r1=r0+PER_SEASON-1;
+      ws.mergeCells(r0,1,r1,1);
+      var mc=ws.getCell(r0,1);mc.value='Season '+sq;mc.font=font({bold:true,size:11,color:{argb:C.white}});mc.fill=fill(sq%2?C.deep:C.green);
+      mc.alignment={vertical:'middle',horizontal:'center',textRotation:90};
+      mc.border={top:{style:'medium',color:{argb:C.forest}},bottom:{style:'medium',color:{argb:C.forest}},left:thin,right:thin};
+    }
     r=total(ws,r,['Total',EPISODES,aired+(air?1:0)+' aired','',movedCount()+' moved',withEd+' set',withSd+' set',trailers+' trailers',drops,''],EA);
     ws.views=[{state:'frozen',ySplit:head0,showGridLines:false}];
-    ws.autoFilter={from:{row:head0,column:1},to:{row:head0+EPISODES,column:EP.length}};
+    ws.autoFilter={from:{row:head0,column:2},to:{row:head0+EPISODES,column:EP.length}};
     ws.pageSetup.printTitlesRow=head0+':'+head0;
     r++;ws.mergeCells(r,1,r,EP.length);var key=ws.getCell(r,1);
     key.value='Status: On air = the episode airing this week. Next = the next one to air. Aired, Upcoming, or TBC when the TX date is not set.';key.font=font({size:9,italic:true,color:{argb:C.muted}});
@@ -977,9 +985,12 @@
     }).catch(function(){toast('Could not build the Excel file. Check your connection and try again.')});
   }
   function b64OfBuffer(buf){var bytes=new Uint8Array(buf),out='',CH=0x8000;for(var i=0;i<bytes.length;i+=CH)out+=String.fromCharCode.apply(null,bytes.subarray(i,i+CH));return btoa(out)}
+  var SETUP_URL='https://github.com/nickovins/njoro-tracker/blob/main/apps-script/SETUP.md';
+  var CODE_URL='https://raw.githubusercontent.com/nickovins/njoro-tracker/main/apps-script/Code.gs';
+  function updateLinks(){return '<a href="'+SETUP_URL+'" target="_blank" rel="noopener">Install guide \u2197</a> \u00b7 <a href="'+CODE_URL+'" target="_blank" rel="noopener">Code.gs to paste \u2197</a>'}
   function exportSheets(){
     var err=document.getElementById('dlgerr'),btn=document.querySelector('[data-dlg="exp-sheets"]');
-    if(ui.robot&&ui.robot<10){err.textContent='Opening in Google Sheets needs the Google script at version 10. Paste the new Code.gs and deploy a New version. Download the Excel file for now.';return}
+    if(ui.robot&&ui.robot<10){err.innerHTML='Opening in Google Sheets needs the Google script at version 10. Download the Excel file for now. '+updateLinks();return}
     if(!navigator.onLine){err.textContent='No signal. Download the Excel file instead, or try again with signal.';return}
     /* Open the tab now, while the tap still counts, so the phone does not block it as a pop-up. */
     var w=null;try{w=window.open('','_blank')}catch(e){}
@@ -987,7 +998,7 @@
     btn.disabled=true;btn.querySelector('b').textContent='Building the Google Sheet…';err.textContent='';
     postWorkbookBuffer().then(function(buf){return callScript({action:'exportSheet',xlsx:b64OfBuffer(buf)})}).then(function(r){
       btn.disabled=false;btn.querySelector('b').textContent='Open in Google Sheets';
-      if(!r||!r.ok){if(w)try{w.close()}catch(e){}err.textContent=r&&r.error==='bad_request'?'Opening in Google Sheets needs the Google script at version 10. Paste the new Code.gs and deploy a New version. Download the Excel file for now.':errText(r);return}
+      if(!r||!r.ok){if(w)try{w.close()}catch(e){}if(r&&r.error==='bad_request')err.innerHTML='Opening in Google Sheets needs the Google script at version 10. Download the Excel file for now. '+updateLinks();else err.textContent=errText(r);return}
       var url=safeUrl(r.url);if(!url){if(w)try{w.close()}catch(e){}err.textContent=ERR.server;return}
       if(w&&!w.closed){try{w.location.href=url}catch(e){window.open(url,'_blank')}}
       else window.open(url,'_blank');
@@ -1014,7 +1025,7 @@
     if(!act)html+='<p class="empty">Loading activity\u2026</p>';
     else if(!act.length)html+='<p class="empty">Nothing yet.</p>';
     else html+=activityTable(act);
-    html+='</section><section class="tablewrap adm admsec"><div class="seasonhead"><b>Team sign-in</b><span class="muted">One master password for everyone. Sign-ins end after '+esc(auth.idle||30)+' minutes without use. To change the password, change PASSCODE in the Google script\u2019s Script Properties: every device is then signed out.</span></div>'
+    html+='</section>'+(ui.robot&&ui.robot<10?'<section class="tablewrap adm admsec upd"><div class="seasonhead"><b>Google script update</b><span class="muted">'+(ui.robot>=6?'Version '+esc(ui.robot)+' is':'An older version is')+' installed. Version 10 reads estabs and flashbacks from new scripts by itself and opens exports in Google Sheets.</span></div><p class="updlinks">'+updateLinks()+'</p></section>':'')+'<section class="tablewrap adm admsec"><div class="seasonhead"><b>Team sign-in</b><span class="muted">One master password for everyone. Sign-ins end after '+esc(auth.idle||30)+' minutes without use. To change the password, change PASSCODE in the Google script\u2019s Script Properties: every device is then signed out.</span></div>'
       +'<div class="admrow">'
       +(admin.confirmAll?'<span class="confirm">Sign out every device, including this one?</span><button type="button" class="btn small danger" data-act="adm-all-yes">Sign everyone out</button><button type="button" class="btn small" data-act="adm-cancel">Cancel</button>'
         :'<button type="button" class="btn small" data-act="adm-all">Sign everyone out</button>')+'</div></section>';
@@ -1330,7 +1341,11 @@
     if(b.matches('tr.d')){toggleDay(+b.dataset.day);return}
     if(b.dataset.ep){var e=+b.dataset.ep;ui.openEp=ui.openEp===e?null:e;var q=document.getElementById('q');if(q.value){q.value='';renderAnswer()}renderMain();return}
     if(b.dataset.view){ui.view=b.dataset.view;try{localStorage.setItem('njw-view',ui.view)}catch(e){}if(ui.view==='post'||ui.view==='admin'){var qq=document.getElementById('q'),ll=document.getElementById('loc');if(qq.value||ll.value){qq.value='';ll.value='';renderAnswer()}}if(ui.view==='post')loadPost();if(ui.view==='admin')loadAdmin();renderControls();renderMain();return}
-    if(b.dataset.actkey!=null){var ak=b.dataset.actkey;ui.actOpen=ui.actOpen||{};if(!Object.keys(ui.actOpen).length){var first=document.querySelector('.actfold');if(first)ui.actOpen[first.dataset.actkey]=true}ui.actOpen[ak]=!ui.actOpen[ak];if(!Object.keys(ui.actOpen).some(function(k){return ui.actOpen[k]}))ui.actOpen={__none:false};renderMain();return}
+    if(b.dataset.actkey!=null){
+      /* One day, week or month open at a time: opening one folds the others; tapping the open one folds it. */
+      var ak=b.dataset.actkey,wasOpen=b.getAttribute('aria-expanded')==='true';
+      ui.actOpen=wasOpen?{__none:false}:{};if(!wasOpen)ui.actOpen[ak]=true;
+      renderMain();var nb=document.querySelector('.actfold[data-actkey="'+ak.replace(/"/g,'')+'"]');if(nb&&!wasOpen&&nb.scrollIntoView)nb.scrollIntoView({block:'nearest'});return}
     if(b.dataset.actgroup){ui.actGroup=b.dataset.actgroup;try{localStorage.setItem('njw-actgroup',ui.actGroup)}catch(e){}renderMain();return}
     if(b.dataset.season){setSeason(+b.dataset.season);post.openDrop=null;post.openMove=null;ui.openEp=null;var q2=document.getElementById('q');if(q2&&q2.value&&ui.view==='scenes'){q2.value='';renderAnswer()}renderControls();renderMain();if(ui.view==='post'&&b.classList.contains('foldbtn'))setTimeout(function(){var so=document.querySelector('.seasonopen');if(so&&so.scrollIntoView)so.scrollIntoView({block:'start',behavior:'smooth'})},30);return}
     if(b.dataset.pexp){var pn=+b.dataset.pexp;post.openEp=post.openEp===pn?0:pn;if(post.openDrop!==pn)post.openDrop=null;if(post.openMove!==pn)post.openMove=null;renderPostKeep(0,true);return}

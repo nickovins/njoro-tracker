@@ -677,3 +677,4 @@ tr.actgrp.open .actfold .chev{transform:rotate(90deg)}
 .acttbl.grouped tr.actgrp th span.muted{margin-left:0}
 .actfold:focus-visible{outline:2px solid var(--green);outline-offset:3px;border-radius:4px}
 .actfold{flex-wrap:wrap;row-gap:2px}.acttbl.grouped tr.actgrp th{white-space:normal}
+.updlinks{padding:12px 16px;margin:0;font-size:14px}.updlinks a,.dlgerr a{color:var(--post);font-weight:700}

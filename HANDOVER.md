@@ -16,6 +16,11 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - UI: Nick tried the simplified v16 layout and asked to go back. App v17 = the v15 layout (logo plate, green stats bar, two search boxes, segmented views, header Daily reports menu) with v8 behaviour (master password sign-in, no password change in app, Activity times as DD.MM HH:MM).
 - Nick's v7 status unknown; v8 steps in apps-script/SETUP.md (cleanUp, setup, New version deploy).
 
+## App v25 (16.10.2026)
+- Activity groups are an accordion: opening one day, week or month folds the others; tapping the open one folds it.
+- Excel / Google Sheet "All episodes": one merged, coloured Season cell per season (rotated); filter starts at column B.
+- Install links (SETUP.md and raw Code.gs) shown in the export dialog when the robot is older than 10, and as a "Google script update" card on the Activity tab.
+
 ## App v24 (16.10.2026, afternoon)
 - Open episode = every script scene in order (episodeRows): takes as before, "Not shot yet" lines for missing scenes, "Part shot: only 7B logged" lines, Estab / Flashback lines ("Not logged ..."). Labels (Estab, Flashback, Part shot, Reshoot...) at the end of the line. No script note text shown anywhere (Nick asked).
 - Flashbacks count as shot (estabIn covers Estab and Flashback, so both are left out of "to shoot").
@@ -69,6 +74,6 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Scopes: spreadsheets.currentonly, drive.readonly, drive.file, script.scriptapp, script.external_request (Drive export only). No Gmail.
 
 ## Rules
-- Bump sw.js VERSION and index.html ?v= on each release (now njw-v24 / v=24).
+- Bump sw.js VERSION and index.html ?v= on each release (now njw-v25 / v=25).
 - Commit as Nick Kibathi <nicholaskibathi@gmail.com>. Test with Playwright at 390 px and 1280 px.
 - Never ask for or store the passcode or anyone's password. Plain language, no em/en dashes, honest pushback.
