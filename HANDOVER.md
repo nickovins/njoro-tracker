@@ -16,6 +16,15 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - UI: Nick tried the simplified v16 layout and asked to go back. App v17 = the v15 layout (logo plate, green stats bar, two search boxes, segmented views, header Daily reports menu) with v8 behaviour (master password sign-in, no password change in app, Activity times as DD.MM HH:MM).
 - Nick's v7 status unknown; v8 steps in apps-script/SETUP.md (cleanUp, setup, New version deploy).
 
+## Robot v10 / app v23 (16.10.2026)
+- Scenes: no "X of Y shot" on episode rows (only "N to shoot" / "N part" pills, "All shot" when done) and no season totals line (Nick asked for both to go).
+- Estab and Flashback: robot sceneNotes_() splits each script into scenes (sceneHeads_ keeps where each heading starts) and writes a Notes column (F) in the Scripts tab: {"4":"E|Various activities","2":"F|Cess telling..."}. Estab = says Estab, or a drive-by/various/time-lapse/transition cue in <= 25 words, or a silent exterior in <= 18 words. Flashback = FLASH in the heading or first line. Checked against a by-hand reading of all 12 scripts (Eps 1 to 10, 12, 13): same answers. App fallback SCENE_NOTES holds that reading until robot v10 is installed.
+- Estab scenes are left out of "to shoot" and listed inside the open episode ("Estabs in the script, not counted as to shoot") with their note and whether they were logged. Flashbacks are listed with their note and get a Flashback label on chips, scene lines and search answers.
+- Post production has its own deep blue (#1C4E80) for the tab, its tables and the export choices. A "Season N crew" card under the post table lists editors and sound with episode counts and numbers for the season.
+- Activity: Group by Day / Week (Mon to Sun) / Month, each group with counts (changes, sign-ins, failed). Choice remembered (njw-actgroup).
+- Export: dialog with Open in Google Sheets (robot exportSheet: xlsx from the app converted to a Google Sheet in Nick's Drive, anyone with the link can view, only the newest kept, older one trashed; EXPORT_ID property) and Download Excel. Excel: "Crew by season" sheet replaces the two per-person sheets: per role a Name x Season matrix (count and episode numbers), Not assigned row, Episodes covered row.
+- EP10 added to SCRIPT_SEED and SCENE_COUNT (16 scenes; scenes 8 and 9 look like two versions of the same beat, both counted).
+
 ## App v22 (14.10.2026)
 - Not in script: scene numbers outside the episode's script list are flagged in the paste preview (single and several days) and tagged "Not in script" on the scene line. Saved as written.
 - Part shot: if only lettered parts of a scene are logged (7/7B) and no plain number, Completed or Continued, the scene counts as part shot (amber pill, hatched bar segment, "Part shot, check the rest was shot" chips). Not counted as shot.
@@ -53,6 +62,6 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Scopes: spreadsheets.currentonly, drive.readonly, drive.file, script.scriptapp, script.external_request (Drive export only). No Gmail.
 
 ## Rules
-- Bump sw.js VERSION and index.html ?v= on each release (now njw-v22 / v=22).
+- Bump sw.js VERSION and index.html ?v= on each release (now njw-v23 / v=23).
 - Commit as Nick Kibathi <nicholaskibathi@gmail.com>. Test with Playwright at 390 px and 1280 px.
 - Never ask for or store the passcode or anyone's password. Plain language, no em/en dashes, honest pushback.

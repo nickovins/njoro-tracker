@@ -46,7 +46,7 @@ var SCRIPTS_TAB = 'Scripts';
 var REPEATS_TAB = 'Repeats';
 var ACTIVITY_TAB = 'Activity';
 var TZ = 'Africa/Nairobi';
-var VERSION = 9;
+var VERSION = 10;
 var EPISODES = 52;
 var IDLE_MINUTES_DEFAULT = 30;   // change with Script Property IDLE_MINUTES
 var SESSION_MAX_HOURS = 12;      // even an active sign-in ends after this
@@ -83,6 +83,7 @@ function route_(b) {
   if (a === 'check' || a === 'touch') return { ok: true, user: { name: me.name }, idle: idleMinutes_() };
   if (a === 'post') return postAll_();
   if (a === 'activity') return readActivity_();
+  if (a === 'exportSheet') return exportSheet_(b, me);
 
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) return { ok: false, error: 'busy' };
@@ -138,6 +139,24 @@ function write_(a, b, me) {
   return { ok: false, error: 'bad_request' };
 }
 
+/** Post production as a Google Sheet. The app builds the same formatted file it downloads
+ *  as Excel and sends it here; Google turns it into a Google Sheet in the owner's Drive.
+ *  Anyone with the link can view it (the link only goes to the person who exported).
+ *  Only the newest export is kept: the previous one goes to the Drive bin. */
+function exportSheet_(b, me) {
+  var b64 = String(b.xlsx || '');
+  if (!b64 || b64.length > 8000000) return { ok: false, error: 'bad_request' };
+  var blob = Utilities.newBlob(Utilities.base64Decode(b64), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'post.xlsx');
+  var name = 'Njoro wa Uba Post Production ' + Utilities.formatDate(new Date(), TZ, 'dd.MM.yyyy HH.mm');
+  var file = Drive.Files.create({ name: name, mimeType: MimeType.GOOGLE_SHEETS }, blob);
+  try { Drive.Permissions.create({ role: 'reader', type: 'anyone' }, file.id); } catch (e) { console.warn('Could not share the export: ' + e); }
+  var p = props_(), old = p.getProperty('EXPORT_ID');
+  if (old && old !== file.id) { try { Drive.Files.update({ trashed: true }, old); } catch (e) {} }
+  p.setProperty('EXPORT_ID', file.id);
+  log_(me.name, 'Exported post production to Google Sheets', name);
+  return { ok: true, url: 'https://docs.google.com/spreadsheets/d/' + file.id + '/edit', name: name };
+}
+
 /** Run once from the editor after pasting a new version. Safe to run again. */
 function setup() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
@@ -180,7 +199,7 @@ function readAll_() {
   var out = {
     ok: true, version: VERSION,
     reports: tabRows_(sheet_(), 3),
-    scripts: tabRows_(ss.getSheetByName(SCRIPTS_TAB), 5),
+    scripts: tabRows_(ss.getSheetByName(SCRIPTS_TAB), 6),
     repeats: tabRows_(ss.getSheetByName(REPEATS_TAB), 3),   // scene, day, decision: who decided stays in the Activity log
     at: Date.now()
   };
@@ -287,7 +306,7 @@ function endSession_(token) {
 /** Run from the editor: removes Script Properties the robot no longer uses and
  *  prints what is left. Never touches PASSCODE, IDLE_MINUTES or post production. */
 function cleanUp() {
-  var p = props_(), all = p.getProperties(), keep = /^(PASSCODE|IDLE_MINUTES|POST_TX|POST_EP_\d+|ACT_RING|SESS_GEN)$/, gone = [];
+  var p = props_(), all = p.getProperties(), keep = /^(PASSCODE|IDLE_MINUTES|POST_TX|POST_EP_\d+|ACT_RING|SESS_GEN|EXPORT_ID)$/, gone = [];
   Object.keys(all).forEach(function (k) { if (!keep.test(k)) { p.deleteProperty(k); gone.push(k); } });
   var left = Object.keys(p.getProperties()).sort();
   console.log('Removed ' + gone.length + ' unused line' + (gone.length === 1 ? '' : 's') + (gone.length ? ': ' + gone.join(', ') : '') + '.');
@@ -600,16 +619,16 @@ function refreshScripts(budgetMs) {
   /* Scene numbers already read are kept in the tab itself: same file, same "Updated" time,
      no need to read it again. A replaced or edited script is read again. */
   var known = {};
-  tabRows_(tab, 5).forEach(function (r) { if (r[4]) known[r[2] + '|' + r[3]] = r[4]; });
+  tabRows_(tab, 6).forEach(function (r) { if (r[4] && r[5]) known[r[2] + '|' + r[3]] = { scenes: r[4], notes: r[5] }; });
   var started = Date.now();
   var rows = Object.keys(best).map(Number).sort(function (a, b) { return a - b; }).map(function (ep) {
     var b = best[ep], when = Utilities.formatDate(b.updated, TZ, 'yyyy-MM-dd HH:mm:ss');
-    var scenes = known[b.url + '|' + when] || (b.file && Date.now() - started < budgetMs ? scenesOf_(b.file) : '');
-    return [String(ep), b.name, b.url, when, scenes];
+    var got = known[b.url + '|' + when] || (b.file && Date.now() - started < budgetMs ? scenesOf_(b.file) : { scenes: '', notes: '' });
+    return [String(ep), b.name, b.url, when, got.scenes, got.notes];
   });
   tab.clearContents();
-  var out = [['Episode', 'Script', 'Link', 'Updated', 'Scenes']].concat(rows);
-  var range = tab.getRange(1, 1, out.length, 5);
+  var out = [['Episode', 'Script', 'Link', 'Updated', 'Scenes', 'Notes']].concat(rows);
+  var range = tab.getRange(1, 1, out.length, 6);
   range.setNumberFormat('@');
   range.setValues(out);
   return rows.length;
@@ -621,8 +640,9 @@ function refreshScripts(budgetMs) {
  *  (tried again on the next run), 'none' if it was read but has no scene headings. */
 function scenesOf_(file) {
   var text = scriptText_(file);
-  if (text == null) return '';
-  return sceneNumbers_(text).join(',') || 'none';   // 'none': read fine, no scene headings found; not read again
+  if (text == null) return { scenes: '', notes: '' };
+  return { scenes: sceneNumbers_(text).join(',') || 'none',   // 'none': read fine, no scene headings found; not read again
+           notes: JSON.stringify(sceneNotes_(text)) };
 }
 
 /** The words in a script. A PDF is first copied as a temporary Google Doc (Google
@@ -657,23 +677,69 @@ function exportText_(id) {
  *  "12A EXT. ROAD - NIGHT 12A", "4 FLASHBACK - ...", "7 INTERCUT - ...", "17 I/E DOOR 17",
  *  and typo'd headings that still carry the number at both ends: "2 NT. CAR - DAY 2". */
 var HEAD_ = '(?:INT\\.?\\/EXT|EXT\\.?\\/INT|INT|EXT|I\\/E|INTERCUT|FLASHBACK|FLASH)\\b';
+function cleanScript_(text) {
+  return String(text).replace(/\r/g, '').replace(/\\(?=[^\s])/g, '').replace(/[*_#>`]/g, ' ').replace(/[\u00A0\t]/g, ' ');
+}
 function sceneNumbers_(text) {
-  var t = String(text).replace(/\\(?=[^\s])/g, '').replace(/[*_#>`]/g, ' ').replace(/[\u00A0\t]/g, ' ');
   var seen = {}, out = [];
-  function add(n) { n = n.toUpperCase().replace(/^0+(?=\d)/, ''); if (!seen[n] && parseInt(n, 10) <= 300) { seen[n] = 1; out.push(n); } }
+  sceneHeads_(cleanScript_(text)).forEach(function (h) { if (!seen[h.n]) { seen[h.n] = 1; out.push(h.n); } });
+  return out.sort(function (a, b) { return parseInt(a, 10) - parseInt(b, 10) || (a < b ? -1 : a > b ? 1 : 0); });
+}
+/** Every scene heading in the text with where it starts and ends, in reading order. */
+function sceneHeads_(t) {
+  var heads = [];
+  function add(n, m, front) {
+    n = n.toUpperCase().replace(/^0+(?=\d)/, '');
+    if (parseInt(n, 10) > 300) return;
+    // Where the heading line starts: at its number when the number comes first, else at the first letter.
+    var start = m.index + (front ? m[0].search(/\d/) : m[0].search(/\S/));
+    var lineEnd = t.indexOf('\n', start);
+    heads.push({ n: n, at: start, end: lineEnd < 0 ? t.length : lineEnd, line: t.slice(start, lineEnd < 0 ? t.length : lineEnd).trim() });
+  }
   // Number in front of the heading.
   var front = new RegExp('(?:^|\\n|[.!?"\u201D)]\\s)\\s*(\\d{1,3}[A-Z]?)\\s+' + HEAD_, 'g'), m;
-  while ((m = front.exec(t))) add(m[1]);
+  while ((m = front.exec(t))) add(m[1], m, true);
   // Number only after the heading, written twice: "INT. CAB - EVENING 1 1".
   var back = new RegExp('(?:^|\\n)\\s*' + HEAD_ + '[^\\n]*?\\s(\\d{1,3}[A-Z]?)\\s+(\\d{1,3}[A-Z]?)\\s*(?=\\n|$)', 'g');
-  while ((m = back.exec(t))) if (m[1] === m[2]) add(m[1]);
+  while ((m = back.exec(t))) if (m[1] === m[2]) add(m[1], m);
   // Number tucked just after INT./EXT. and repeated at the end: "INT. 1 LIVING ROOM - NIGHT 1".
   var inside = new RegExp('(?:^|\\n)\\s*' + HEAD_ + '\\.?\\s+(\\d{1,3}[A-Z]?)\\s[^\\n]*\\s(\\d{1,3}[A-Z]?)\\s*(?=\\n|$)', 'g');
-  while ((m = inside.exec(t))) if (m[1] === m[2]) add(m[1]);
+  while ((m = inside.exec(t))) if (m[1] === m[2]) add(m[1], m);
   // Any short CAPITALS line with the same number at both ends and a time of day.
   var loose = /(?:^|\n)\s*(\d{1,3}[A-Z]?)\s+([A-Z][^\na-z]{3,90}?)\s+(\d{1,3}[A-Z]?)\s*(?=\n|$)/g;
-  while ((m = loose.exec(t))) if (m[1] === m[3] && /(DAY|NIGHT|EVENING|MORNING|AFTERNOON|CONTINUOUS|LATER|DAWN|DUSK)/.test(m[2])) add(m[1]);
-  return out.sort(function (a, b) { return parseInt(a, 10) - parseInt(b, 10) || (a < b ? -1 : a > b ? 1 : 0); });
+  while ((m = loose.exec(t))) if (m[1] === m[3] && /(DAY|NIGHT|EVENING|MORNING|AFTERNOON|CONTINUOUS|LATER|DAWN|DUSK)/.test(m[2])) add(m[1], m, true);
+  // One entry per scene, the first place it appears, in reading order.
+  heads.sort(function (a, b) { return a.at - b.at; });
+  var seen = {}, out = [];
+  heads.forEach(function (h) { if (!seen[h.n]) { seen[h.n] = 1; out.push(h); } });
+  return out;
+}
+
+/** Establishing shots and flashbacks, from what each scene says.
+ *  Estab: the scene says "Estab", or it is an exterior (or VARIOUS) with only a line or two
+ *  of action and nobody speaking, like "Various activities, time lapse" or "The cab moves
+ *  through the city." Flashback: the heading or the first line says FLASHBACK.
+ *  Returns {"4":"E|Various activities - we transition from night to morning", "2":"F|Cess telling ..."}. */
+function sceneNotes_(text) {
+  var t = cleanScript_(text), heads = sceneHeads_(t), out = {};
+  heads.forEach(function (h, i) {
+    var body = t.slice(h.end, i + 1 < heads.length ? heads[i + 1].at : t.length)
+      .replace(/^\s*\d{1,3}\.\s*$/gm, ' ')                 // page numbers
+      .replace(/\((?:MORE|CONTINUED|CONT'D|CONT\u2019D)\)|\bCONTINUED:?/gi, ' ')
+      .replace(/\b(?:END OF EPISODE|NJORO WA UBA TITLE SEQUENCE|CUT TO:?|INTERCUT WITH:?|NEW DAY|LATER|BACK TO(?: [A-Z]+)?)\b/g, ' ')
+      .replace(/\s+/g, ' ').trim();
+    var head = h.line.replace(/^\d{1,3}[A-Z]?\s+/, '').replace(/\s+\d{1,3}[A-Z]?(?:\s+\d{1,3}[A-Z]?)?\s*$/, '').trim();
+    var words = body ? body.split(' ').length : 0;
+    var spoken = /\((?:V\.?\s?O|O\.?\s?S|O\.?\s?C)\.?\)/i.test(body) || /[!?"\u201C\u201D]/.test(body);
+    // The note is the action only: it stops where somebody starts talking ("AMARA What do...", "HENRY (O.S.) ...").
+    var action = body.replace(/(?:\s|[.!?])[A-Z][A-Z'\u2019]{2,}(?:\s[A-Z][A-Z'\u2019]{2,})?\s*(?:\((?:O\.?\s?S|V\.?\s?O|O\.?\s?C)[^)]*\)|(?=\s[A-Z][a-z'\u2019]))[\s\S]*$/, function (m) { return /^[.!?]/.test(m) ? m.charAt(0) : ''; }).trim() || body;
+    var note = action.length > 90 ? action.slice(0, 87).replace(/\s+\S*$/, '') + '\u2026' : action;
+    if (/FLASH/i.test(head) || /^FLASH(?:BACK)?\b/i.test(body)) { out[h.n] = 'F|' + (note || head); return; }
+    var ext = /^(?:EXT|I\/E)\b/i.test(head) || /\bVARIOUS\b/i.test(head);
+    var cue = /\b(?:estab|various|time ?lapse|transition|wipes (?:the )?frame|whips past|drives past|glides|moves through|in motion|sunrise|sunset|day turns|night turns|doorbell)/i.test(body) || (!spoken && /\b(?:comes? to a stop|pulls up)/i.test(body));
+    if (/\bestab/i.test(head) || /^estab/i.test(body) || (cue && words <= 25) || (ext && !spoken && words <= 18)) out[h.n] = 'E|' + (/^estab\.?$/i.test(body) || !body ? head : note);
+  });
+  return out;
 }
 
 /* ---------- post production ---------- */

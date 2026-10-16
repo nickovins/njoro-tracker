@@ -23,6 +23,7 @@
   function isAdmin(){return isEditor()}
   var installPrompt=null;
   try{var v=localStorage.getItem('njw-view');if(v==='scenes'||v==='days'||v==='post'||v==='admin')ui.view=v}catch(e){}
+  try{var ag=localStorage.getItem('njw-actgroup');if(ag==='day'||ag==='week'||ag==='month')ui.actGroup=ag}catch(e){}
   try{var sv=+localStorage.getItem('njw-season');if(sv>=1&&sv<=4)ui.season=sv}catch(e){}
   /* Post production: signed-in team only. Kept by the Google robot, never in the Sheet. */
   var EPISODES=52,PER_SEASON=13,SEASONS=4;
@@ -57,14 +58,17 @@
   var LOG_FOLDER='https://drive.google.com/drive/folders/1KQgFJwqSnT5e3fR0aS7sNptej30-5Bs9?usp=sharing';
   var SCRIPTS_FOLDER='https://drive.google.com/drive/folders/1keWRPeybj1YUOr8c6MtPNM-tHS-zmnjZ?usp=sharing';
   /* Scripts found on 09.10.2026. Used until the Apps Script writes the Scripts tab, which then takes over. */
-  var SCRIPT_SEED={"1":{"url":"https://drive.google.com/file/d/1h1cAMNHBmJMRAIrUrWy0MkGey5zmwK5i/view","name":"EPISODE 1.pdf"},"2":{"url":"https://drive.google.com/file/d/1KuVpCzPWDxe7qjauTwRf54n4htM3NNo1/view","name":"EPISODE 2.pdf"},"3":{"url":"https://drive.google.com/file/d/1sMdHvFZx6vyPP-3VWA4wtBdH8OZ1KtTz/view","name":"EPISODE 3.pdf"},"4":{"url":"https://drive.google.com/file/d/15sqGsYtc7PyhxUcPUJjbAwyS0CUN0GUg/view","name":"EPISODE 4.pdf"},"5":{"url":"https://drive.google.com/file/d/1EFwA0n0w2RUkeLPI77hTuCJIL7ZC2C-_/view","name":"EPISODE 5.pdf"},"6":{"url":"https://drive.google.com/file/d/1WR2ASggbojN7txYiNlbpnCKBTmGQ0fB0/view","name":"EPISODE 6.pdf"},"7":{"url":"https://drive.google.com/file/d/1hhq-4FzgDySJv3ZbfZT_gG7VDIcjqyOR/view","name":"EPISODE 7.pdf"},"8":{"url":"https://drive.google.com/file/d/1QecGLJVOesXV61RK_iRqHQFt_3w-3z9Y/view","name":"EPISODE 8.pdf"},"9":{"url":"https://drive.google.com/file/d/1SeEoTN0EuRMrPN4-KJlhZZP9zirL--kW/view","name":"EPISODE 9.pdf"},"12":{"url":"https://drive.google.com/file/d/1nX0gBt6v9fIf3P-T17CcEdBwWNDBgpMD/view","name":"EPISODE 12.pdf"},"13":{"url":"https://drive.google.com/file/d/1KBgIIb7ji5a1MVF1u3oFJ50kL_cV7G43/view","name":"EPISODE 13.pdf"}};
+  var SCRIPT_SEED={"1":{"url":"https://drive.google.com/file/d/1h1cAMNHBmJMRAIrUrWy0MkGey5zmwK5i/view","name":"EPISODE 1.pdf"},"2":{"url":"https://drive.google.com/file/d/1KuVpCzPWDxe7qjauTwRf54n4htM3NNo1/view","name":"EPISODE 2.pdf"},"3":{"url":"https://drive.google.com/file/d/1sMdHvFZx6vyPP-3VWA4wtBdH8OZ1KtTz/view","name":"EPISODE 3.pdf"},"4":{"url":"https://drive.google.com/file/d/15sqGsYtc7PyhxUcPUJjbAwyS0CUN0GUg/view","name":"EPISODE 4.pdf"},"5":{"url":"https://drive.google.com/file/d/1EFwA0n0w2RUkeLPI77hTuCJIL7ZC2C-_/view","name":"EPISODE 5.pdf"},"6":{"url":"https://drive.google.com/file/d/1WR2ASggbojN7txYiNlbpnCKBTmGQ0fB0/view","name":"EPISODE 6.pdf"},"7":{"url":"https://drive.google.com/file/d/1hhq-4FzgDySJv3ZbfZT_gG7VDIcjqyOR/view","name":"EPISODE 7.pdf"},"8":{"url":"https://drive.google.com/file/d/1QecGLJVOesXV61RK_iRqHQFt_3w-3z9Y/view","name":"EPISODE 8.pdf"},"9":{"url":"https://drive.google.com/file/d/1SeEoTN0EuRMrPN4-KJlhZZP9zirL--kW/view","name":"EPISODE 9.pdf"},"10":{"url":"https://drive.google.com/file/d/1lcotMO-QHO3f7YVGfHoANFKlyi9klemw/view","name":"EPISODE 10.pdf"},"12":{"url":"https://drive.google.com/file/d/1nX0gBt6v9fIf3P-T17CcEdBwWNDBgpMD/view","name":"EPISODE 12.pdf"},"13":{"url":"https://drive.google.com/file/d/1KBgIIb7ji5a1MVF1u3oFJ50kL_cV7G43/view","name":"EPISODE 13.pdf"}};
   /* Log sheets found in Drive on 13.10.2026 for days that had no link yet. The robot fills the
      Sheet itself once version 6 runs; a link already in the Sheet always wins over these. */
   var LOG_SEED={9:{iso:'2026-10-09',url:'https://drive.google.com/file/d/1w3ZbfyRHPNAA476kJkVmLya7buysg5FA/view'}};
   /* Scene numbers per episode. The Google robot reads every script in the Scripts folder and
      writes them to the Scripts tab (Scenes column). These counts are only a fallback, read by hand
      on 10.10.2026 and 13.10.2026, for when that tab is missing. */
-  var SCENE_COUNT={1:19,2:32,3:19,4:16,5:25,6:19,7:19,8:23,9:26,12:25,13:24};
+  /* Estab (E) and Flashback (F) scenes, read from the scripts by hand on 16.10.2026. The robot
+     (version 10) reads every script itself and its Notes column takes over. */
+  var SCENE_NOTES={"1":{"2":"F|Cess telling Njoro to denounce Zani and that Zani ni Mtoto wa Koome.","4":"E|Various Activities - We transition from Night to morning.","6":"E|Various activities, time lapse","8":"E|Various activities. Njoro’s car wipes frame.","12":"E|Various activities.","14":"E|Njoros car wipes frame, the sound of laughter fills the air.","16":"E|Various activities.","18":"E|We transition to night."},"2":{"3":"E|The cab whips past.","5":"E|The cab pulls up to an apartment gate.","7":"E|The cab glides through the city.","9":"E|Njoro comes to a stop.","12":"E|Sunrise. The cab whips past.","14":"E|Various activities.","17":"E|Various transition day to night to day DAY 3","18":"E|EXT. STACY’S SCHOOL - DAY","24":"E|The cab pulls up outside the sleek office building.","26":"E|Various The car whips past. A phone ringing fills the air.","30":"E|EXT. NJORO'S PLACE - DAY"},"3":{"9":"E|Nairobi in motion. Cars inching through traffic.","13":"E|Njoro’s cab pulls up outside the apartment gate but doesn’t enter immediately. Inside,…"},"4":{"2":"E|Njoro’s cab comes to a stop","8":"E|Njoro’s cab parked at usual spot.","10":"E|The cab drives past us.","12":"E|Day turns into night"},"5":{"1":"E|The cab drives past us.","4":"F|A brief fragment. Mwajuma. The moment she realizes Njoro's lie.","5":"F|Joy and Njoro with their ice creams. Joy looking directly at him.","6":"F|His apartment door opening. Cess standing there. Njoro stares through the windscreen.…","8":"E|The cab drives through the city.","14":"E|Office estab.","18":"E|The cab drives past us.","24":"E|The small kibanda is still open."},"6":{"1":"E|Njoro’s cab passes by.","4":"F|Njoro holding the pregnancy stick.","9":"E|A time lapse of the city settling into night, then waking into a new day.","10":"E|Njoro’s cab glides past. Inside, a girl’s voice fills the air.","12":"E|Njoro’s cab glides past.","15":"E|Various city activities","16":"E|The DOORBELL RINGS."},"7":{"1":"E|Njoro’s cab comes to a stop.","4":"E|The cab whips past us.","10":"E|Various Activities","12":"E|The Cab whips past us.","18":"E|Day turns into night."},"8":{"1":"E|Njoro’s car navigates its way through narrow streets.","4":"E|An Estab shot of the building.","7":"E|Njoro’s car wipes frame.","10":"E|Njoro’s car comes to a stop at a gate - we don’t see exactly where he Is.","14":"E|Various activities - Njoro’s car wipes frame.","16":"E|Various activities.","18":"E|An estab shot of the building - we hear the door bell ring.","20":"E|Various activities.","22":"E|An Estab of the building. Crickets."},"9":{"3":"E|The city moves along. The cab whips past.","14":"E|The cab moves through the city.","19":"E|The cab is parked.","23":"E|Estab. Doorbell rings.","25":"E|Various."},"10":{"4":"E|The day has moved on. Transition night to day","15":"E|Various activities"},"12":{"7":"E|Sunday traffic. Njoro’s cab moves through frame.","10":"E|The cab whips past.","13":"E|Various","15":"E|Night turns to day","16":"E|Various","17":"E|The cab whips past.","21":"E|Various","23":"E|EXT. HOSPITAL - DAY"},"13":{"1":"E|Njoro’s car wipes frame.","5":"E|Various activities.","7":"E|Various activities.","10":"E|Njoro's cab moves through traffic.","12":"E|Transition to day.","17":"E|Laughter carries from inside.","23":"E|The car pulls up."}};
+  var SCENE_COUNT={1:19,2:32,3:19,4:16,5:25,6:19,7:19,8:23,9:26,10:16,12:25,13:24};
   function sceneList(ep){
     var sc=state.scripts&&state.scripts[ep],out=[],seen={};
     var raw=sc&&sc.scenes&&sc.scenes.length?sc.scenes:null;
@@ -78,8 +82,17 @@
   /* Shot / still-to-shoot per episode. A lettered take (29A) covers scene 29. */
   /* A scene counts as shot when it is logged under its plain number (7/7) or marked continued.
      If only lettered parts are logged (7/7B), it is "part shot": some of it may still be missing. */
+  /* Estab and Flashback scenes for an episode: from the robot's reading of the script, or the
+     list read by hand on 16.10.2026 while the robot is older than version 10. */
+  function sceneNotes(ep){
+    var sc=state.scripts&&state.scripts[ep];
+    if(sc&&sc.notes)return sc.notes;
+    var seed=SCENE_NOTES[ep]||{},out={};Object.keys(seed).forEach(function(k){var m=/^([EF])\|(.*)$/.exec(seed[k]);if(m)out[k]={type:m[1]==='E'?'Estab':'Flashback',note:m[2]}});
+    return out;
+  }
+  function estabIn(ep,n){var x=sceneNotes(ep)[String(n)];return !!(x&&x.type==='Estab')}
   function progress(ep,rows){
-    var list=sceneList(ep);if(!list.length)return null;
+    var list=sceneList(ep).filter(function(n){return !estabIn(ep,n)});if(!list.length)return null;
     var full={},parts={};
     rows.forEach(function(t){
       if(t.ep!==ep)return;
@@ -96,12 +109,6 @@
   function barHtml(pr){
     return '<div class="bar2" aria-hidden="true"><i style="width:'+(pr.shot/pr.total*100).toFixed(1)+'%"></i>'
       +(pr.part.length?'<i class="pt" style="width:'+(pr.part.length/pr.total*100).toFixed(1)+'%"></i>':'')+'</div>';
-  }
-  /* Totals for one season, from the episodes that have a script. */
-  function seasonTotals(eps,all){
-    var t={total:0,shot:0,part:[],left:[]};
-    eps.forEach(function(ep){var pr=progress(ep,all);if(!pr)return;t.total+=pr.total;t.shot+=pr.shot;t.part=t.part.concat(pr.part);t.left=t.left.concat(pr.left)});
-    return t.total?t:null;
   }
   function scriptFor(ep){var x=(state.scripts&&state.scripts[ep])||SCRIPT_SEED[ep];return x&&safeUrl(x.url)?x:null}
   function safeUrl(u){return /^https:\/\/(drive|docs)\.google\.com\//.test(u||'')?u:''}
@@ -243,6 +250,7 @@
       document.getElementById('q').classList.add('miss');
       box.innerHTML='<div class="answer notshot" role="alert"><div class="line"><span class="sc">'+esc(q.key)+'</span><span class="verdict">Not shot</span></div>'
         +'<p>Episode '+esc(parts[0])+', Scene '+esc(parts[1])+' is not in any continuity report logged so far'+(logged.length?' (Day '+logged.join(', ')+')':'')+'.</p>'
+        +(function(){var x=sceneNotes(+parts[0])[String(scParts(parts[1])[0])];if(!x)return '';return '<p><span class="tag '+x.type+'">'+x.type+'</span> '+(x.type==='Estab'?'The script marks this as an establishing shot, so it is not counted as to shoot. ':'This is a flashback in the script. ')+'<span class="muted">'+esc(x.note)+'</span></p>'})()
         +(function(){var L=sceneList(+parts[0]);return L.length&&L.indexOf(scParts(parts[1])[0])<0?'<p><strong>Check the number.</strong> Scene '+esc(parts[1])+' is not in the Episode '+esc(parts[0])+' script, which runs from scene '+L[0]+' to '+L[L.length-1]+'.</p>':''})()
         +(nearKeys.length?'<p><strong>Similar scene shot:</strong> '+nearKeys.map(function(k){return esc(k)+' on '+esc(dayRef(near[k]))}).join(', ')+'. Check it is not the same scene under another number.</p>':'')
         +'<div class="tip"><strong>Before you mark it missing,</strong> check whether it was shot as an establishing shot, insert, cutaway, B-roll, VO or pickup and left out of the report. Type the scene\u2019s location in the Location box to find the days the crew was there, then check those days\u2019 log sheets. <a href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Open log sheets \u2197</a></div></div>';
@@ -258,6 +266,7 @@
   }
   function renderControls(){
     if((ui.view==='post'&&!isEditor())||(ui.view==='admin'&&!isAdmin()))ui.view='scenes';
+    try{document.body.setAttribute('data-view',ui.view)}catch(e){}
     var vs=[['scenes','Scenes'],['days','Daily reports']];if(isEditor())vs.push(['post','Post production']);if(isAdmin())vs.push(['admin','Activity']);
     document.getElementById('views').innerHTML=vs.map(function(v){return '<button type="button" data-view="'+v[0]+'" aria-pressed="'+(ui.view===v[0])+'">'+v[1]+'</button>'}).join('');
     var srch=document.querySelector('.search');if(srch)srch.hidden=ui.view==='post'||ui.view==='admin';
@@ -269,8 +278,23 @@
 
   /* A Continued choice lives on the scene's own line, with a small Undo for the team. */
   function contUndo(t){return t.decided&&t.decided.decision==='Continued'&&isEditor()?'<button type="button" class="linkbtn contundo" data-decide="" data-scene="'+esc(t.key)+'" data-day="'+t.day.day+'" aria-label="Undo Continued for '+esc(t.key)+' on Day '+t.day.day+'">Undo</button>':''}
+  /* Script notes inside an episode: Estab scenes (not counted as to shoot) and Flashbacks. */
+  function notesRowHtml(ep,all){
+    var notes=sceneNotes(ep),keys=Object.keys(notes).sort(function(a,b){return cmpKey(ep+'/'+a,ep+'/'+b)});
+    if(!keys.length)return '';
+    function shotOn(n){var d=all.filter(function(t){return t.ep===ep&&scParts(t.key.split('/')[1])[0]===scParts(n)[0]}).map(function(t){return 'Day '+t.day.day});return d.filter(function(x,i){return d.indexOf(x)===i})}
+    function grp(type,label){
+      var ks=keys.filter(function(k){return notes[k].type===type});if(!ks.length)return '';
+      return '<div class="leftgrp"><span class="lbl '+(type==='Estab'?'es':'fbl')+'">'+label+'</span><ul class="nlist">'+ks.map(function(k){
+        var on=shotOn(k);
+        return '<li><span class="mono">'+ep+'/'+esc(k)+'</span><span class="tag '+type+'">'+type+'</span><span class="nt">'+esc(notes[k].note)+'</span><span class="ns'+(on.length?' ok':'')+'">'+(on.length?'Shot '+esc(on.join(', ')):'Not logged')+'</span></li>';
+      }).join('')+'</ul></div>';
+    }
+    return '<tr class="left snotes"><td colspan="4">'+grp('Estab','Estabs in the script, not counted as to shoot')+grp('Flashback','Flashbacks')+'</td></tr>';
+  }
   function row(t,hit,showEp){
     var other=t.tags.filter(function(x){return x!=='Reshoot'});
+    var sn=sceneNotes(t.ep)[String(scParts(t.key.split('/')[1])[0])];if(sn)other=other.concat([sn.type]);
     if(!inScript(t.ep,t.key.split('/')[1]))other=other.concat(['Not in script']);
     return '<tr'+(hit===t.key?' class="hit"':'')+'><td class="sc">'+esc(t.key)+(t.ext?'<span class="ext">'+esc(t.ext)+'</span>':'')+'</td><td class="when">'+esc(dayRef(t.day))+' '+logLink(t.day,'Log')+'<div class="sub show-sm">'+esc(t.day.location||'')+(other.length||t.note?'<br>':'')+tagsHtml(other)+contUndo(t)+(t.note?'<span class="muted">'+esc(t.note)+'</span>':'')+'</div></td><td class="loc hide-sm">'+esc(t.day.location||'')+'</td><td class="note hide-sm">'+tagsHtml(other)+contUndo(t)+(t.note?'<span class="muted">'+esc(t.note)+'</span>':'')+'</td></tr>';
   }
@@ -288,12 +312,7 @@
     if(notShot)eps=eps.filter(function(ep){var pr=progress(ep,all);return pr&&(pr.left.length||pr.part.length)});
     else if(ui.show!=='all')eps=eps.filter(function(ep){return by[ep]&&by[ep].length});
     var a=(season-1)*PER_SEASON+1,b=season*PER_SEASON;
-    var tot=only==null?seasonTotals(seasonEps(season),all):null;
-    var head='<div class="seasonhead"><b>Season '+season+'</b><span class="muted">Episodes '+a+' to '+b+'</span></div>'
-      +(tot?'<div class="season"><div class="seasonline"><span><b>'+tot.shot+'</b> of '+tot.total+' scenes shot</span>'
-        +(tot.part.length?'<span class="partpill">'+tot.part.length+' part shot</span>':'')
-        +(tot.left.length?'<span class="togo">'+tot.left.length+' to shoot</span>':'')+'</div>'+barHtml(tot)
-        +'<p class="muted seasonnote">Counts the episodes that have a script in Drive.</p></div>':'');
+    var head='<div class="seasonhead"><b>Season '+season+'</b><span class="muted">Episodes '+a+' to '+b+'</span></div>';
     if(only!=null&&(only<1||only>EPISODES))head='';
     if(!eps.length){
       var msg=notShot?'Every scene in the Season '+season+' scripts has been shot.':'Nothing in Season '+season+' matches this filter.';
@@ -302,8 +321,8 @@
     var html='<div class="tablewrap">'+head+'<table>'+(notShot?'':HEAD)+'<tbody>';
     eps.forEach(function(ep){
       var g=by[ep]||[],open=ui.openEp===ep,pr=progress(ep,all),sc=scriptFor(ep),sub;
-      if(pr)sub='<span class="prog"><b>'+pr.shot+'</b> of '+pr.total+' shot'+(pr.left.length||pr.part.length?'':' ✓')+'</span>';
-      else if(g.length){var u={};g.forEach(function(x){u[x.key]=1});var n=Object.keys(u).length;sub='<span class="prog">'+n+' scene'+(n===1?'':'s')+' shot \u00b7 no script yet</span>'}
+      if(pr)sub=(pr.left.length||pr.part.length?'':'<span class="prog done">All shot \u2713</span>');
+      else if(g.length)sub='<span class="prog">No script yet</span>';
       else sub='<span class="prog noscript">No script in Drive yet</span>';
       var checks=g.filter(function(t){return t.tags.indexOf('Check')>=0}).length;
       html+='<tr class="grp'+(open?' open':'')+(pr||g.length?'':' empty')+'"><td colspan="4"><div class="grprow"><button type="button" class="grpbtn" data-ep="'+ep+'" aria-expanded="'+open+'">Episode '+ep+sub+'</button>'
@@ -317,9 +336,10 @@
         +'</td></tr>';
       if(!open)return;
       if(pr&&(pr.left.length||pr.part.length))html+='<tr class="left"><td colspan="4">'
-        +(pr.left.length?'<div class="leftgrp"><span class="lbl">Not shot yet</span>'+pr.left.map(function(n){return '<span class="chip">'+ep+'/'+n+'</span>'}).join('')+'</div>':'')
+        +(pr.left.length?'<div class="leftgrp"><span class="lbl">Not shot yet</span>'+pr.left.map(function(n){var fb=(sceneNotes(ep)[String(n)]||{}).type==='Flashback';return '<span class="chip'+(fb?' fb':'')+'">'+ep+'/'+n+(fb?' <small>Flashback</small>':'')+'</span>'}).join('')+'</div>':'')
         +(pr.part.length?'<div class="leftgrp"><span class="lbl pt">Part shot, check the rest was shot</span>'+pr.part.map(function(x){return '<span class="chip pt">'+ep+'/'+x.n+' <small>only '+esc(x.parts.join(', '))+'</small></span>'}).join('')+'</div>':'')
         +'</td></tr>';
+      html+=notesRowHtml(ep,all);
       if(!notShot){
         if(g.length)html+=g.map(function(t){return row(t,hit)}).join('');
         else html+='<tr><td colspan="4" class="muted">'+(sc?'Nothing from Episode '+ep+' is in the reports logged so far.':'No script for Episode '+ep+' in the Scripts folder yet, and nothing logged. Name the file like EPISODE '+ep+'.pdf and it appears within 30 minutes, or use Check Drive now.')+'</td></tr>';
@@ -408,7 +428,7 @@
     var s=curSeason(),a=(s-1)*PER_SEASON+1,b=s*PER_SEASON,t=todayIso(),air=airingEp(),nx=upNextEp();
     if(post.openEp==null)post.openEp=air||nx||0;
     var html='<div class="txbar"><div class="txfld"><label for="tx">Episode 1 TX</label><input id="tx" type="date" value="'+esc(post.tx)+'"></div>'
-      +'<button type="button" class="btn small exportbtn" data-act="export"><span aria-hidden="true">\u2913</span> Export to Excel</button>'
+      +'<button type="button" class="btn small exportbtn" data-act="export"><span aria-hidden="true">\u2913</span> Export</button>'
       +'<p class="muted">'+(post.tx?'One episode a week, every '+esc(weekday(post.tx))+(movedCount()?', with '+movedCount()+' episode'+(movedCount()===1?'':'s')+' moved':'')+'. Episode 52 airs '+esc(weekday(txOf(EPISODES)).slice(0,3)+' '+fmtDate(txOf(EPISODES)))+'.'
         :'Not confirmed by the broadcaster yet. Set it here and all 52 dates fill in, one week apart.')+'</p>'
       +(air||nx?'<button type="button" class="onairnow" data-act="goto-air"><span class="st onair">'+(air?(txOf(air)===t?'On air today':'On air'):'Airs next')+'</span> Episode '+(air||nx)+' \u00b7 '+esc(weekday(txOf(air||nx)).slice(0,3)+' '+fmtDate(txOf(air||nx)))+(air&&nx?'<span class="muted"> \u00b7 next: Episode '+nx+', '+esc(fmtDate(txOf(nx)))+'</span>':'')+'</button>':'')
@@ -432,7 +452,21 @@
       if(open)html+='<tr class="dropdet"><td colspan="6">'+dropPanel(n,drop)+'</td></tr>';
       if(mv&&tx)html+='<tr class="dropdet movedet"><td colspan="6">'+movePanel(n)+'</td></tr>';
     }
-    return html+'</tbody></table></div>';
+    return html+'</tbody></table></div>'+seasonCrewHtml(s);
+  }
+  /* Who edits and who does sound in this season, with each person's episodes. */
+  function seasonCrewHtml(s){
+    var eps=seasonEps(s);
+    function block(label,field){
+      var list=crewFor(field).map(function(p){return {name:p.name,eps:p.eps.filter(function(m){return seasonOf(m)===s})}}).filter(function(p){return p.eps.length})
+        .sort(function(x,y){return y.eps.length-x.eps.length||x.name.localeCompare(y.name)});
+      var none=eps.filter(function(m){return !peopleIn(pendingOr(m,field,(post.eps[m]||{})[field])).length});
+      return '<div class="crewcol"><h3>'+label+'</h3>'
+        +(list.length?'<ul class="crewlist">'+list.map(function(p){return '<li><span class="cn">'+esc(p.name)+'</span><span class="cc">'+p.eps.length+' ep'+(p.eps.length===1?'':'s')+'</span><span class="ce muted">'+esc(epList(p.eps))+'</span></li>'}).join('')+'</ul>':'<p class="muted">Nobody assigned yet.</p>')
+        +(none.length?'<p class="crewnone">Not assigned: '+esc(epList(none))+'</p>':'<p class="crewall">Every episode assigned \u2713</p>')+'</div>';
+    }
+    return '<section class="tablewrap crew"><div class="seasonhead"><b>Season '+s+' crew</b><span class="muted">Episodes per person this season. Export to Excel for all four seasons side by side.</span></div>'
+      +'<div class="crewgrid">'+block('Editors','editor')+block('Sound','sound')+'</div></section>';
   }
   function cellInput(n,f,v,ph){
     var k=n+':'+f,fl=post.flash&&post.flash[k]||'';
@@ -831,20 +865,42 @@
     r++;ws.mergeCells(r,1,r,EP.length);var key=ws.getCell(r,1);
     key.value='Status: On air = the episode airing this week. Next = the next one to air. Aired, Upcoming, or TBC when the TX date is not set.';key.font=font({size:9,italic:true,color:{argb:C.muted}});
 
-    /* 3 and 4. Each person's episodes */
-    function perPerson(name,list){
-      var W=['Name','Season','Episode','TX date','Status'],A=['left','center','center','center','center'];
-      ws=sheet(name,[26,11,10,17,13],false);r=title(ws,5,name+': episodes by person',(list.length?list.length+(list.length===1?' person':' people'):'Nobody assigned yet')+who);
-      r=header(ws,r,W,A);var h=r-1;
-      if(!list.length){ws.mergeCells(r,1,r,5);ws.getCell(r,1).value='Nobody assigned yet';ws.getCell(r,1).font=font({italic:true,color:{argb:C.muted}});return}
-      list.forEach(function(p){
-        ws.mergeCells(r,1,r,5);var c=ws.getCell(r,1);c.value=p.name+'  ·  '+p.eps.length+' episode'+(p.eps.length===1?'':'s');c.font=font({bold:true,size:11,color:{argb:C.white}});c.fill=fill(C.green);c.alignment={vertical:'middle',indent:1};ws.getRow(r).height=20;r++;
-        p.eps.forEach(function(m,i){row(ws,r,[p.name,'Season '+seasonOf(m),m,'',''],i,A);dateCell(ws.getCell(r,4),txOf(m));status(ws.getCell(r,5),epStatus(m,air,nx));ws.getCell(r,1).font=font({color:{argb:C.muted}});r++});
-        r=total(ws,r,[p.name+' total',p.eps.length+' episode'+(p.eps.length===1?'':'s'),'','',''],A);r++;
+    /* 3. Crew by season: one matrix per role. How many episodes each person has in each
+       season, with the episode numbers right under the counts. */
+    (function(){
+      var cols=SEASONS+3,W=[26].concat(Array(SEASONS).fill(16)).concat([10,30]);
+      ws=sheet('Crew by season',W,true);
+      r=title(ws,cols,'Editors and sound, season by season','Episodes per person in each season'+who);
+      [['Editors',editors,'editor'],['Sound',sound,'sound']].forEach(function(role){
+        var list=role[1];
+        r=band(ws,r,cols,role[0]+' ('+list.length+(list.length===1?' person':' people')+')');
+        var H=['Name'];for(var q=1;q<=SEASONS;q++)H.push('Season '+q+' (Ep '+((q-1)*PER_SEASON+1)+' to '+q*PER_SEASON+')');H.push('Total','All episodes');
+        var A=['left'].concat(Array(SEASONS).fill('center')).concat(['center','left']);
+        r=header(ws,r,H,A);
+        if(!list.length){ws.mergeCells(r,1,r,cols);var c0=ws.getCell(r,1);c0.value='Nobody assigned yet';c0.font=font({italic:true,color:{argb:C.muted}});grid(c0);r+=2;return}
+        var colTot=Array(SEASONS).fill(0),all=0;
+        list.forEach(function(pp,i){
+          var by=[];for(var q=1;q<=SEASONS;q++)by.push(pp.eps.filter(function(m){return seasonOf(m)===q}));
+          var vals=[pp.name].concat(by.map(function(x){return x.length?x.length+' ep'+(x.length===1?'':'s')+'\n'+epList(x):''})).concat([pp.eps.length,epList(pp.eps)]);
+          row(ws,r,vals,i,A);
+          ws.getCell(r,1).font=font({bold:true});
+          by.forEach(function(x,q){colTot[q]+=x.length;var c=ws.getCell(r,q+2);if(x.length)c.font=font({color:{argb:C.forest}});else{c.value='–';c.font=font({color:{argb:C.muted}})}});
+          ws.getCell(r,SEASONS+2).font=font({bold:true,color:{argb:C.forest}});
+          all+=pp.eps.length;
+          ws.getRow(r).height=Math.max(30,15*(1+Math.ceil(Math.max.apply(null,by.map(function(x){return epList(x).length}))/16)));r++;
+        });
+        var unassigned=[];for(var q2=1;q2<=SEASONS;q2++)unassigned.push(seasonEps(q2).filter(function(m){return !peopleIn((post.eps[m]||{})[role[2]]).length}));
+        r=row(ws,r,['Not assigned yet'].concat(unassigned.map(function(x){return x.length?x.length+' ep'+(x.length===1?'':'s')+'\n'+epList(x):'All assigned'})).concat(['','']),1,A,C.grey);
+        ws.getCell(r-1,1).font=font({italic:true,color:{argb:C.muted}});
+        unassigned.forEach(function(x,q){ws.getCell(r-1,q+2).font=font({italic:!x.length,color:{argb:x.length?C.red:C.muted}})});
+        ws.getRow(r-1).height=Math.max(30,15*(1+Math.ceil(Math.max.apply(null,unassigned.map(function(x){return epList(x).length}))/16)));
+        r=total(ws,r,['Episodes covered'].concat(unassigned.map(function(x){return (PER_SEASON-x.length)+' of '+PER_SEASON})).concat([all+' jobs','']),A);
+        r++;
       });
-      ws.views=[{state:'frozen',ySplit:h,showGridLines:false}];ws.pageSetup.printTitlesRow=h+':'+h;
-    }
-    perPerson('Editors',editors);perPerson('Sound',sound);
+      ws.mergeCells(r,1,r,cols);var nt=ws.getCell(r,1);
+      nt.value='An episode with two people (for example "Wanjiru / Otieno") counts once for each of them in their own row.';
+      nt.font=font({size:9,italic:true,color:{argb:C.muted}});
+    })();
 
     /* 5. Dropped scenes */
     var DW=['Season','Episode','Scene','Reason','Note'],DA=['center','center','center','left','left'];
@@ -858,19 +914,47 @@
     ws.views=[{state:'frozen',ySplit:dh,showGridLines:false}];
     return wb;
   }
+  /* Export: open as a Google Sheet (made by the Google robot in the owner's Drive) or download the Excel file. */
   function exportPost(){
     if(!post.loaded){toast('Post production has not loaded yet.');return}
-    toast('Building the Excel file…');
-    loadXlsx().then(function(ExcelJS){
+    openDlg('<div class="dlgbody"><div class="dlghead"><h2 id="dlg-title">Export post production</h2><button type="button" class="x" data-dlg="close" aria-label="Close">✕</button></div>'
+      +'<p class="muted">All 52 episodes, the crew season by season and the dropped scenes, in the tracker colours.</p>'
+      +'<div class="expopts">'
+      +'<button type="button" class="expopt" data-dlg="exp-sheets"><b>Open in Google Sheets</b><span>A Google Sheet in your Drive. Anyone you send the link to can view it. Only the newest export is kept.</span></button>'
+      +'<button type="button" class="expopt" data-dlg="exp-xlsx"><b>Download Excel file</b><span>An .xlsx file for this phone or computer. Opens in Excel, Numbers or Google Sheets.</span></button>'
+      +'</div><p class="dlgerr" id="dlgerr" role="alert"></p></div>');
+  }
+  function postWorkbookBuffer(){return loadXlsx().then(function(ExcelJS){return buildPostWorkbook(ExcelJS).xlsx.writeBuffer()})}
+  function exportXlsx(){
+    closeDlg();toast('Building the Excel file…');
+    postWorkbookBuffer().then(function(buf){
       var name='Njoro wa Uba Post Production '+todayIso()+'.xlsx';
-      return buildPostWorkbook(ExcelJS).xlsx.writeBuffer().then(function(buf){
-        var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),u=URL.createObjectURL(blob),a=document.createElement('a');
-        a.href=u;a.download=name;a.rel='noopener';document.body.appendChild(a);a.click();
-        setTimeout(function(){URL.revokeObjectURL(u);a.remove()},8000);
-        callScript({action:'note',what:'export'});
-        toast('Excel file saved to your downloads');
-      });
+      var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),u=URL.createObjectURL(blob),a=document.createElement('a');
+      a.href=u;a.download=name;a.rel='noopener';document.body.appendChild(a);a.click();
+      setTimeout(function(){URL.revokeObjectURL(u);a.remove()},8000);
+      callScript({action:'note',what:'export'});
+      toast('Excel file saved to your downloads');
     }).catch(function(){toast('Could not build the Excel file. Check your connection and try again.')});
+  }
+  function b64OfBuffer(buf){var bytes=new Uint8Array(buf),out='',CH=0x8000;for(var i=0;i<bytes.length;i+=CH)out+=String.fromCharCode.apply(null,bytes.subarray(i,i+CH));return btoa(out)}
+  function exportSheets(){
+    var err=document.getElementById('dlgerr'),btn=document.querySelector('[data-dlg="exp-sheets"]');
+    if(ui.robot&&ui.robot<10){err.textContent='Opening in Google Sheets needs the Google script at version 10. Paste the new Code.gs and deploy a New version. Download the Excel file for now.';return}
+    if(!navigator.onLine){err.textContent='No signal. Download the Excel file instead, or try again with signal.';return}
+    /* Open the tab now, while the tap still counts, so the phone does not block it as a pop-up. */
+    var w=null;try{w=window.open('','_blank')}catch(e){}
+    if(w){try{w.document.write('<title>Opening Google Sheets</title><p style="font:16px sans-serif;padding:24px">Building the Google Sheet…</p>')}catch(e){}}
+    btn.disabled=true;btn.querySelector('b').textContent='Building the Google Sheet…';err.textContent='';
+    postWorkbookBuffer().then(function(buf){return callScript({action:'exportSheet',xlsx:b64OfBuffer(buf)})}).then(function(r){
+      btn.disabled=false;btn.querySelector('b').textContent='Open in Google Sheets';
+      if(!r||!r.ok){if(w)try{w.close()}catch(e){}err.textContent=r&&r.error==='bad_request'?'Opening in Google Sheets needs the Google script at version 10. Paste the new Code.gs and deploy a New version. Download the Excel file for now.':errText(r);return}
+      var url=safeUrl(r.url);if(!url){if(w)try{w.close()}catch(e){}err.textContent=ERR.server;return}
+      if(w&&!w.closed){try{w.location.href=url}catch(e){window.open(url,'_blank')}}
+      else window.open(url,'_blank');
+      openDlg('<div class="dlgbody done"><h2 id="dlg-title">Google Sheet ready</h2><p>'+esc(r.name||'Post production')+'</p>'
+        +'<p class="muted">It is in your Google Drive. The link is view only for anyone you send it to.</p>'
+        +'<div class="dlgacts"><button type="button" class="btn" data-dlg="close">Done</button><a class="btn primary" href="'+esc(url)+'" target="_blank" rel="noopener">Open it ↗</a></div></div>');
+    }).catch(function(){if(w)try{w.close()}catch(e){}btn.disabled=false;btn.querySelector('b').textContent='Open in Google Sheets';err.textContent='Could not build the sheet. Check your connection and try again.'});
   }
 
   /* ---------- admin: recent activity ---------- */
@@ -884,19 +968,47 @@
     var html='';
     if(admin.err)html+='<p class="sync err">'+esc(admin.err)+'</p>';
     var act=admin.activity;
-    html+='<section class="tablewrap adm"><div class="seasonhead"><b>Recent activity</b><span class="muted">Sign-ins and changes, newest first. Also kept in the Activity tab of the Google Sheet.</span><button type="button" class="linkbtn" data-act="adm-refresh">Refresh</button></div>';
+    html+='<section class="tablewrap adm"><div class="seasonhead"><b>Recent activity</b><span class="muted">Sign-ins and changes, newest first. Also kept in the Activity tab of the Google Sheet.</span><button type="button" class="linkbtn" data-act="adm-refresh">Refresh</button></div>'
+      +'<div class="actbar"><span class="muted">Group by</span><div class="seg" role="group" aria-label="Group activity by">'+[['day','Day'],['week','Week'],['month','Month']].map(function(g){return '<button type="button" data-actgroup="'+g[0]+'" aria-pressed="'+((ui.actGroup||'day')===g[0])+'">'+g[1]+'</button>'}).join('')+'</div></div>';
     if(admin.private===false)html+='<p class="warnbar">The Google Sheet is still shared with anyone who has the link, so the Activity tab is off and only the last few entries are kept. In the Sheet: Share > General access > <b>Restricted</b>.</p>';
     if(!act)html+='<p class="empty">Loading activity\u2026</p>';
     else if(!act.length)html+='<p class="empty">Nothing yet.</p>';
-    else html+='<table class="acttbl"><thead><tr><th>When</th><th>Who</th><th>What</th><th class="hide-sm">Details</th></tr></thead><tbody>'+act.map(function(r){
-      var wm=/^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})/.exec(r[0]||''),when=wm?wm[3]+'.'+wm[2]+' '+wm[4]:r[0];
-      return '<tr class="'+(/fail|block/i.test(r[2])?'bad':'')+'"><td class="mono when" title="'+esc(r[0])+'">'+esc(when)+'</td><td>'+esc(r[1])+'</td><td>'+esc(r[2])+'<div class="sub show-sm">'+esc(r[3]||'')+'</div></td><td class="hide-sm muted">'+esc(r[3]||'')+'</td></tr>';
-    }).join('')+'</tbody></table>';
+    else html+=activityTable(act);
     html+='</section><section class="tablewrap adm admsec"><div class="seasonhead"><b>Team sign-in</b><span class="muted">One master password for everyone. Sign-ins end after '+esc(auth.idle||30)+' minutes without use. To change the password, change PASSCODE in the Google script\u2019s Script Properties: every device is then signed out.</span></div>'
       +'<div class="admrow">'
       +(admin.confirmAll?'<span class="confirm">Sign out every device, including this one?</span><button type="button" class="btn small danger" data-act="adm-all-yes">Sign everyone out</button><button type="button" class="btn small" data-act="adm-cancel">Cancel</button>'
         :'<button type="button" class="btn small" data-act="adm-all">Sign everyone out</button>')+'</div></section>';
     return html;
+  }
+  /* Activity grouped by day, week (Monday to Sunday) or month, newest first. Each group shows
+     how many sign-ins and changes it holds; each line shows the time (and the day, for weeks and months). */
+  var MONTHS_LONG=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var DAYS_SHORT=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  function actParts(w){var m=/^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}))?/.exec(w||'');return m?{d:new Date(+m[1],+m[2]-1,+m[3]),iso:m[1]+'-'+m[2]+'-'+m[3],time:m[4]?m[4]+':'+m[5]:''}:null}
+  function mondayOf(d){var x=new Date(d.getFullYear(),d.getMonth(),d.getDate());x.setDate(x.getDate()-((x.getDay()+6)%7));return x}
+  function dm(d){return pad(d.getDate())+'.'+pad(d.getMonth()+1)}
+  function actGroupOf(p,mode){
+    var now=new Date(),today=new Date(now.getFullYear(),now.getMonth(),now.getDate()),diff=Math.round((today-p.d)/864e5);
+    if(mode==='month'){var k=p.d.getFullYear()+'-'+pad(p.d.getMonth()+1);var same=p.d.getFullYear()===today.getFullYear()&&p.d.getMonth()===today.getMonth();return {k:k,label:(same?'This month \u00b7 ':'')+MONTHS_LONG[p.d.getMonth()]+' '+p.d.getFullYear()}}
+    if(mode==='week'){var mo=mondayOf(p.d),su=new Date(mo);su.setDate(su.getDate()+6);var w=Math.round((mondayOf(today)-mo)/(7*864e5));
+      return {k:'w'+mo.getTime(),label:(w===0?'This week \u00b7 ':w===1?'Last week \u00b7 ':'')+dm(mo)+' to '+dm(su)+'.'+su.getFullYear()}}
+    return {k:p.iso,label:(diff===0?'Today \u00b7 ':diff===1?'Yesterday \u00b7 ':'')+DAYS_SHORT[p.d.getDay()]+' '+dm(p.d)+'.'+p.d.getFullYear()};
+  }
+  function activityTable(act){
+    var mode=ui.actGroup=ui.actGroup||'day',groups=[],byKey={};
+    act.forEach(function(r){
+      var p=actParts(r[0]),g=p?actGroupOf(p,mode):{k:'?',label:'Unknown date'};
+      if(!byKey[g.k]){byKey[g.k]={label:g.label,rows:[]};groups.push(byKey[g.k])}
+      byKey[g.k].rows.push({r:r,p:p});
+    });
+    return '<table class="acttbl grouped"><thead><tr><th>'+(mode==='day'?'Time':'When')+'</th><th>Who</th><th>What</th><th class="hide-sm">Details</th></tr></thead>'+groups.map(function(g){
+      var bad=g.rows.filter(function(x){return /fail|block/i.test(x.r[2])}).length,signin=g.rows.filter(function(x){return /sign/i.test(x.r[2])&&!/fail|block/i.test(x.r[2])}).length,chg=g.rows.length-signin-bad;
+      var sum=[g.rows.length+' entr'+(g.rows.length===1?'y':'ies')].concat(chg>0?[chg+' change'+(chg===1?'':'s')]:[]).concat(signin?[signin+' sign-in'+(signin===1?'':'s')]:[]).concat(bad?[bad+' failed']:[]).join(' \u00b7 ');
+      return '<tbody><tr class="actgrp"><th colspan="4" scope="rowgroup"><span>'+esc(g.label)+'</span><span class="muted">'+esc(sum)+'</span></th></tr>'+g.rows.map(function(x){
+        var r=x.r,p=x.p,when=p?(mode==='day'?p.time:DAYS_SHORT[p.d.getDay()]+' '+dm(p.d)+' '+p.time):r[0];
+        return '<tr class="'+(/fail|block/i.test(r[2])?'bad':'')+'"><td class="mono when" title="'+esc(r[0])+'">'+esc(when)+'</td><td>'+esc(r[1])+'</td><td>'+esc(r[2])+'<div class="sub show-sm">'+esc(r[3]||'')+'</div></td><td class="hide-sm muted">'+esc(r[3]||'')+'</td></tr>';
+      }).join('')+'</tbody>';
+    }).join('')+'</table>';
   }
   function adminAction(act){
     if(act==='adm-refresh'){admin.activity=null;renderMain();loadAdmin();return}
@@ -955,7 +1067,7 @@
   /* Scripts tab rows: Episode | Script | Link | Updated | Scenes, written by the robot. */
   function scriptsFromRows(rows){
     var out={};(rows||[]).forEach(function(v){var ep=parseInt(v[0],10),url=String(v[2]||'').trim();
-      if(ep>0&&safeUrl(url))out[ep]={url:url,name:String(v[1]||''),scenes:String(v[4]||'').split(/[\s,]+/).filter(function(x){return /^\d{1,3}[A-Za-z]?$/.test(x)})}});
+      if(ep>0&&safeUrl(url))out[ep]={url:url,name:String(v[1]||''),scenes:String(v[4]||'').split(/[\s,]+/).filter(function(x){return /^\d{1,3}[A-Za-z]?$/.test(x)}),notes:notesOf(v[5])}});
     return out;
   }
   function gvizRows(res,want){
@@ -964,7 +1076,14 @@
     var idx=want.map(function(w){return labels.indexOf(w)});if(idx[0]<0)return null;
     return (res.table.rows||[]).map(function(r){var c=r.c||[];return idx.map(function(i){return i>=0?cellText(c[i]):''})});
   }
-  function scriptsOf(res){return scriptsFromRows(gvizRows(res,['episode','script','link','updated','scenes'])||[])}
+  function scriptsOf(res){return scriptsFromRows(gvizRows(res,['episode','script','link','updated','scenes','notes'])||[])}
+  /* Scripts tab Notes column: {"4":"E|Various activities","2":"F|Cess telling Njoro..."} */
+  function notesOf(v){
+    var o=null;try{o=JSON.parse(String(v||''))}catch(e){return null}
+    if(!o||typeof o!=='object')return null;
+    var out={};Object.keys(o).forEach(function(k){var m=/^([EF])\|([\s\S]*)$/.exec(String(o[k]||''));if(/^\d{1,3}[A-Za-z]?$/.test(k)&&m)out[normSc(k)]={type:m[1]==='E'?'Estab':'Flashback',note:m[2].slice(0,140)}});
+    return out;
+  }
   /* Repeats tab rows: Scene | Day | Decision | By | When. Key "7/16@10". */
   function repeatsFromRows(rows){
     var out={};(rows||[]).forEach(function(v){var m=/^(\d{1,3})\s*\/\s*(\d{1,3}[A-Za-z]?)$/.exec(String(v[0]||'').trim()),d=parseInt(v[1],10);
@@ -1167,6 +1286,7 @@
     if(b.matches('tr.d')){toggleDay(+b.dataset.day);return}
     if(b.dataset.ep){var e=+b.dataset.ep;ui.openEp=ui.openEp===e?null:e;var q=document.getElementById('q');if(q.value){q.value='';renderAnswer()}renderMain();return}
     if(b.dataset.view){ui.view=b.dataset.view;try{localStorage.setItem('njw-view',ui.view)}catch(e){}if(ui.view==='post'||ui.view==='admin'){var qq=document.getElementById('q'),ll=document.getElementById('loc');if(qq.value||ll.value){qq.value='';ll.value='';renderAnswer()}}if(ui.view==='post')loadPost();if(ui.view==='admin')loadAdmin();renderControls();renderMain();return}
+    if(b.dataset.actgroup){ui.actGroup=b.dataset.actgroup;try{localStorage.setItem('njw-actgroup',ui.actGroup)}catch(e){}renderMain();return}
     if(b.dataset.season){setSeason(+b.dataset.season);post.openDrop=null;post.openMove=null;ui.openEp=null;var q2=document.getElementById('q');if(q2&&q2.value&&ui.view==='scenes'){q2.value='';renderAnswer()}renderControls();renderMain();return}
     if(b.dataset.pexp){var pn=+b.dataset.pexp;post.openEp=post.openEp===pn?0:pn;if(post.openDrop!==pn)post.openDrop=null;if(post.openMove!==pn)post.openMove=null;renderPostKeep(0,true);return}
     if(b.hasAttribute('data-decide')){decideRepeat(b.dataset.scene,+b.dataset.day,b.dataset.decide);return}
@@ -1474,6 +1594,8 @@
     if(a==='clear'){var ta=document.getElementById('rep');ta.value='';if(draftKey()){try{localStorage.removeItem(draftKey())}catch(e){}}preview();ta.focus();return}
     if(a==='paste'){navigator.clipboard.readText().then(function(t){var ta=document.getElementById('rep');ta.value=t;if(draftKey()){try{localStorage.setItem(draftKey(),t)}catch(e){}}preview()},function(){var ta=document.getElementById('rep');ta.focus();document.getElementById('dlgerr').textContent='Paste was blocked. Long-press in the box and choose Paste.'});return}
     if(a==='save'){saveReport();return}
+    if(a==='exp-xlsx'){exportXlsx();return}
+    if(a==='exp-sheets'){exportSheets();return}
     if(a==='pickedit'){var d=dayByNum(+b.dataset.day);if(d)openAdd(d.raw,d.day);return}
     if(a==='pickdel'){confirmDelete(+b.dataset.day);return}
     if(a==='delyes'){removeDay(+b.dataset.day,true);return}
