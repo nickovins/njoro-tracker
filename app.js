@@ -90,7 +90,7 @@
     var seed=SCENE_NOTES[ep]||{},out={};Object.keys(seed).forEach(function(k){var m=/^([EF])\|(.*)$/.exec(seed[k]);if(m)out[k]={type:m[1]==='E'?'Estab':'Flashback',note:m[2]}});
     return out;
   }
-  function estabIn(ep,n){var x=sceneNotes(ep)[String(n)];return !!(x&&x.type==='Estab')}
+  function estabIn(ep,n){var x=sceneNotes(ep)[String(n)];return !!(x&&(x.type==='Estab'||x.type==='Flashback'))}   /* not counted as to shoot: estabs, and flashbacks (counted as shot) */
   function progress(ep,rows){
     var list=sceneList(ep).filter(function(n){return !estabIn(ep,n)});if(!list.length)return null;
     var full={},parts={};
@@ -248,9 +248,16 @@
       takes().forEach(function(t){if(t.key!==q.key&&t.key.replace(/[A-Z]+$/,'')===base)near[t.key]=t.day});
       var nearKeys=Object.keys(near).sort(cmpKey);
       document.getElementById('q').classList.add('miss');
+      var sx=sceneNotes(+parts[0])[String(scParts(parts[1])[0])];
+      if(sx&&parts[1]===String(scParts(parts[1])[0])){
+        document.getElementById('q').classList.remove('miss');
+        box.innerHTML='<div class="answer shot"><div class="line"><span class="sc">'+esc(q.key)+'</span><span class="verdict">'+(sx.type==='Estab'?'Estab':'Flashback')+'</span></div>'
+          +'<p><span class="tag '+sx.type+'">'+sx.type+'</span> '+(sx.type==='Estab'?'An establishing shot in the script. Not logged in any report, and not counted as to shoot.':'A flashback in the script. Not logged in any report, and counted as shot.')+'</p></div>';
+        return;
+      }
       box.innerHTML='<div class="answer notshot" role="alert"><div class="line"><span class="sc">'+esc(q.key)+'</span><span class="verdict">Not shot</span></div>'
         +'<p>Episode '+esc(parts[0])+', Scene '+esc(parts[1])+' is not in any continuity report logged so far'+(logged.length?' (Day '+logged.join(', ')+')':'')+'.</p>'
-        +(function(){var x=sceneNotes(+parts[0])[String(scParts(parts[1])[0])];if(!x)return '';return '<p><span class="tag '+x.type+'">'+x.type+'</span> '+(x.type==='Estab'?'The script marks this as an establishing shot, so it is not counted as to shoot. ':'This is a flashback in the script. ')+'<span class="muted">'+esc(x.note)+'</span></p>'})()
+        +(function(){var x=sceneNotes(+parts[0])[String(scParts(parts[1])[0])];if(!x)return '';return '<p><span class="tag '+x.type+'">'+x.type+'</span> '+(x.type==='Estab'?'An establishing shot in the script, so it is not counted as to shoot.':'A flashback in the script, so it is counted as shot.')+'</p>'})()
         +(function(){var L=sceneList(+parts[0]);return L.length&&L.indexOf(scParts(parts[1])[0])<0?'<p><strong>Check the number.</strong> Scene '+esc(parts[1])+' is not in the Episode '+esc(parts[0])+' script, which runs from scene '+L[0]+' to '+L[L.length-1]+'.</p>':''})()
         +(nearKeys.length?'<p><strong>Similar scene shot:</strong> '+nearKeys.map(function(k){return esc(k)+' on '+esc(dayRef(near[k]))}).join(', ')+'. Check it is not the same scene under another number.</p>':'')
         +'<div class="tip"><strong>Before you mark it missing,</strong> check whether it was shot as an establishing shot, insert, cutaway, B-roll, VO or pickup and left out of the report. Type the scene\u2019s location in the Location box to find the days the crew was there, then check those days\u2019 log sheets. <a href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Open log sheets \u2197</a></div></div>';
@@ -271,26 +278,38 @@
     document.getElementById('views').innerHTML=vs.map(function(v){return '<button type="button" data-view="'+v[0]+'" aria-pressed="'+(ui.view===v[0])+'">'+v[1]+'</button>'}).join('');
     var srch=document.querySelector('.search');if(srch)srch.hidden=ui.view==='post'||ui.view==='admin';
     var f=document.getElementById('filters');
-    if(ui.view==='post'){f.innerHTML=seasonSeg();return}
+    if(ui.view==='post'){f.innerHTML='';return}
     if(ui.view!=='scenes'){f.innerHTML='';return}
-    f.innerHTML=seasonSeg()+'<label for="f-show" class="sr">Show</label><select id="f-show"><option value="all">All scenes</option><option value="todo"'+(ui.show==='todo'?' selected':'')+'>Not shot yet</option><option value="Check"'+(ui.show==='Check'?' selected':'')+'>Needs a check</option><option value="Pulled"'+(ui.show==='Pulled'?' selected':'')+'>Pulled</option><option value="Reshoot"'+(ui.show==='Reshoot'?' selected':'')+'>Reshoots</option></select>';
+    f.innerHTML=seasonSeg()+'<label for="f-show" class="sr">Show</label><select id="f-show" autocomplete="off"><option value="all">All scenes</option><option value="todo"'+(ui.show==='todo'?' selected':'')+'>Not shot yet</option><option value="Check"'+(ui.show==='Check'?' selected':'')+'>Needs a check</option><option value="Pulled"'+(ui.show==='Pulled'?' selected':'')+'>Pulled</option><option value="Reshoot"'+(ui.show==='Reshoot'?' selected':'')+'>Reshoots</option></select>';
   }
 
   /* A Continued choice lives on the scene's own line, with a small Undo for the team. */
   function contUndo(t){return t.decided&&t.decided.decision==='Continued'&&isEditor()?'<button type="button" class="linkbtn contundo" data-decide="" data-scene="'+esc(t.key)+'" data-day="'+t.day.day+'" aria-label="Undo Continued for '+esc(t.key)+' on Day '+t.day.day+'">Undo</button>':''}
-  /* Script notes inside an episode: Estab scenes (not counted as to shoot) and Flashbacks. */
-  function notesRowHtml(ep,all){
-    var notes=sceneNotes(ep),keys=Object.keys(notes).sort(function(a,b){return cmpKey(ep+'/'+a,ep+'/'+b)});
-    if(!keys.length)return '';
-    function shotOn(n){var d=all.filter(function(t){return t.ep===ep&&scParts(t.key.split('/')[1])[0]===scParts(n)[0]}).map(function(t){return 'Day '+t.day.day});return d.filter(function(x,i){return d.indexOf(x)===i})}
-    function grp(type,label){
-      var ks=keys.filter(function(k){return notes[k].type===type});if(!ks.length)return '';
-      return '<div class="leftgrp"><span class="lbl '+(type==='Estab'?'es':'fbl')+'">'+label+'</span><ul class="nlist">'+ks.map(function(k){
-        var on=shotOn(k);
-        return '<li><span class="mono">'+ep+'/'+esc(k)+'</span><span class="tag '+type+'">'+type+'</span><span class="nt">'+esc(notes[k].note)+'</span><span class="ns'+(on.length?' ok':'')+'">'+(on.length?'Shot '+esc(on.join(', ')):'Not logged')+'</span></li>';
-      }).join('')+'</ul></div>';
-    }
-    return '<tr class="left snotes"><td colspan="4">'+grp('Estab','Estabs in the script, not counted as to shoot')+grp('Flashback','Flashbacks')+'</td></tr>';
+  /* Every scene in an open episode, in script order (1, 2, 3 ...). A scene that was shot shows each
+     take; one that was not shows "Not shot yet". Labels (Estab, Flashback, Part shot, Reshoot ...)
+     sit at the end of the line. Logged scenes that are not in the script are slotted in by number. */
+  function episodeRows(ep,g,pr,hit){
+    var notes=sceneNotes(ep),byBase={},items=[];
+    g.forEach(function(t){var n=scParts(t.key.split('/')[1])[0];(byBase[n]=byBase[n]||[]).push(t)});
+    var partOf={};(pr?pr.part:[]).forEach(function(x){partOf[x.n]=x.parts});
+    sceneList(ep).forEach(function(n){
+      var takes=byBase[n]||[],x=notes[String(n)];delete byBase[n];
+      if(partOf[n])items.push({key:ep+'/'+n,ph:'part',parts:partOf[n],label:x&&x.type});
+      if(takes.length)takes.forEach(function(t){items.push({key:t.key,t:t})});
+      else items.push({key:ep+'/'+n,ph:x?x.type:'todo',label:x&&x.type});
+    });
+    Object.keys(byBase).forEach(function(n){byBase[n].forEach(function(t){items.push({key:t.key,t:t,extra:true})})});
+    items.sort(function(a,b){return cmpKey(a.key,b.key)||(a.ph==='part'?-1:b.ph==='part'?1:0)});
+    return items.map(function(it){
+      if(it.t)return row(it.t,hit);
+      var lab=it.label?'<span class="tag '+it.label+'">'+it.label+'</span>':'';
+      var txt=it.ph==='todo'?'<span class="ns-todo">Not shot yet</span>'
+        :it.ph==='part'?'<span class="ns-part">Part shot: only '+esc(it.parts.join(', '))+' logged</span>'
+        :it.ph==='Estab'?'<span class="muted">Not logged \u00b7 not counted as to shoot</span>'
+        :'<span class="muted">Not logged \u00b7 counted as shot</span>';
+      var tags=(it.ph==='part'?'<span class="tag Part-shot">Part shot</span>':'')+lab;
+      return '<tr class="sline '+(it.ph==='todo'?'todo':it.ph==='part'?'part':'quiet')+(hit===it.key?' hit':'')+'"><td class="sc">'+esc(it.key)+'</td><td class="when">'+txt+(tags?'<div class="sub show-sm">'+tags+'</div>':'')+'</td><td class="loc hide-sm"></td><td class="note hide-sm">'+tags+'</td></tr>';
+    }).join('');
   }
   function row(t,hit,showEp){
     var other=t.tags.filter(function(x){return x!=='Reshoot'});
@@ -301,6 +320,9 @@
   var HEAD='<thead><tr><th>Scene</th><th>Shot on</th><th class="hide-sm">Location</th><th class="hide-sm">Notes</th></tr></thead>';
   /* Scenes, one season at a time: 13 episodes, numbered 1 to 52 the same way as Post production. */
   function renderScenes(){
+    /* The Show menu on screen is the truth: a browser that restores an old choice after a reload
+       can no longer leave the list filtered by something the menu does not show. */
+    var fs=document.getElementById('f-show');if(fs&&fs.value&&fs.value!==ui.show)ui.show=fs.value;
     var q=parseQuery(),all=takes(),rows=all,notShot=ui.show==='todo';
     if(ui.show!=='all'&&!notShot)rows=rows.filter(function(t){return t.tags.indexOf(ui.show)>=0});
     var hit=null,only=null;
@@ -316,7 +338,7 @@
     if(only!=null&&(only<1||only>EPISODES))head='';
     if(!eps.length){
       var msg=notShot?'Every scene in the Season '+season+' scripts has been shot.':'Nothing in Season '+season+' matches this filter.';
-      return '<div class="tablewrap">'+head+'<p class="empty">'+esc(msg)+'</p></div>';
+      return '<div class="tablewrap">'+head+'<p class="empty">'+esc(msg)+' <button type="button" class="linkbtn" data-act="show-all">Show all scenes</button></p></div>';
     }
     var html='<div class="tablewrap">'+head+'<table>'+(notShot?'':HEAD)+'<tbody>';
     eps.forEach(function(ep){
@@ -335,11 +357,14 @@
         +(pr?barHtml(pr):'')
         +'</td></tr>';
       if(!open)return;
-      if(pr&&(pr.left.length||pr.part.length))html+='<tr class="left"><td colspan="4">'
-        +(pr.left.length?'<div class="leftgrp"><span class="lbl">Not shot yet</span>'+pr.left.map(function(n){var fb=(sceneNotes(ep)[String(n)]||{}).type==='Flashback';return '<span class="chip'+(fb?' fb':'')+'">'+ep+'/'+n+(fb?' <small>Flashback</small>':'')+'</span>'}).join('')+'</div>':'')
-        +(pr.part.length?'<div class="leftgrp"><span class="lbl pt">Part shot, check the rest was shot</span>'+pr.part.map(function(x){return '<span class="chip pt">'+ep+'/'+x.n+' <small>only '+esc(x.parts.join(', '))+'</small></span>'}).join('')+'</div>':'')
-        +'</td></tr>';
-      html+=notesRowHtml(ep,all);
+      if(notShot){
+        if(pr&&(pr.left.length||pr.part.length))html+='<tr class="left"><td colspan="4">'
+          +(pr.left.length?'<div class="leftgrp"><span class="lbl">Not shot yet</span>'+pr.left.map(function(n){return '<span class="chip">'+ep+'/'+n+'</span>'}).join('')+'</div>':'')
+          +(pr.part.length?'<div class="leftgrp"><span class="lbl pt">Part shot, check the rest was shot</span>'+pr.part.map(function(x){return '<span class="chip pt">'+ep+'/'+x.n+' <small>only '+esc(x.parts.join(', '))+'</small></span>'}).join('')+'</div>':'')
+          +'</td></tr>';
+        return;
+      }
+      if(ui.show==='all'&&sceneList(ep).length){html+=episodeRows(ep,g,pr,hit);return}
       if(!notShot){
         if(g.length)html+=g.map(function(t){return row(t,hit)}).join('');
         else html+='<tr><td colspan="4" class="muted">'+(sc?'Nothing from Episode '+ep+' is in the reports logged so far.':'No script for Episode '+ep+' in the Scripts folder yet, and nothing logged. Name the file like EPISODE '+ep+'.pdf and it appears within 30 minutes, or use Check Drive now.')+'</td></tr>';
@@ -434,7 +459,8 @@
       +(air||nx?'<button type="button" class="onairnow" data-act="goto-air"><span class="st onair">'+(air?(txOf(air)===t?'On air today':'On air'):'Airs next')+'</span> Episode '+(air||nx)+' \u00b7 '+esc(weekday(txOf(air||nx)).slice(0,3)+' '+fmtDate(txOf(air||nx)))+(air&&nx?'<span class="muted"> \u00b7 next: Episode '+nx+', '+esc(fmtDate(txOf(nx)))+'</span>':'')+'</button>':'')
       +'<p class="savestate" id="savestate" role="status">'+saveStateHtml()+'</p></div>';
     if(post.err)html+='<p class="sync err">'+esc(postErrText(post.err))+'</p>';
-    html+='<div class="tablewrap"><div class="seasonhead"><b>Season '+s+'</b><span class="muted">Episodes '+a+' to '+b+(post.tx?' · '+esc(fmtDate(txOf(a)))+' to '+esc(fmtDate(txOf(b))):'')+'</span></div><table class="posttbl">'
+    for(var q0=1;q0<s;q0++)html+=seasonFold(q0);
+    html+='<div class="tablewrap seasonopen"><div class="seasonhead"><b>Season '+s+'</b><span class="muted">Episodes '+a+' to '+b+(post.tx?' · '+esc(fmtDate(txOf(a)))+' to '+esc(fmtDate(txOf(b))):'')+'</span></div><table class="posttbl">'
       +'<thead><tr><th>Ep</th><th>Editor</th><th>Sound</th><th>TX</th><th>Trailer</th><th>Dropped</th></tr></thead><tbody>';
     for(var n=a;n<=b;n++){
       var e=post.eps[n]||{},tx=txOf(n),drop=e.dropped||[],open=post.openDrop===n,mv=post.openMove===n,sh=shiftOf(n),tl=trailerUrl(e.trailer);
@@ -452,7 +478,21 @@
       if(open)html+='<tr class="dropdet"><td colspan="6">'+dropPanel(n,drop)+'</td></tr>';
       if(mv&&tx)html+='<tr class="dropdet movedet"><td colspan="6">'+movePanel(n)+'</td></tr>';
     }
-    return html+'</tbody></table></div>'+seasonCrewHtml(s);
+    html+='</tbody></table>'+seasonCrewHtml(s)+'</div>';
+    for(var q1=s+1;q1<=SEASONS;q1++)html+=seasonFold(q1);
+    return html;
+  }
+  /* A closed season in Post production: one line with its dates and how much is assigned. Tap to open it. */
+  function seasonFold(q){
+    var eps=seasonEps(q),a=eps[0],b=eps[eps.length-1];
+    var ed=eps.filter(function(m){return peopleIn(pendingOr(m,'editor',(post.eps[m]||{}).editor)).length}).length;
+    var sd=eps.filter(function(m){return peopleIn(pendingOr(m,'sound',(post.eps[m]||{}).sound)).length}).length;
+    var air=airingEp(),nx=upNextEp(),hasAir=(air&&seasonOf(air)===q)||(!air&&nx&&seasonOf(nx)===q);
+    return '<div class="tablewrap seasonfold"><button type="button" class="foldbtn" data-season="'+q+'" aria-expanded="false">'
+      +'<span class="fh"><b>Season '+q+'</b>'+(hasAir?'<span class="st onair">'+(air?'On air':'Airs next')+'</span>':'')+'</span>'
+      +'<span class="fm muted">Episodes '+a+' to '+b+(post.tx?' \u00b7 '+esc(fmtDate(txOf(a)))+' to '+esc(fmtDate(txOf(b))):'')+'</span>'
+      +'<span class="fa"><span class="'+(ed===eps.length?'ok':'')+'">Editors '+ed+'/'+eps.length+'</span><span class="'+(sd===eps.length?'ok':'')+'">Sound '+sd+'/'+eps.length+'</span></span>'
+      +'<span class="chev" aria-hidden="true">\u203A</span></button></div>';
   }
   /* Who edits and who does sound in this season, with each person's episodes. */
   function seasonCrewHtml(s){
@@ -465,7 +505,7 @@
         +(list.length?'<ul class="crewlist">'+list.map(function(p){return '<li><span class="cn">'+esc(p.name)+'</span><span class="cc">'+p.eps.length+' ep'+(p.eps.length===1?'':'s')+'</span><span class="ce muted">'+esc(epList(p.eps))+'</span></li>'}).join('')+'</ul>':'<p class="muted">Nobody assigned yet.</p>')
         +(none.length?'<p class="crewnone">Not assigned: '+esc(epList(none))+'</p>':'<p class="crewall">Every episode assigned \u2713</p>')+'</div>';
     }
-    return '<section class="tablewrap crew"><div class="seasonhead"><b>Season '+s+' crew</b><span class="muted">Episodes per person this season. Export to Excel for all four seasons side by side.</span></div>'
+    return '<section class="crew"><div class="crewhead"><b>Season '+s+' crew</b><span class="muted">Episodes per person this season. Export for all four seasons side by side.</span></div>'
       +'<div class="crewgrid">'+block('Editors','editor')+block('Sound','sound')+'</div></section>';
   }
   function cellInput(n,f,v,ph){
@@ -998,16 +1038,20 @@
     var mode=ui.actGroup=ui.actGroup||'day',groups=[],byKey={};
     act.forEach(function(r){
       var p=actParts(r[0]),g=p?actGroupOf(p,mode):{k:'?',label:'Unknown date'};
-      if(!byKey[g.k]){byKey[g.k]={label:g.label,rows:[]};groups.push(byKey[g.k])}
+      if(!byKey[g.k]){byKey[g.k]={key:g.k,label:g.label,rows:[]};groups.push(byKey[g.k])}
       byKey[g.k].rows.push({r:r,p:p});
     });
-    return '<table class="acttbl grouped"><thead><tr><th>'+(mode==='day'?'Time':'When')+'</th><th>Who</th><th>What</th><th class="hide-sm">Details</th></tr></thead>'+groups.map(function(g){
+    /* Each day, week or month folds. The newest is open; tap a heading to open or close it. */
+    ui.actOpen=ui.actOpen||{};if(ui.actOpenMode!==mode){ui.actOpen={};ui.actOpenMode=mode}
+    var anySet=Object.keys(ui.actOpen).length;
+    return '<table class="acttbl grouped"><thead><tr><th>'+(mode==='day'?'Time':'When')+'</th><th>Who</th><th>What</th><th class="hide-sm">Details</th></tr></thead>'+groups.map(function(g,gi){
+      var open=anySet?!!ui.actOpen[g.key]:gi===0;
       var bad=g.rows.filter(function(x){return /fail|block/i.test(x.r[2])}).length,signin=g.rows.filter(function(x){return /sign/i.test(x.r[2])&&!/fail|block/i.test(x.r[2])}).length,chg=g.rows.length-signin-bad;
       var sum=[g.rows.length+' entr'+(g.rows.length===1?'y':'ies')].concat(chg>0?[chg+' change'+(chg===1?'':'s')]:[]).concat(signin?[signin+' sign-in'+(signin===1?'':'s')]:[]).concat(bad?[bad+' failed']:[]).join(' \u00b7 ');
-      return '<tbody><tr class="actgrp"><th colspan="4" scope="rowgroup"><span>'+esc(g.label)+'</span><span class="muted">'+esc(sum)+'</span></th></tr>'+g.rows.map(function(x){
+      return '<tbody><tr class="actgrp'+(open?' open':'')+'"><th colspan="4" scope="rowgroup"><button type="button" class="actfold" data-actkey="'+esc(g.key)+'" aria-expanded="'+open+'"><span class="chev" aria-hidden="true">\u203A</span><span>'+esc(g.label)+'</span><span class="muted">'+esc(sum)+'</span></button></th></tr>'+(!open?'':g.rows.map(function(x){
         var r=x.r,p=x.p,when=p?(mode==='day'?p.time:DAYS_SHORT[p.d.getDay()]+' '+dm(p.d)+' '+p.time):r[0];
         return '<tr class="'+(/fail|block/i.test(r[2])?'bad':'')+'"><td class="mono when" title="'+esc(r[0])+'">'+esc(when)+'</td><td>'+esc(r[1])+'</td><td>'+esc(r[2])+'<div class="sub show-sm">'+esc(r[3]||'')+'</div></td><td class="hide-sm muted">'+esc(r[3]||'')+'</td></tr>';
-      }).join('')+'</tbody>';
+      }).join(''))+'</tbody>';
     }).join('')+'</table>';
   }
   function adminAction(act){
@@ -1286,8 +1330,9 @@
     if(b.matches('tr.d')){toggleDay(+b.dataset.day);return}
     if(b.dataset.ep){var e=+b.dataset.ep;ui.openEp=ui.openEp===e?null:e;var q=document.getElementById('q');if(q.value){q.value='';renderAnswer()}renderMain();return}
     if(b.dataset.view){ui.view=b.dataset.view;try{localStorage.setItem('njw-view',ui.view)}catch(e){}if(ui.view==='post'||ui.view==='admin'){var qq=document.getElementById('q'),ll=document.getElementById('loc');if(qq.value||ll.value){qq.value='';ll.value='';renderAnswer()}}if(ui.view==='post')loadPost();if(ui.view==='admin')loadAdmin();renderControls();renderMain();return}
+    if(b.dataset.actkey!=null){var ak=b.dataset.actkey;ui.actOpen=ui.actOpen||{};if(!Object.keys(ui.actOpen).length){var first=document.querySelector('.actfold');if(first)ui.actOpen[first.dataset.actkey]=true}ui.actOpen[ak]=!ui.actOpen[ak];if(!Object.keys(ui.actOpen).some(function(k){return ui.actOpen[k]}))ui.actOpen={__none:false};renderMain();return}
     if(b.dataset.actgroup){ui.actGroup=b.dataset.actgroup;try{localStorage.setItem('njw-actgroup',ui.actGroup)}catch(e){}renderMain();return}
-    if(b.dataset.season){setSeason(+b.dataset.season);post.openDrop=null;post.openMove=null;ui.openEp=null;var q2=document.getElementById('q');if(q2&&q2.value&&ui.view==='scenes'){q2.value='';renderAnswer()}renderControls();renderMain();return}
+    if(b.dataset.season){setSeason(+b.dataset.season);post.openDrop=null;post.openMove=null;ui.openEp=null;var q2=document.getElementById('q');if(q2&&q2.value&&ui.view==='scenes'){q2.value='';renderAnswer()}renderControls();renderMain();if(ui.view==='post'&&b.classList.contains('foldbtn'))setTimeout(function(){var so=document.querySelector('.seasonopen');if(so&&so.scrollIntoView)so.scrollIntoView({block:'start',behavior:'smooth'})},30);return}
     if(b.dataset.pexp){var pn=+b.dataset.pexp;post.openEp=post.openEp===pn?0:pn;if(post.openDrop!==pn)post.openDrop=null;if(post.openMove!==pn)post.openMove=null;renderPostKeep(0,true);return}
     if(b.hasAttribute('data-decide')){decideRepeat(b.dataset.scene,+b.dataset.day,b.dataset.decide);return}
     if(b.dataset.move){var mn=+b.dataset.move;post.openMove=post.openMove===mn?null:mn;post.openDrop=null;renderMain();return}
@@ -1306,6 +1351,7 @@
     if(act==='goto-air'){var ge=airingEp()||upNextEp();if(ge){setSeason(seasonOf(ge));post.openEp=ge;renderControls();renderPostKeep(0,true);var row=document.getElementById('pe'+ge);if(row)row.scrollIntoView({block:'center',behavior:'smooth'})}return}
     if(act==='edit-day'){var edd=dayByNum(+b.dataset.day);if(edd)openAdd(edd.raw,edd.day);return}
     if(act&&act.indexOf('adm-')===0){adminAction(act);return}
+    if(act==='show-all'){ui.show='all';renderControls();renderMain();return}
     if(act==='refresh'){refresh();if(ui.view==='post')loadPost();return}
     if(act==='add-many'){openAdd('',null,true);return}
     if(act==='pick-edit'||act==='pick-del'){openPicker(act==='pick-del');return}
@@ -1355,7 +1401,9 @@
     auth={token:r.token,name:(r.user&&r.user.name)||'Team',idle:r.idle||30};saveAuth();
     lastAct=Date.now();lastPing=Date.now();try{localStorage.setItem('njw-last',String(lastAct))}catch(e){}
     post.loaded=false;admin.activity=null;
-    closeDlg();renderAll();loadPost();
+    /* Back to the tab they were on before signing in (Post production or Activity are hidden until then). */
+    try{var lv=localStorage.getItem('njw-view');if(lv==='post'||lv==='admin')ui.view=lv}catch(e){}
+    closeDlg();renderAll();loadPost();if(ui.view==='admin')loadAdmin();
     toast('Signed in');
   }
   /* why: '' (they tapped Sign out), 'idle' (no use for too long), 'expired' (Google ended it). */

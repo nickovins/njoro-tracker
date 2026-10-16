@@ -16,6 +16,13 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - UI: Nick tried the simplified v16 layout and asked to go back. App v17 = the v15 layout (logo plate, green stats bar, two search boxes, segmented views, header Daily reports menu) with v8 behaviour (master password sign-in, no password change in app, Activity times as DD.MM HH:MM).
 - Nick's v7 status unknown; v8 steps in apps-script/SETUP.md (cleanUp, setup, New version deploy).
 
+## App v24 (16.10.2026, afternoon)
+- Open episode = every script scene in order (episodeRows): takes as before, "Not shot yet" lines for missing scenes, "Part shot: only 7B logged" lines, Estab / Flashback lines ("Not logged ..."). Labels (Estab, Flashback, Part shot, Reshoot...) at the end of the line. No script note text shown anywhere (Nick asked).
+- Flashbacks count as shot (estabIn covers Estab and Flashback, so both are left out of "to shoot").
+- Scenes filter: the Show menu value on screen now drives the list (a restored menu could leave the list filtered: "Nothing in Season 1 matches this filter" with All scenes showing), plus a Show all scenes link in that empty message. After sign-in the app returns to Post production or Activity if that was the tab chosen before.
+- Post production: no season buttons; the chosen season is open (table + crew), the other three are folded lines (dates, Editors n/13, Sound n/13, On air). Tapping one opens it and folds the rest.
+- Activity: every day / week / month group folds; newest open by default (ui.actOpen).
+
 ## Robot v10 / app v23 (16.10.2026)
 - Scenes: no "X of Y shot" on episode rows (only "N to shoot" / "N part" pills, "All shot" when done) and no season totals line (Nick asked for both to go).
 - Estab and Flashback: robot sceneNotes_() splits each script into scenes (sceneHeads_ keeps where each heading starts) and writes a Notes column (F) in the Scripts tab: {"4":"E|Various activities","2":"F|Cess telling..."}. Estab = says Estab, or a drive-by/various/time-lapse/transition cue in <= 25 words, or a silent exterior in <= 18 words. Flashback = FLASH in the heading or first line. Checked against a by-hand reading of all 12 scripts (Eps 1 to 10, 12, 13): same answers. App fallback SCENE_NOTES holds that reading until robot v10 is installed.
@@ -62,6 +69,6 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Scopes: spreadsheets.currentonly, drive.readonly, drive.file, script.scriptapp, script.external_request (Drive export only). No Gmail.
 
 ## Rules
-- Bump sw.js VERSION and index.html ?v= on each release (now njw-v23 / v=23).
+- Bump sw.js VERSION and index.html ?v= on each release (now njw-v24 / v=24).
 - Commit as Nick Kibathi <nicholaskibathi@gmail.com>. Test with Playwright at 390 px and 1280 px.
 - Never ask for or store the passcode or anyone's password. Plain language, no em/en dashes, honest pushback.
