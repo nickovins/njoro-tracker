@@ -16,6 +16,10 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - UI: Nick tried the simplified v16 layout and asked to go back. App v17 = the v15 layout (logo plate, green stats bar, two search boxes, segmented views, header Daily reports menu) with v8 behaviour (master password sign-in, no password change in app, Activity times as DD.MM HH:MM).
 - Nick's v7 status unknown; v8 steps in apps-script/SETUP.md (cleanUp, setup, New version deploy).
 
+## Robot v11 / app v26 (16.10.2026): Drive folders
+- Drive > 02. NJORO WA UBA SN 25-28 - 2026 (1N2MiJDIMEUC9n7C3BuJZSECg6DgYSgPO) > N.W.U Cycle 7 | SCENE TRACKER (18qREQGQgviZBWPuh3e6BwEl8bBhYnRfY): the data Sheet was moved here (same id, nothing else changes), plus "READ ME: Scene Tracker links" (Google Doc). LOG SHEETS and SCRIPTS sit next to it in the same parent.
+- Robot v11 exportsFolder_(): makes POST PRODUCTION EXPORTS inside TRACKER_FOLDER_ID itself (drive.file only allows writing into folders the robot made), keeps EXPORT_FOLDER, remakes it if trashed, falls back to My Drive with a log line if Drive refuses the parent. Export Sheets go in it, named "Njoro wa Uba Post Production (latest, dd.MM.yyyy HH.mm)"; the previous export is trashed. setup() makes the folder and logs its address.
+
 ## App v25 (16.10.2026)
 - Activity groups are an accordion: opening one day, week or month folds the others; tapping the open one folds it.
 - Excel / Google Sheet "All episodes": one merged, coloured Season cell per season (rotated); filter starts at column B.
@@ -74,6 +78,6 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Scopes: spreadsheets.currentonly, drive.readonly, drive.file, script.scriptapp, script.external_request (Drive export only). No Gmail.
 
 ## Rules
-- Bump sw.js VERSION and index.html ?v= on each release (now njw-v25 / v=25).
+- Bump sw.js VERSION and index.html ?v= on each release (now njw-v26 / v=26).
 - Commit as Nick Kibathi <nicholaskibathi@gmail.com>. Test with Playwright at 390 px and 1280 px.
 - Never ask for or store the passcode or anyone's password. Plain language, no em/en dashes, honest pushback.

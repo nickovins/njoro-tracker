@@ -46,7 +46,10 @@ var SCRIPTS_TAB = 'Scripts';
 var REPEATS_TAB = 'Repeats';
 var ACTIVITY_TAB = 'Activity';
 var TZ = 'Africa/Nairobi';
-var VERSION = 10;
+var VERSION = 11;
+// Drive > 02. NJORO WA UBA SN 25-28 - 2026 > N.W.U Cycle 7 | SCENE TRACKER (holds this Sheet).
+var TRACKER_FOLDER_ID = '18qREQGQgviZBWPuh3e6BwEl8bBhYnRfY';
+var EXPORTS_FOLDER_NAME = 'POST PRODUCTION EXPORTS';
 var EPISODES = 52;
 var IDLE_MINUTES_DEFAULT = 30;   // change with Script Property IDLE_MINUTES
 var SESSION_MAX_HOURS = 12;      // even an active sign-in ends after this
@@ -147,14 +150,36 @@ function exportSheet_(b, me) {
   var b64 = String(b.xlsx || '');
   if (!b64 || b64.length > 8000000) return { ok: false, error: 'bad_request' };
   var blob = Utilities.newBlob(Utilities.base64Decode(b64), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'post.xlsx');
-  var name = 'Njoro wa Uba Post Production ' + Utilities.formatDate(new Date(), TZ, 'dd.MM.yyyy HH.mm');
-  var file = Drive.Files.create({ name: name, mimeType: MimeType.GOOGLE_SHEETS }, blob);
+  var name = 'Njoro wa Uba Post Production (latest, ' + Utilities.formatDate(new Date(), TZ, 'dd.MM.yyyy HH.mm') + ')';
+  var folder = exportsFolder_();
+  var meta = { name: name, mimeType: MimeType.GOOGLE_SHEETS };
+  if (folder) meta.parents = [folder];
+  var file = Drive.Files.create(meta, blob);
   try { Drive.Permissions.create({ role: 'reader', type: 'anyone' }, file.id); } catch (e) { console.warn('Could not share the export: ' + e); }
   var p = props_(), old = p.getProperty('EXPORT_ID');
   if (old && old !== file.id) { try { Drive.Files.update({ trashed: true }, old); } catch (e) {} }
   p.setProperty('EXPORT_ID', file.id);
   log_(me.name, 'Exported post production to Google Sheets', name);
-  return { ok: true, url: 'https://docs.google.com/spreadsheets/d/' + file.id + '/edit', name: name };
+  return { ok: true, url: 'https://docs.google.com/spreadsheets/d/' + file.id + '/edit', name: name,
+           folder: folder ? 'https://drive.google.com/drive/folders/' + folder : '' };
+}
+
+/** The POST PRODUCTION EXPORTS folder inside the Scene Tracker folder. The robot makes it
+ *  itself (its Drive permission only lets it write into folders and files it made), keeps
+ *  its id in Script Properties, and makes a new one if it was deleted. '' = Drive root. */
+function exportsFolder_() {
+  var p = props_(), id = p.getProperty('EXPORT_FOLDER');
+  if (id) {
+    try { var f = Drive.Files.get(id, { fields: 'id,trashed' }); if (f && !f.trashed) return id; } catch (e) {}
+  }
+  var meta = { name: EXPORTS_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' }, made = null;
+  try { made = Drive.Files.create(Object.assign({ parents: [TRACKER_FOLDER_ID] }, meta)); }
+  catch (e) {
+    console.warn('Could not make the exports folder inside the Scene Tracker folder (' + e + '). Making it in My Drive: drag it into N.W.U Cycle 7 | SCENE TRACKER.');
+    try { made = Drive.Files.create(meta); } catch (e2) { console.warn('Could not make the exports folder: ' + e2); return ''; }
+  }
+  p.setProperty('EXPORT_FOLDER', made.id);
+  return made.id;
 }
 
 /** Run once from the editor after pasting a new version. Safe to run again. */
@@ -175,6 +200,8 @@ function setup() {
   var logs = linkMissingLogs(), scripts = refreshScripts(240000);
   var withScenes = tabRows_(SpreadsheetApp.getActive().getSheetByName(SCRIPTS_TAB), 5).filter(function (r) { return r[4]; }).length;
   console.log('Version ' + VERSION + ' ready. Log sheets attached now: ' + logs + '. Episode scripts found: ' + scripts + ', scene numbers read for ' + withScenes + '.');
+  var ef = exportsFolder_();
+  console.log(ef ? 'Post production exports go to https://drive.google.com/drive/folders/' + ef : 'Exports folder could not be made; exports go to My Drive.');
   CacheService.getScriptCache().remove('PRIVATE');
   if (sheetPrivate_()) { activityTab_(); console.log('The Sheet is private. The Activity tab is on.'); }
   else console.log('NEXT STEP: make the Sheet private (Share > General access > Restricted). Until then the Activity tab stays off.');
@@ -306,7 +333,7 @@ function endSession_(token) {
 /** Run from the editor: removes Script Properties the robot no longer uses and
  *  prints what is left. Never touches PASSCODE, IDLE_MINUTES or post production. */
 function cleanUp() {
-  var p = props_(), all = p.getProperties(), keep = /^(PASSCODE|IDLE_MINUTES|POST_TX|POST_EP_\d+|ACT_RING|SESS_GEN|EXPORT_ID)$/, gone = [];
+  var p = props_(), all = p.getProperties(), keep = /^(PASSCODE|IDLE_MINUTES|POST_TX|POST_EP_\d+|ACT_RING|SESS_GEN|EXPORT_ID|EXPORT_FOLDER)$/, gone = [];
   Object.keys(all).forEach(function (k) { if (!keep.test(k)) { p.deleteProperty(k); gone.push(k); } });
   var left = Object.keys(p.getProperties()).sort();
   console.log('Removed ' + gone.length + ' unused line' + (gone.length === 1 ? '' : 's') + (gone.length ? ': ' + gone.join(', ') : '') + '.');

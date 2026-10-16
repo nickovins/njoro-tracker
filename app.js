@@ -968,7 +968,7 @@
     openDlg('<div class="dlgbody"><div class="dlghead"><h2 id="dlg-title">Export post production</h2><button type="button" class="x" data-dlg="close" aria-label="Close">✕</button></div>'
       +'<p class="muted">All 52 episodes, the crew season by season and the dropped scenes, in the tracker colours.</p>'
       +'<div class="expopts">'
-      +'<button type="button" class="expopt" data-dlg="exp-sheets"><b>Open in Google Sheets</b><span>A Google Sheet in your Drive. Anyone you send the link to can view it. Only the newest export is kept.</span></button>'
+      +'<button type="button" class="expopt" data-dlg="exp-sheets"><b>Open in Google Sheets</b><span>A Google Sheet in Drive: 02. NJORO WA UBA SN 25-28 &gt; N.W.U Cycle 7 | SCENE TRACKER &gt; POST PRODUCTION EXPORTS. Only the newest export is kept. Anyone you send the link to can view it.</span></button>'
       +'<button type="button" class="expopt" data-dlg="exp-xlsx"><b>Download Excel file</b><span>An .xlsx file for this phone or computer. Opens in Excel, Numbers or Google Sheets.</span></button>'
       +'</div><p class="dlgerr" id="dlgerr" role="alert"></p></div>');
   }
@@ -990,7 +990,7 @@
   function updateLinks(){return '<a href="'+SETUP_URL+'" target="_blank" rel="noopener">Install guide \u2197</a> \u00b7 <a href="'+CODE_URL+'" target="_blank" rel="noopener">Code.gs to paste \u2197</a>'}
   function exportSheets(){
     var err=document.getElementById('dlgerr'),btn=document.querySelector('[data-dlg="exp-sheets"]');
-    if(ui.robot&&ui.robot<10){err.innerHTML='Opening in Google Sheets needs the Google script at version 10. Download the Excel file for now. '+updateLinks();return}
+    if(ui.robot&&ui.robot<10){err.innerHTML='Opening in Google Sheets needs the Google script at version 11. Download the Excel file for now. '+updateLinks();return}
     if(!navigator.onLine){err.textContent='No signal. Download the Excel file instead, or try again with signal.';return}
     /* Open the tab now, while the tap still counts, so the phone does not block it as a pop-up. */
     var w=null;try{w=window.open('','_blank')}catch(e){}
@@ -998,12 +998,13 @@
     btn.disabled=true;btn.querySelector('b').textContent='Building the Google Sheet…';err.textContent='';
     postWorkbookBuffer().then(function(buf){return callScript({action:'exportSheet',xlsx:b64OfBuffer(buf)})}).then(function(r){
       btn.disabled=false;btn.querySelector('b').textContent='Open in Google Sheets';
-      if(!r||!r.ok){if(w)try{w.close()}catch(e){}if(r&&r.error==='bad_request')err.innerHTML='Opening in Google Sheets needs the Google script at version 10. Download the Excel file for now. '+updateLinks();else err.textContent=errText(r);return}
+      if(!r||!r.ok){if(w)try{w.close()}catch(e){}if(r&&r.error==='bad_request')err.innerHTML='Opening in Google Sheets needs the Google script at version 11. Download the Excel file for now. '+updateLinks();else err.textContent=errText(r);return}
       var url=safeUrl(r.url);if(!url){if(w)try{w.close()}catch(e){}err.textContent=ERR.server;return}
       if(w&&!w.closed){try{w.location.href=url}catch(e){window.open(url,'_blank')}}
       else window.open(url,'_blank');
       openDlg('<div class="dlgbody done"><h2 id="dlg-title">Google Sheet ready</h2><p>'+esc(r.name||'Post production')+'</p>'
-        +'<p class="muted">It is in your Google Drive. The link is view only for anyone you send it to.</p>'
+        +'<p class="muted">Saved in Drive under N.W.U Cycle 7 | SCENE TRACKER \u203a POST PRODUCTION EXPORTS. The one before it went to the Drive bin. The link is view only for anyone you send it to.</p>'
+        +(safeUrl(r.folder)?'<p><a href="'+esc(r.folder)+'" target="_blank" rel="noopener">Open the exports folder \u2197</a></p>':'')
         +'<div class="dlgacts"><button type="button" class="btn" data-dlg="close">Done</button><a class="btn primary" href="'+esc(url)+'" target="_blank" rel="noopener">Open it ↗</a></div></div>');
     }).catch(function(){if(w)try{w.close()}catch(e){}btn.disabled=false;btn.querySelector('b').textContent='Open in Google Sheets';err.textContent='Could not build the sheet. Check your connection and try again.'});
   }
@@ -1025,7 +1026,7 @@
     if(!act)html+='<p class="empty">Loading activity\u2026</p>';
     else if(!act.length)html+='<p class="empty">Nothing yet.</p>';
     else html+=activityTable(act);
-    html+='</section>'+(ui.robot&&ui.robot<10?'<section class="tablewrap adm admsec upd"><div class="seasonhead"><b>Google script update</b><span class="muted">'+(ui.robot>=6?'Version '+esc(ui.robot)+' is':'An older version is')+' installed. Version 10 reads estabs and flashbacks from new scripts by itself and opens exports in Google Sheets.</span></div><p class="updlinks">'+updateLinks()+'</p></section>':'')+'<section class="tablewrap adm admsec"><div class="seasonhead"><b>Team sign-in</b><span class="muted">One master password for everyone. Sign-ins end after '+esc(auth.idle||30)+' minutes without use. To change the password, change PASSCODE in the Google script\u2019s Script Properties: every device is then signed out.</span></div>'
+    html+='</section>'+(ui.robot&&ui.robot<11?'<section class="tablewrap adm admsec upd"><div class="seasonhead"><b>Google script update</b><span class="muted">'+(ui.robot>=6?'Version '+esc(ui.robot)+' is':'An older version is')+' installed. Version 11 reads estabs and flashbacks from new scripts by itself and saves exports as Google Sheets in the Scene Tracker folder in Drive.</span></div><p class="updlinks">'+updateLinks()+'</p></section>':'')+'<section class="tablewrap adm admsec"><div class="seasonhead"><b>Team sign-in</b><span class="muted">One master password for everyone. Sign-ins end after '+esc(auth.idle||30)+' minutes without use. To change the password, change PASSCODE in the Google script\u2019s Script Properties: every device is then signed out.</span></div>'
       +'<div class="admrow">'
       +(admin.confirmAll?'<span class="confirm">Sign out every device, including this one?</span><button type="button" class="btn small danger" data-act="adm-all-yes">Sign everyone out</button><button type="button" class="btn small" data-act="adm-cancel">Cancel</button>'
         :'<button type="button" class="btn small" data-act="adm-all">Sign everyone out</button>')+'</div></section>';
