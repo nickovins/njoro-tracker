@@ -317,7 +317,7 @@
      sit at the end of the line. Logged scenes that are not in the script are slotted in by number. */
   function episodeRows(ep,g,pr,hit){
     var notes=sceneNotes(ep),byBase={},items=[];
-    g.forEach(function(t){var n=scParts(t.key.split('/')[1])[0];(byBase[n]=byBase[n]||[]).push(t)});
+    g.forEach(function(t){if(t.tags.indexOf('VO')>=0)return;var n=scParts(t.key.split('/')[1])[0];(byBase[n]=byBase[n]||[]).push(t)});
     var partOf={};(pr?pr.part:[]).forEach(function(x){partOf[x.n]=x.parts});
     sceneList(ep).forEach(function(n){
       var takes=byBase[n]||[],x=notes[String(n)];delete byBase[n];
@@ -327,21 +327,33 @@
     });
     Object.keys(byBase).forEach(function(n){byBase[n].forEach(function(t){items.push({key:t.key,t:t,extra:true})})});
     items.sort(function(a,b){return cmpKey(a.key,b.key)||(a.ph==='part'?-1:b.ph==='part'?1:0)});
-    return items.map(function(it){
-      if(it.t)return row(it.t,hit);
+    var all=takes();
+    return items.map(function(it,i){
+      var out;if(it.t)out=row(it.t,hit,false,true);else{
       var lab=it.label?'<span class="tag '+it.label+'">'+it.label+'</span>':'';
       var txt=it.ph==='todo'?'<span class="ns-todo">Not shot yet</span>'
         :it.ph==='part'?'<span class="ns-part">Part shot: only '+esc(it.parts.join(', '))+' logged</span>'
         :it.ph==='Estab'?'<span class="muted">Counted as shot</span>'
         :'<span class="muted">Counted as shot</span>';
-      var tags=(it.ph==='part'?'<span class="tag Part-shot">Part shot</span>':'')+lab+voTag(ep,scParts(it.key.split('/')[1])[0],takes());
-      return '<tr class="sline '+(it.ph==='todo'?'todo':it.ph==='part'?'part':'quiet')+(hit===it.key?' hit':'')+'"><td class="sc">'+esc(it.key)+'</td><td class="when">'+txt+(tags?'<div class="sub show-sm">'+tags+'</div>':'')+'</td><td class="loc hide-sm"></td><td class="note hide-sm">'+tags+'</td></tr>';
+      var tags=(it.ph==='part'?'<span class="tag Part-shot">Part shot</span>':'')+lab;
+      out='<tr class="sline '+(it.ph==='todo'?'todo':it.ph==='part'?'part':'quiet')+(hit===it.key?' hit':'')+'"><td class="sc">'+esc(it.key)+'</td><td class="when">'+txt+(tags?'<div class="sub show-sm">'+tags+'</div>':'')+'</td><td class="loc hide-sm"></td><td class="note hide-sm">'+tags+'</td></tr>';}
+      var base=scParts(it.key.split('/')[1])[0],nx=items[i+1];
+      if(!nx||scParts(nx.key.split('/')[1])[0]!==base)out+=voSub(ep,base,all);
+      return out;
     }).join('');
   }
-  function row(t,hit,showEp){
+  /* VOs of a scene, on their own line just under it: red until recorded, green with a tick after */
+  function voSub(ep,n,all){
+    var vs=voList(ep,all).filter(function(v){return scParts(v.sc)[0]===n});if(!vs.length)return '';
+    var left=vs.filter(function(v){return !v.done}).length;
+    return '<tr class="vosub'+(left?'':' alldone')+'"><td class="sc"><span class="voarrow" aria-hidden="true">\u21B3</span></td><td colspan="3">'
+      +vs.map(function(v){return '<span class="vochip'+(v.done?' done':'')+'">VO '+esc(v.name)+(v.done?' \u2713':'')+'</span>'}).join('')
+      +(left?'<span class="vonote">'+(left===1?'VO to record':left+' VOs to record')+'</span>':'')+'</td></tr>';
+  }
+  function row(t,hit,showEp,noVo){
     var other=t.tags.filter(function(x){return x!=='Reshoot'});
     var sn=sceneNotes(t.ep)[String(scParts(t.key.split('/')[1])[0])];if(sn)other=other.concat([sn.type]);
-    var vt=ui.view==='scenes'&&t.tags.indexOf('VO')<0?voTag(t.ep,scParts(t.key.split('/')[1])[0],takes()):'';
+    var vt=!noVo&&ui.view==='scenes'&&t.tags.indexOf('VO')<0?voTag(t.ep,scParts(t.key.split('/')[1])[0],takes()):'';
     if(!inScript(t.ep,t.key.split('/')[1]))other=other.concat(['Not in script']);
     return '<tr'+(hit===t.key?' class="hit"':'')+'><td class="sc">'+esc(t.key)+(t.ext?'<span class="ext">'+esc(t.ext)+'</span>':'')+'</td><td class="when">'+esc(dayRef(t.day))+' '+logLink(t.day,'Log')+'<div class="sub show-sm">'+esc(t.day.location||'')+(other.length||t.note||vt?'<br>':'')+tagsHtml(other)+vt+contUndo(t)+(t.note?'<span class="muted">'+esc(t.note)+'</span>':'')+'</div></td><td class="loc hide-sm">'+esc(t.day.location||'')+'</td><td class="note hide-sm">'+tagsHtml(other)+vt+contUndo(t)+(t.note?'<span class="muted">'+esc(t.note)+'</span>':'')+'</td></tr>';
   }
@@ -372,14 +384,14 @@
     var html='<div class="tablewrap">'+head+'<table>'+(notShot||voMode?'':HEAD)+'<tbody>';
     eps.forEach(function(ep){
       var g=by[ep]||[],open=ui.openEp===ep,pr=progress(ep,all),sc=scriptFor(ep),sub;
-      if(pr)sub=(pr.left.length||pr.part.length?'':'<span class="prog done">All shot \u2713</span>');
+      if(pr)sub=(pr.left.length||pr.part.length?'':'<span class="prog done"><span class="tick" aria-hidden="true">\u2713</span>All shot</span>');
       else if(g.length)sub='<span class="prog">No script yet</span>';
       else sub='<span class="prog noscript">No script in Drive yet</span>';
       var checks=g.filter(function(t){return t.tags.indexOf('Check')>=0}).length;
-      html+='<tr class="grp'+(open?' open':'')+(pr||g.length?'':' empty')+'"><td colspan="4"><div class="grprow"><button type="button" class="grpbtn" data-ep="'+ep+'" aria-expanded="'+open+'">Episode '+ep+sub+'</button>'
+      html+='<tr class="grp'+(open?' open':'')+(pr||g.length?'':' empty')+(pr&&!pr.left.length&&!pr.part.length?' allshot':'')+'"><td colspan="4"><div class="grprow"><button type="button" class="grpbtn" data-ep="'+ep+'" aria-expanded="'+open+'">Episode '+ep+sub+'</button>'
         +(post.loaded&&airingEp()===ep?'<span class="onairchip">On air</span>':'')
         +(checks?'<span class="needcheck">'+checks+' to check</span>':'')
-        +(function(){var vp=voPending(ep,all).length;return vp?'<span class="vopill">'+vp+' VO</span>':''})()
+        +(function(){var vp=voPending(ep,all).length;return vp?'<span class="vopill">'+vp+' pending VO'+(vp>1?'s':'')+'</span>':''})()
         +(pr&&pr.left.length?'<span class="togo">'+pr.left.length+'<span class="lg"> to shoot</span><span class="sm"> left</span></span>':'')
         +(pr&&pr.part.length?'<span class="partpill">'+pr.part.length+' part<span class="lg"> shot</span></span>':'')
         +(sc?'<a class="scriptlink" href="'+esc(sc.url)+'" target="_blank" rel="noopener" title="'+esc(sc.name)+'">Script ↗</a>':'')

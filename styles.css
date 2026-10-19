@@ -680,8 +680,8 @@ tr.actgrp.open .actfold .chev{transform:rotate(90deg)}
 .updlinks{padding:12px 16px;margin:0;font-size:14px}.updlinks a,.dlgerr a{color:var(--post);font-weight:700}
 
 /* Voice-overs to record */
-.vopill,tr.grp td span.vopill{flex:none;font:700 12px var(--body);color:#0F6B6B;background:rgba(15,107,107,.1);border:1px solid rgba(15,107,107,.35);padding:3px 9px;border-radius:999px;white-space:nowrap;margin-left:0}
-.tag.VO{background:rgba(15,107,107,.1);color:#0F6B6B;border:1px solid rgba(15,107,107,.35)}
+.vopill,tr.grp td span.vopill{flex:none;font:700 12px var(--body);color:#C11F26;background:rgba(193,31,38,.08);border:1px solid rgba(193,31,38,.35);padding:3px 9px;border-radius:999px;white-space:nowrap;margin-left:0}
+.tag.VO{background:rgba(193,31,38,.08);color:#C11F26;border:1px solid rgba(193,31,38,.35)}
 .tag.VO.done{background:var(--head);color:var(--deep);border-color:var(--line)}
 tr.left .lbl.vo{color:#0F6B6B}
 .volist{list-style:none;margin:2px 0 0;padding:0;display:grid;gap:6px}
@@ -689,3 +689,28 @@ tr.left .lbl.vo{color:#0F6B6B}
 .volist .mono{font-weight:700;min-width:44px}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .vopill,:root:not([data-theme="light"]) .tag.VO,:root:not([data-theme="light"]) tr.left .lbl.vo{color:#7FD3D3;border-color:#2B5C5C}}
 :root[data-theme="dark"] .vopill,:root[data-theme="dark"] .tag.VO,:root[data-theme="dark"] tr.left .lbl.vo{color:#7FD3D3;border-color:#2B5C5C}
+
+/* VOs under their scene (app v29) */
+tr.vosub td{background:var(--surface);padding:0 14px 9px;border-top:0;vertical-align:top}
+tr.vosub td.sc{text-align:right;padding-right:6px}
+tr.vosub .voarrow{display:inline-block;font:700 18px/1 var(--body);color:#C11F26;margin-top:2px}
+tr.vosub.alldone .voarrow{color:#1F7A3A}
+.vochip{display:inline-block;font:700 12.5px var(--body);color:#C11F26;background:rgba(193,31,38,.08);border:1px solid rgba(193,31,38,.35);padding:2px 9px;border-radius:6px;margin:0 6px 4px 0;white-space:nowrap}
+.vochip.done{color:#1F7A3A;background:rgba(31,122,58,.08);border-color:rgba(31,122,58,.35)}
+.vonote{font:600 12px var(--body);color:#C11F26;white-space:nowrap}
+tr.vosub+tr td,tr:has(+tr.vosub) td{border-bottom-color:transparent}
+/* Episode fully shot: green at a glance */
+tr.grp.allshot td{background:#EAF6EC;border-left-color:#1F7A3A}
+tr.grp.allshot:hover td{background:#DDF0E1}
+tr.grp.allshot .grpbtn{color:#14532D}
+tr.grp td span.prog.done{color:#1F7A3A;font-weight:800}
+tr.grp td span.prog.done .tick{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#1F7A3A;color:#fff;font:800 11px/1 var(--body);margin:0 6px 0 0;vertical-align:-3px}
+tr.grp.allshot .bar2 i{background:#1F7A3A}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .vopill,:root:not([data-theme="light"]) .tag.VO,:root:not([data-theme="light"]) .vochip,:root:not([data-theme="light"]) .vonote,:root:not([data-theme="light"]) tr.vosub .voarrow{color:#F07A7F;border-color:rgba(240,122,127,.4)}:root:not([data-theme="light"]) .vochip.done,:root:not([data-theme="light"]) tr.vosub.alldone .voarrow{color:#8ED6A2;border-color:rgba(142,214,162,.4)}:root:not([data-theme="light"]) tr.grp.allshot td{background:#1A3D26;border-left-color:#4CB96E}:root:not([data-theme="light"]) tr.grp.allshot .grpbtn,:root:not([data-theme="light"]) tr.grp td span.prog.done{color:#8ED6A2}}
+:root[data-theme="dark"] .vopill,:root[data-theme="dark"] .tag.VO,:root[data-theme="dark"] .vochip,:root[data-theme="dark"] .vonote,:root[data-theme="dark"] tr.vosub .voarrow{color:#F07A7F;border-color:rgba(240,122,127,.4)}
+:root[data-theme="dark"] .vochip.done,:root[data-theme="dark"] tr.vosub.alldone .voarrow{color:#8ED6A2;border-color:rgba(142,214,162,.4)}
+:root[data-theme="dark"] tr.grp.allshot td{background:#1A3D26;border-left-color:#4CB96E}
+:root[data-theme="dark"] tr.grp.allshot .grpbtn,:root[data-theme="dark"] tr.grp td span.prog.done{color:#8ED6A2}
+@media (max-width:560px){.grprow{flex-wrap:wrap;row-gap:6px}}
+tr.grp.allshot td{background:#D9F0DE;border-left-color:#1F7A3A;border-left-width:6px}
+tr.grp.allshot:hover td{background:#CDEBD3}
