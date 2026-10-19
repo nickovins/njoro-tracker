@@ -12,7 +12,7 @@
   var MONTHS=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
   var CYCLE='Cycle 7 | Season 1-4';
 
-  var state={days:[],scripts:{},repeats:{},rows:[],fetchedAt:null};
+  var state={days:[],scripts:{},repeats:{},voFix:{},rows:[],fetchedAt:null};
   var ui={view:'scenes',show:'all',openEp:null,openDay:null,loading:false,offline:!navigator.onLine,error:'',confirmDel:null,busy:false,season:1,showDecided:false};
   /* Sign-in: one admin password, checked by the Google robot. Only a sign-in token is kept on
      the device, never the password. A sign-in ends after IDLE minutes without use. */
@@ -69,6 +69,8 @@
      (version 10) reads every script itself and its Notes column takes over. */
   var SCENE_NOTES={"1":{"2":"F|Cess telling Njoro to denounce Zani and that Zani ni Mtoto wa Koome.","4":"E|Various Activities - We transition from Night to morning.","6":"E|Various activities, time lapse","8":"E|Various activities. Njoro’s car wipes frame.","12":"E|Various activities.","14":"E|Njoros car wipes frame, the sound of laughter fills the air.","16":"E|Various activities.","18":"E|We transition to night."},"2":{"3":"E|The cab whips past.","5":"E|The cab pulls up to an apartment gate.","7":"E|The cab glides through the city.","9":"E|Njoro comes to a stop.","12":"E|Sunrise. The cab whips past.","14":"E|Various activities.","17":"E|Various transition day to night to day","18":"E|EXT. STACY’S SCHOOL - DAY","24":"E|The cab pulls up outside the sleek office building.","26":"E|Various The car whips past. A phone ringing fills the air.","30":"E|EXT. NJORO'S PLACE - DAY"},"3":{"9":"E|Nairobi in motion. Cars inching through traffic.","13":"E|Njoro’s cab pulls up outside the apartment gate but doesn’t enter immediately. Inside,…"},"4":{"2":"E|Njoro’s cab comes to a stop","8":"E|Njoro’s cab parked at usual spot.","10":"E|The cab drives past us.","12":"E|Day turns into night"},"5":{"1":"E|The cab drives past us.","4":"F|A brief fragment. Mwajuma. The moment she realizes Njoro's lie.","5":"F|Joy and Njoro with their ice creams. Joy looking directly at him.","6":"F|His apartment door opening. Cess standing there. Njoro stares through the windscreen.…","8":"E|The cab drives through the city.","14":"E|Office estab.","18":"E|The cab drives past us.","24":"E|The small kibanda is still open."},"6":{"1":"E|Njoro’s cab passes by.","4":"F|Njoro holding the pregnancy stick.","9":"E|A time lapse of the city settling into night, then waking into a new day.","10":"E|Njoro’s cab glides past. Inside, a girl’s voice fills the air.","12":"E|Njoro’s cab glides past.","15":"E|Various city activities","16":"E|The DOORBELL RINGS."},"7":{"1":"E|Njoro’s cab comes to a stop.","4":"E|The cab whips past us.","10":"E|Various Activities","12":"E|The Cab whips past us.","18":"E|Day turns into night."},"8":{"1":"E|Njoro’s car navigates its way through narrow streets.","4":"E|An Estab shot of the building.","7":"E|Njoro’s car wipes frame.","10":"E|Njoro’s car comes to a stop at a gate - we don’t see exactly where he Is.","14":"E|Various activities - Njoro’s car wipes frame.","16":"E|Various activities.","18":"E|An estab shot of the building - we hear the door bell ring.","20":"E|Various activities.","22":"E|An Estab of the building. Crickets."},"9":{"3":"E|The city moves along. The cab whips past.","14":"E|The cab moves through the city.","19":"E|The cab is parked.","23":"E|Estab. Doorbell rings.","25":"E|Various."},"10":{"4":"E|The day has moved on. Transition night to day","15":"E|Various activities"},"12":{"1":"E|A heavy metal gate. Njoro’s cab pulls up and HOOTS.","7":"E|Sunday traffic. Njoro’s cab moves through frame.","10":"E|The cab whips past.","13":"E|Various","15":"E|Night turns to day","16":"E|Various","17":"E|The cab whips past.","21":"E|Various","23":"E|EXT. HOSPITAL - DAY"},"13":{"1":"E|Njoro’s car wipes frame.","5":"E|Various activities.","7":"E|Various activities.","10":"E|Njoro's cab moves through traffic.","12":"E|Transition to day.","17":"E|Laughter carries from inside.","23":"E|The car pulls up."}};
   /* Voice-overs per scene, read from the scripts on 19.10.2026: V.O. lines, phone or TV audio, and O.S. voices whose speaker is not seen and does not speak on camera in that scene or the scene before or after (so a drive-by line that continues inside the cab is not a VO). Robot version 14 reads them itself, also for new scripts. */
+  /* Corrections Nick made in chat; the team's own (saved by the Google script) come on top. */
+  var VO_FIX_SEED={"9/9|STACY":"no","9/9|NJORO":"no"};
   var VO_SEED={"1":{"1":["JOY"],"7":["JOY","CESS"]},"2":{"11":["PURITY"],"13":["KIMUNYA"],"15":["JOY"]},"3":{"1":["CONMAN"],"7":["WOMAN"],"14":["JOY"],"15":["JOY"]},"4":{"1":["PHONE AUDIO"],"7":["JOY"],"13":["JOY"]},"5":{"13":["VIDEO PRESENTER"]},"6":{"19":["PURITY"]},"7":{"16":["PURITY"]},"9":{"7":["STACY"],"8":["STACY"],"9":["STACY","NJORO"],"22":["JOY"]},"10":{"13":["JOY"]},"13":{"8":["JOY"]}};
   var SCENE_COUNT={1:19,2:32,3:19,4:16,5:25,6:19,7:19,8:23,9:26,10:16,12:25,13:24};
   function sceneList(ep){
@@ -96,7 +98,21 @@
      after the scene is shot. A VO counts as recorded when a daily report logs that scene with "VO"
      on its line (like "Joy VO - 1/1") or under a "VOs recorded" heading. With two voices in one scene,
      the line has to name the person. */
-  function sceneVO(ep){var sc=state.scripts&&state.scripts[ep];return (sc&&sc.vo)||VO_SEED[ep]||{}}
+  /* VOs per scene: what the robot read from the script (or VO_SEED), then the team's own corrections
+     (VO_FIX_SEED, then state.voFix from the robot): "no" takes a voice off, "add" puts one on. */
+  function voFixes(){var o={},k;for(k in VO_FIX_SEED)o[k]=VO_FIX_SEED[k];for(k in (state.voFix||{}))o[k]=state.voFix[k];return o}
+  function voFixOf(ep,sc,name){var f=voFixes()[ep+'/'+sc+'|'+String(name).toUpperCase()];return f||''}
+  function sceneVO(ep){
+    var sc=state.scripts&&state.scripts[ep],base=(sc&&sc.vo)||VO_SEED[ep]||{},out={},k,fx=voFixes();
+    for(k in base)out[k]=base[k].slice();
+    for(k in fx){var m=/^(\d+)\/(\d+)\|(.+)$/.exec(k);if(!m||+m[1]!==+ep)continue;var n=m[2],nm=m[3],L=out[n]||[];
+      if(fx[k]==='no')L=L.filter(function(x){return String(x).toUpperCase()!==nm});
+      else if(fx[k]==='add'&&L.map(function(x){return String(x).toUpperCase()}).indexOf(nm)<0)L=L.concat([nm]);
+      if(L.length)out[n]=L;else delete out[n];}
+    return out;
+  }
+  /* Voices the team took off (shown with an undo under the episode). */
+  function voRemoved(ep){var fx=voFixes(),out=[];for(var k in fx){var m=/^(\d+)\/(\d+)\|(.+)$/.exec(k);if(m&&+m[1]===+ep&&fx[k]==='no')out.push({sc:m[2],name:m[3]})}return out.sort(function(a,b){return +a.sc-+b.sc})}
   function niceName(n){return String(n).toLowerCase().replace(/(^|[\s\-'\u2019])([a-z])/g,function(m,a,b){return a+b.toUpperCase()})}
   function voList(ep,all){
     var vo=sceneVO(ep),out=[];
@@ -343,14 +359,45 @@
       var base=scParts(it.key.split('/')[1])[0],nx=items[i+1];
       if(!nx||scParts(nx.key.split('/')[1])[0]!==base)out+=voSub(ep,base,all);
       return out;
-    }).join('');
+    }).join('')+voEditRow(ep);
+  }
+  /* Signed in: fix the VO list by hand. Add one the script reading missed, undo a removal. */
+  function voEditRow(ep){
+    if(!isEditor())return '';
+    var rm=voRemoved(ep),open=ui.voAdd===ep,L=sceneList(ep);
+    var h='<tr class="voedit"><td class="sc"></td><td colspan="3">';
+    if(open){
+      h+='<div class="voform"><label>Scene <select id="vo-sc">'+L.map(function(n){return '<option value="'+esc(n)+'">'+ep+'/'+esc(n)+'</option>'}).join('')+'</select></label>'
+        +'<label>Name <input id="vo-name" type="text" maxlength="30" autocomplete="off" placeholder="e.g. Joy"></label>'
+        +'<button type="button" class="btn small" data-act="vo-add-save" data-vep="'+ep+'">Add VO</button>'
+        +'<button type="button" class="btn small ghost" data-act="vo-add-cancel">Cancel</button></div>';
+    }else h+='<button type="button" class="linkbtn" data-act="vo-add-open" data-vep="'+ep+'">+ Add a VO the script missed</button>';
+    if(rm.length)h+='<div class="voremoved"><span class="muted">Not VOs (taken off by hand):</span>'+rm.map(function(r){
+      return '<span class="vochip off">'+ep+'/'+esc(r.sc)+' '+esc(niceName(r.name))+'<button type="button" class="vox" data-act="vo-undo" data-vep="'+ep+'" data-sc="'+esc(r.sc)+'" data-name="'+esc(r.name)+'" title="Put back" aria-label="Put '+esc(niceName(r.name))+' back">\u21ba</button></span>'}).join('')+'</div>';
+    return h+'</td></tr>';
+  }
+  function voFixSet(ep,sc,name,set){
+    if(!isEditor()){openLogin();return}
+    if(ui.robot&&ui.robot<14){toast('Fixing VOs needs the Google script at version 14.');return}
+    var k=(+ep)+'/'+(+sc)+'|'+String(name).toUpperCase().replace(/\s+/g,' ').trim(),had=state.voFix[k];
+    var seeded=VO_FIX_SEED[k];
+    /* An undo of a removal Nick asked for in chat is saved as an explicit "add" so it beats the seed. */
+    var val=set===''&&seeded==='no'?'add':set;
+    if(val)state.voFix[k]=val;else delete state.voFix[k];
+    state.days=buildDays(state.rows,[]);renderMain();
+    callScript({action:'vofix',scene:(+ep)+'/'+(+sc),name:name,set:val}).then(function(r){
+      if(!r.ok){if(had)state.voFix[k]=had;else delete state.voFix[k];state.days=buildDays(state.rows,[]);renderMain();toast(r.error==='bad_request'&&ui.robot<14?'Fixing VOs needs the Google script at version 14.':errText(r));return}
+      applyServerRows(r);
+      toast(val==='no'?ep+'/'+sc+' '+niceName(name)+': not a VO':val==='add'?ep+'/'+sc+' '+niceName(name)+' added as a VO':'Change undone');
+    });
   }
   /* VOs of a scene, on their own line just under it: red until recorded, green with a tick after */
   function voSub(ep,n,all){
     var vs=voList(ep,all).filter(function(v){return scParts(v.sc)[0]===n});if(!vs.length)return '';
     var left=vs.filter(function(v){return !v.done}).length;
     return '<tr class="vosub'+(left?'':' alldone')+'"><td class="sc"><span class="voarrow" aria-hidden="true">\u21B3</span></td><td colspan="3">'
-      +vs.map(function(v){return '<span class="vochip'+(v.done?' done':'')+'">VO '+esc(v.name)+(v.done?' \u2713':'')+'</span>'}).join('')
+      +vs.map(function(v){return '<span class="vochip'+(v.done?' done':'')+'">VO '+esc(v.name)+(v.done?' \u2713':'')
+        +(isEditor()?'<button type="button" class="vox" data-act="vo-no" data-vep="'+ep+'" data-sc="'+esc(scParts(v.sc)[0])+'" data-name="'+esc(String(v.name).toUpperCase())+'" title="Not a VO" aria-label="'+esc(v.name)+' is not a VO">\u00d7</button>':'')+'</span>'}).join('')
       +(left?'<span class="vonote">'+(left===1?'VO to record':left+' VOs to record')+'</span>':'')+'</td></tr>';
   }
   function row(t,hit,showEp,noVo){
@@ -403,7 +450,7 @@
       if(!open)return;
       if(voMode){
         html+='<tr class="left vos"><td colspan="4"><div class="leftgrp"><span class="lbl vo">VOs to record</span><ul class="volist">'+voPending(ep,all).map(function(v){
-          return '<li><span class="mono">'+ep+'/'+esc(v.sc)+'</span><b>'+esc(v.name)+'</b><span class="muted">'+(v.shot?'Scene shot, VO missing':'Scene not shot yet')+'</span></li>'}).join('')+'</ul></div></td></tr>';
+          return '<li><span class="mono">'+ep+'/'+esc(v.sc)+'</span><b>'+esc(v.name)+'</b><span class="muted">'+(v.shot?'Scene shot, VO missing':'Scene not shot yet')+'</span>'+(isEditor()?'<button type="button" class="linkbtn vonot" data-act="vo-no" data-vep="'+ep+'" data-sc="'+esc(scParts(v.sc)[0])+'" data-name="'+esc(String(v.name).toUpperCase())+'">Not a VO</button>':'')+'</li>'}).join('')+'</ul></div></td></tr>';
         return;
       }
       if(notShot){
@@ -1252,8 +1299,8 @@
     });
     return days;
   }
-  function saveCache(){try{localStorage.setItem(CACHE_KEY,JSON.stringify({rows:state.rows,scripts:state.scripts,repeats:state.repeats,fetchedAt:state.fetchedAt}))}catch(e){}}
-  function loadCache(){try{var c=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');if(c&&c.rows){state.rows=c.rows;state.scripts=c.scripts||{};state.repeats=c.repeats||{};state.fetchedAt=c.fetchedAt;state.days=buildDays(state.rows,[])}}catch(e){}}
+  function saveCache(){try{localStorage.setItem(CACHE_KEY,JSON.stringify({rows:state.rows,scripts:state.scripts,repeats:state.repeats,voFix:state.voFix,fetchedAt:state.fetchedAt}))}catch(e){}}
+  function loadCache(){try{var c=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');if(c&&c.rows){state.rows=c.rows;state.scripts=c.scripts||{};state.repeats=c.repeats||{};state.voFix=c.voFix||{};state.fetchedAt=c.fetchedAt;state.days=buildDays(state.rows,[])}}catch(e){}}
 
   function sigOf(days){return days.map(function(d){return d.day+':'+d.raw.length+':'+(d.log?1:0)}).join(',')}
   /* After a save the app shows Google's own copy of the sheet straight away. For a couple of
@@ -1263,7 +1310,7 @@
   /* Everything the robot sends: reports, scripts and repeat decisions. */
   function applyData(d,fromWrite){
     if(!d||!d.ok||!Array.isArray(d.reports))return false;
-    state.rows=reportRows(d.reports);state.scripts=scriptsFromRows(d.scripts);state.repeats=repeatsFromRows(d.repeats);
+    state.rows=reportRows(d.reports);state.scripts=scriptsFromRows(d.scripts);state.repeats=repeatsFromRows(d.repeats);state.voFix=(d.voFix&&typeof d.voFix==='object')?d.voFix:(state.voFix||{});
     state.days=buildDays(state.rows,[]);state.fetchedAt=Date.now();saveCache();
     if(fromWrite)wrote={at:Date.now(),sig:sigOf(state.days)};
     ui.stale=false;ui.offline=false;ui.error='';ui.via='robot';ui.robot=+d.version||0;
@@ -1436,6 +1483,13 @@
     if(act==='edit-day'){var edd=dayByNum(+b.dataset.day);if(edd)openAdd(edd.raw,edd.day);return}
     if(act&&act.indexOf('adm-')===0){adminAction(act);return}
     if(act==='show-all'){ui.show='all';renderControls();renderMain();return}
+    if(act==='vo-no'){var vk=(+b.dataset.vep)+'/'+(+b.dataset.sc)+'|'+b.dataset.name;voFixSet(b.dataset.vep,b.dataset.sc,b.dataset.name,(state.voFix[vk]==='add')?'':'no');return}
+    if(act==='vo-undo'){voFixSet(b.dataset.vep,b.dataset.sc,b.dataset.name,'');return}
+    if(act==='vo-add-open'){ui.voAdd=+b.dataset.vep;renderMain();var vi=document.getElementById('vo-name');if(vi)vi.focus();return}
+    if(act==='vo-add-cancel'){ui.voAdd=null;renderMain();return}
+    if(act==='vo-add-save'){var vn=(document.getElementById('vo-name')||{}).value||'',vs=(document.getElementById('vo-sc')||{}).value;
+      vn=vn.replace(/[^A-Za-z0-9 '\u2019.\-]/g,'').replace(/\s+/g,' ').trim();if(!vn){toast('Type the name of the voice');return}
+      ui.voAdd=null;voFixSet(b.dataset.vep,vs,vn.toUpperCase(),'add');return}
     if(act==='refresh'){refresh();if(ui.view==='post')loadPost();return}
     if(act==='add-many'){openAdd('',null,true);return}
     if(act==='pick-edit'||act==='pick-del'){openPicker(act==='pick-del');return}

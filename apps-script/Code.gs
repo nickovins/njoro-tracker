@@ -129,6 +129,7 @@ function write_(a, b, me) {
     return withData_(out);
   }
   if (a === 'postSave') return postSave_(b, me);
+  if (a === 'vofix') return withData_(voFix_(b, me));
   if (a === 'note') {
     var what = String(b.what || '').slice(0, 80);
     if (what === 'export') log_(me.name, 'Exported post production to Excel', '');
@@ -228,6 +229,7 @@ function readAll_() {
     reports: tabRows_(sheet_(), 3),
     scripts: tabRows_(ss.getSheetByName(SCRIPTS_TAB), 6),
     repeats: tabRows_(ss.getSheetByName(REPEATS_TAB), 3),   // scene, day, decision: who decided stays in the Activity log
+    voFix: voFixAll_(),                                      // the team's own VO corrections
     at: Date.now()
   };
   putChunks_('READ', JSON.stringify(out), 30);
@@ -333,7 +335,7 @@ function endSession_(token) {
 /** Run from the editor: removes Script Properties the robot no longer uses and
  *  prints what is left. Never touches PASSCODE, IDLE_MINUTES or post production. */
 function cleanUp() {
-  var p = props_(), all = p.getProperties(), keep = /^(PASSCODE|IDLE_MINUTES|POST_TX|POST_EP_\d+|ACT_RING|SESS_GEN|EXPORT_ID|EXPORT_FOLDER)$/, gone = [];
+  var p = props_(), all = p.getProperties(), keep = /^(PASSCODE|IDLE_MINUTES|POST_TX|POST_EP_\d+|ACT_RING|SESS_GEN|EXPORT_ID|EXPORT_FOLDER|VO_FIX)$/, gone = [];
   Object.keys(all).forEach(function (k) { if (!keep.test(k)) { p.deleteProperty(k); gone.push(k); } });
   var left = Object.keys(p.getProperties()).sort();
   console.log('Removed ' + gone.length + ' unused line' + (gone.length === 1 ? '' : 's') + (gone.length ? ': ' + gone.join(', ') : '') + '.');
@@ -436,6 +438,26 @@ function decide_(b, me) {
     r.setValues([[scene, String(day), decision, me.name, now_()]]);
   }
   log_(me.name, decision ? 'Marked a repeated scene' : 'Undid a repeat decision', scene + ' on Day ' + day + (decision ? ': ' + decision : ''));
+  return { ok: true };
+}
+
+/** The team's own VO corrections, kept in Script Properties as VO_FIX:
+ *  {"9/9|STACY":"no", "6/14|JOY":"add"}. "no" = not a VO (the script got it wrong), "add" = a VO the
+ *  script reading missed. They win over what the robot reads from the script, also after a re-read. */
+function voFixAll_() {
+  try { var o = JSON.parse(props_().getProperty('VO_FIX') || '{}'); return o && typeof o === 'object' ? o : {}; }
+  catch (e) { return {}; }
+}
+function voFix_(b, me) {
+  var m = /^(\d{1,3})\s*\/\s*(\d{1,3})[A-Za-z]?$/.exec(String(b.scene || '').trim());
+  var name = String(b.name || '').toUpperCase().replace(/[^A-Z0-9 '\u2019.\-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 30);
+  var set = ['no', 'add', ''].indexOf(b.set) >= 0 ? b.set : null;
+  if (!m || !name || set === null) return { ok: false, error: 'bad_request' };
+  var scene = Number(m[1]) + '/' + Number(m[2]), k = scene + '|' + name, all = voFixAll_();
+  if (set) all[k] = set; else delete all[k];
+  if (Object.keys(all).length > 400) return { ok: false, error: 'too_many' };
+  props_().setProperty('VO_FIX', JSON.stringify(all));
+  log_(me.name, set === 'no' ? 'Marked not a VO' : set === 'add' ? 'Added a VO' : 'Undid a VO change', scene + ' ' + name);
   return { ok: true };
 }
 

@@ -728,3 +728,15 @@ tr.grp td span.prog.done .tick{background:#9FC63B;color:#13522B}
 :root[data-theme="dark"] .vonote,:root[data-theme="dark"] tr.left .lbl.vo,:root[data-theme="dark"] tr.vosub:not(.alldone) .voarrow{color:#F2CF7A}
 :root[data-theme="dark"] tr.grp.allshot td{background:rgba(159,198,59,.2);border-left-color:#9FC63B}
 :root[data-theme="dark"] tr.grp.allshot .grpbtn,:root[data-theme="dark"] tr.grp td span.prog.done{color:#CEE05C}
+/* Fixing the VO list by hand (app v35) */
+.vochip .vox{all:unset;cursor:pointer;margin-left:6px;padding:0 3px;font:800 13px/1 var(--body);opacity:.65;border-radius:4px}
+.vochip .vox:hover,.vochip .vox:focus-visible{opacity:1;background:rgba(0,0,0,.08);outline:none}
+.vochip.off{color:var(--muted);background:transparent;border:1px dashed var(--line);text-decoration:line-through;text-decoration-thickness:1px}
+.vochip.off .vox{text-decoration:none;display:inline-block}
+tr.voedit td{background:var(--surface);padding:6px 14px 12px;border-top:0}
+.voform{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center}
+.voform label{display:flex;gap:6px;align-items:center;font:600 13px var(--body);color:var(--muted)}
+.voform select,.voform input{font:500 14px var(--body);padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);min-width:0}
+.voform input{width:130px}
+.voremoved{margin-top:8px;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;font-size:13px}
+.volist .vonot{font-size:12px;margin-left:auto}
