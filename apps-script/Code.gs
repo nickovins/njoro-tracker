@@ -839,18 +839,29 @@ function voices_(text, estab) {
   var NAME = "([A-Z][A-Z0-9'\u2019.\\-]*(?:\\s[A-Z0-9][A-Z0-9'\u2019.\\-]*){0,4})";
   // Always a VO: V.O. and playback.
   var ALWAYS = new RegExp(NAME + "\\s*\\(\\s*(?:V\\.?\\s?O\\.?|ON (?:TV|RADIO|SPEAKER|THE RADIO|THE TV|SCREEN|VIDEO)|FILTERED|OVER (?:THE )?PHONE)\\s*\\)", 'g');
-  while ((m = ALWAYS.exec(t))) add(nameOf(m[1]));
+  var SEEN0 = "[^.!?]{0,40}?\\b(?:approach|emerge|appear|enter|walk|run|rush|hurr|step|return|stand|seated|sitting|sits|gets? in|gets? out|comes?|arriv|burst|broken away|turns? up|is there|reveal|stumbl|storms? in|reaches|grabs|pulls out)";
+  while ((m = ALWAYS.exec(t))) {
+    var vn = nameOf(m[1]);
+    // A V.O. by someone who then walks into shot (the friend on speakerphone who comes out of the gate) is shot with the scene.
+    if (vn && /\(\s*V/.test(m[0]) && new RegExp('\\b' + esc(vn.split(' ').pop()) + '\\b' + SEEN0, 'i').test(t.slice(m.index + m[0].length))) continue;
+    add(vn);
+  }
   var PLAY = /(?:^|[.!?"\u201D)\u2014:]\s*)((?:[A-Z]+ )?(?:AUDIO|RECORDING|VOICEMAIL|VOICE NOTE)|ANNOUNCER|NEWS ANCHOR|RADIO HOST|TV PRESENTER)(?=\s*(?:\([^)]*\)\s*)*\s+[A-Z]?[a-z\u2019'])/g;
   while ((m = PLAY.exec(t))) add(nameOf(m[1]));
   // O.S. / O.C.: a VO unless the speaker is seen.
   var OS = new RegExp(NAME + "\\s*\\(\\s*O\\.?\\s?[SC]\\.?\\s*\\)", 'g');
-  var SEEN = "[^.!?]{0,40}?\\b(?:approach|emerge|appear|enter|walk|run|rush|hurr|step|return|stand|seated|sitting|sits|gets? in|gets? out|comes?|arriv|burst|broken away|turns? up|is there|reveal|stumbl|storms? in)";
+  var SEEN = SEEN0;
+  var PHONEY = /\b(?:phone|call(?:s|ed|ing)?|speaker|dials?|line|rings?)\b/i.test(t);
+  var acts = t.split(/[.!?\u2014]\s+/).filter(function (x) { return !/\b(?:voice|phone|call|speaker|screen|line)\b/i.test(x); }).join(' . ');
   while ((m = OS.exec(t))) {
     var n = nameOf(m[1]); if (!n || who.indexOf(n) >= 0 || os.indexOf(n) >= 0) continue;
     if (estab) { addOs(n); continue; }
     var after = t.slice(m.index + m[0].length), key = esc(n.split(' ').pop());
     if (new RegExp('\\b' + key + '\\b' + SEEN, 'i').test(after)) continue;          // seen right after
     if (speaksOnCamera_(t, n)) continue;                                              // in this scene's dialogue
+    // In the room, just out of frame: the action already puts them there ("SUPPORTERS are sprawled across
+    // the floor", then "DRUNK SUPPORTER 2 (O.S.)"). Not for calls, where the other end is never there.
+    if (!PHONEY && n.split(' ').some(function (w) { return w.length >= 4 && !/^(?:VOICE|MAMA|BABA)$/.test(w) && new RegExp('\\b' + esc(w) + '(?:S|ES)?\\b', 'i').test(acts.replace(new RegExp(esc(n) + '\\s*\\([^)]*\\)', 'g'), ' ')); })) continue;
     addOs(n);
   }
   // Establishing shot: lines spoken with no tag are heard over the shot ("Njoro's cab passes by. SHIRO But ...").
