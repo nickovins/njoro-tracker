@@ -714,3 +714,17 @@ tr.grp.allshot .bar2 i{background:#1F7A3A}
 @media (max-width:560px){.grprow{flex-wrap:wrap;row-gap:6px}}
 tr.grp.allshot td{background:#D9F0DE;border-left-color:#1F7A3A;border-left-width:6px}
 tr.grp.allshot:hover td{background:#CDEBD3}
+/* v30: pending VOs in amber #F2CF7A (red stays for scenes not shot); completed episodes in the old progress-bar lime */
+.vopill,tr.grp td span.vopill,.tag.VO,.vochip{color:#5C3D00;background:#F2CF7A;border:1px solid #DDB04F}
+.vochip.done{color:#1F7A3A;background:rgba(31,122,58,.08);border-color:rgba(31,122,58,.35)}
+.vonote,tr.left .lbl.vo{color:#8A5A00}
+tr.vosub .voarrow{color:#C9962A}
+tr.grp.allshot td{background:rgba(159,198,59,.32);border-left:6px solid #9FC63B}
+tr.grp.allshot:hover td{background:rgba(159,198,59,.42)}
+tr.grp.allshot .grpbtn,tr.grp td span.prog.done{color:#13522B}
+tr.grp td span.prog.done .tick{background:#9FC63B;color:#13522B}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .vopill,:root:not([data-theme="light"]) .tag.VO,:root:not([data-theme="light"]) .vochip:not(.done){color:#F2CF7A;background:rgba(242,207,122,.14);border-color:rgba(242,207,122,.5)}:root:not([data-theme="light"]) .vonote,:root:not([data-theme="light"]) tr.left .lbl.vo,:root:not([data-theme="light"]) tr.vosub:not(.alldone) .voarrow{color:#F2CF7A}:root:not([data-theme="light"]) tr.grp.allshot td{background:rgba(159,198,59,.2);border-left-color:#9FC63B}:root:not([data-theme="light"]) tr.grp.allshot .grpbtn,:root:not([data-theme="light"]) tr.grp td span.prog.done{color:#CEE05C}}
+:root[data-theme="dark"] .vopill,:root[data-theme="dark"] .tag.VO,:root[data-theme="dark"] .vochip:not(.done){color:#F2CF7A;background:rgba(242,207,122,.14);border-color:rgba(242,207,122,.5)}
+:root[data-theme="dark"] .vonote,:root[data-theme="dark"] tr.left .lbl.vo,:root[data-theme="dark"] tr.vosub:not(.alldone) .voarrow{color:#F2CF7A}
+:root[data-theme="dark"] tr.grp.allshot td{background:rgba(159,198,59,.2);border-left-color:#9FC63B}
+:root[data-theme="dark"] tr.grp.allshot .grpbtn,:root[data-theme="dark"] tr.grp td span.prog.done{color:#CEE05C}

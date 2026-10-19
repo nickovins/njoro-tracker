@@ -82,8 +82,8 @@
     return out;
   }
   /* Shot / still-to-shoot per episode. A lettered take (29A) covers scene 29. */
-  /* A scene counts as shot when it is logged under its plain number (7/7) or marked continued.
-     If only lettered parts are logged (7/7B), it is "part shot": some of it may still be missing. */
+  /* A scene counts as shot when any take of it is logged (7/7, 7/7A, 7/7B...).
+     Lettered parts (7/7B) count as the whole scene shot (Nick, 19.10.2026). */
   /* Estab and Flashback scenes for an episode: from the robot's reading of the script, or the
      list read by hand on 16.10.2026 while the robot is older than version 10. */
   function sceneNotes(ep){
@@ -123,8 +123,7 @@
     rows.forEach(function(t){
       if(t.ep!==ep||t.tags.indexOf('VO')>=0)return;
       var sc=t.key.split('/')[1],p=scParts(sc);
-      if(!p[1]||t.tags.indexOf('Completed')>=0||t.tags.indexOf('Continued')>=0)full[p[0]]=1;
-      else{parts[p[0]]=parts[p[0]]||[];if(parts[p[0]].indexOf(sc)<0)parts[p[0]].push(sc)}
+      full[p[0]]=1;   /* a scene shot in parts (4/12A, 4/12B) counts as shot: the director splits scenes that way to shoot them */
     });
     var shot=0,part=[],left=[];
     list.forEach(function(n){if(full[n])shot++;else if(parts[n])part.push({n:n,parts:parts[n].sort()});else left.push(n)});
@@ -396,7 +395,6 @@
         +(pr&&pr.part.length?'<span class="partpill">'+pr.part.length+' part<span class="lg"> shot</span></span>':'')
         +(sc?'<a class="scriptlink" href="'+esc(sc.url)+'" target="_blank" rel="noopener" title="'+esc(sc.name)+'">Script ↗</a>':'')
         +'<button type="button" class="grpfill" data-ep="'+ep+'" tabindex="-1" aria-hidden="true"><span class="chev">›</span></button></div>'
-        +(pr?barHtml(pr):'')
         +'</td></tr>';
       if(!open)return;
       if(voMode){

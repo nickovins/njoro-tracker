@@ -74,7 +74,7 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Post production: the airing episode row is dark-edged; the next to air gets a full lime row highlight (tr.pe.nextup), also on phones.
 - Season picker is shared with Scenes (ui.season, localStorage njw-season).
 
-- VOs (app v28, robot v13): the robot lists every NAME (V.O.) per scene in the Notes JSON as "vo" (notes _v 3). The app keeps VO_SEED for robots older than 13. Show "VOs to record" lists the pending ones per episode; episode rows get an "N VO" pill and scene lines a "VO Name" tag. A VO counts as recorded when a report line for that scene carries "VO" (e.g. "Joy VO - 1/1") or sits under a "VOs recorded" heading; with two VO names in one scene the line must name the person. VO-only takes never count the scene as shot and are left out of the scene list. App v29: each scene's VOs sit on a line just under it (tr.vosub, arrow, red chip until recorded, green with a tick after); the episode pill is red and reads "N pending VOs"; an episode with every scene shot gets a green row (tr.grp.allshot) and a ticked "All shot".
+- VOs (app v28, robot v13): the robot lists every NAME (V.O.) per scene in the Notes JSON as "vo" (notes _v 3). The app keeps VO_SEED for robots older than 13. Show "VOs to record" lists the pending ones per episode; episode rows get an "N VO" pill and scene lines a "VO Name" tag. A VO counts as recorded when a report line for that scene carries "VO" (e.g. "Joy VO - 1/1") or sits under a "VOs recorded" heading; with two VO names in one scene the line must name the person. VO-only takes never count the scene as shot and are left out of the scene list. App v29: each scene's VOs sit on a line just under it (tr.vosub, arrow, red chip until recorded, green with a tick after); the episode pill is red and reads "N pending VOs"; an episode with every scene shot gets a green row (tr.grp.allshot) and a ticked "All shot". App v30: lettered parts (7/7A, 7/7B) count the whole scene as shot (no more "part shot"); no progress bar under episodes; completed episodes use the old bar lime #9FC63B; pending VOs are amber #F2CF7A (red stays for scenes not shot). VOs never hold back "All shot": picture first, audio later.
 
 ## Architecture
 - Reads: robot GET ?read=1 (reports, scripts, repeats; 30 s cache in CacheService). Falls back to gviz JSONP from the Sheet while the robot is older than 6.
@@ -85,6 +85,6 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Scopes: spreadsheets.currentonly, drive.readonly, drive.file, script.scriptapp, script.external_request (Drive export only). No Gmail.
 
 ## Rules
-- Bump sw.js VERSION and index.html ?v= on each release (now njw-v29 / v=29).
+- Bump sw.js VERSION and index.html ?v= on each release (now njw-v30 / v=30).
 - Commit as Nick Kibathi <nicholaskibathi@gmail.com>. Test with Playwright at 390 px and 1280 px.
 - Never ask for or store the passcode or anyone's password. Plain language, no em/en dashes, honest pushback.
