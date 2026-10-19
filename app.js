@@ -68,8 +68,8 @@
   /* Estab (E) and Flashback (F) scenes, read from the scripts by hand on 16.10.2026. The robot
      (version 10) reads every script itself and its Notes column takes over. */
   var SCENE_NOTES={"1":{"2":"F|Cess telling Njoro to denounce Zani and that Zani ni Mtoto wa Koome.","4":"E|Various Activities - We transition from Night to morning.","6":"E|Various activities, time lapse","8":"E|Various activities. Njoro’s car wipes frame.","12":"E|Various activities.","14":"E|Njoros car wipes frame, the sound of laughter fills the air.","16":"E|Various activities.","18":"E|We transition to night."},"2":{"3":"E|The cab whips past.","5":"E|The cab pulls up to an apartment gate.","7":"E|The cab glides through the city.","9":"E|Njoro comes to a stop.","12":"E|Sunrise. The cab whips past.","14":"E|Various activities.","17":"E|Various transition day to night to day","18":"E|EXT. STACY’S SCHOOL - DAY","24":"E|The cab pulls up outside the sleek office building.","26":"E|Various The car whips past. A phone ringing fills the air.","30":"E|EXT. NJORO'S PLACE - DAY"},"3":{"9":"E|Nairobi in motion. Cars inching through traffic.","13":"E|Njoro’s cab pulls up outside the apartment gate but doesn’t enter immediately. Inside,…"},"4":{"2":"E|Njoro’s cab comes to a stop","8":"E|Njoro’s cab parked at usual spot.","10":"E|The cab drives past us.","12":"E|Day turns into night"},"5":{"1":"E|The cab drives past us.","4":"F|A brief fragment. Mwajuma. The moment she realizes Njoro's lie.","5":"F|Joy and Njoro with their ice creams. Joy looking directly at him.","6":"F|His apartment door opening. Cess standing there. Njoro stares through the windscreen.…","8":"E|The cab drives through the city.","14":"E|Office estab.","18":"E|The cab drives past us.","24":"E|The small kibanda is still open."},"6":{"1":"E|Njoro’s cab passes by.","4":"F|Njoro holding the pregnancy stick.","9":"E|A time lapse of the city settling into night, then waking into a new day.","10":"E|Njoro’s cab glides past. Inside, a girl’s voice fills the air.","12":"E|Njoro’s cab glides past.","15":"E|Various city activities","16":"E|The DOORBELL RINGS."},"7":{"1":"E|Njoro’s cab comes to a stop.","4":"E|The cab whips past us.","10":"E|Various Activities","12":"E|The Cab whips past us.","18":"E|Day turns into night."},"8":{"1":"E|Njoro’s car navigates its way through narrow streets.","4":"E|An Estab shot of the building.","7":"E|Njoro’s car wipes frame.","10":"E|Njoro’s car comes to a stop at a gate - we don’t see exactly where he Is.","14":"E|Various activities - Njoro’s car wipes frame.","16":"E|Various activities.","18":"E|An estab shot of the building - we hear the door bell ring.","20":"E|Various activities.","22":"E|An Estab of the building. Crickets."},"9":{"3":"E|The city moves along. The cab whips past.","14":"E|The cab moves through the city.","19":"E|The cab is parked.","23":"E|Estab. Doorbell rings.","25":"E|Various."},"10":{"4":"E|The day has moved on. Transition night to day","15":"E|Various activities"},"12":{"1":"E|A heavy metal gate. Njoro’s cab pulls up and HOOTS.","7":"E|Sunday traffic. Njoro’s cab moves through frame.","10":"E|The cab whips past.","13":"E|Various","15":"E|Night turns to day","16":"E|Various","17":"E|The cab whips past.","21":"E|Various","23":"E|EXT. HOSPITAL - DAY"},"13":{"1":"E|Njoro’s car wipes frame.","5":"E|Various activities.","7":"E|Various activities.","10":"E|Njoro's cab moves through traffic.","12":"E|Transition to day.","17":"E|Laughter carries from inside.","23":"E|The car pulls up."}};
-  /* Voice-overs (V.O.) per scene, read from the scripts on 19.10.2026. Robot version 13 reads them itself. */
-  var VO_SEED={"1":{"1":["JOY"],"7":["JOY","CESS"]},"3":{"1":["CONMAN"],"14":["JOY"],"15":["JOY"]},"4":{"7":["JOY"],"13":["JOY"]},"5":{"13":["VIDEO PRESENTER"]},"6":{"11":["CHRISTINE"],"13":["CHRISTINE"]},"7":{"16":["PURITY"]},"9":{"7":["STACY"],"8":["STACY"],"9":["STACY","NJORO"],"22":["JOY"]},"10":{"13":["JOY"]},"13":{"8":["JOY"]}};
+  /* Voice-overs per scene, read from the scripts on 19.10.2026: V.O. lines, phone or TV audio, and O.S. voices whose speaker is not seen in the scene (phone calls, another room, drive-bys). Robot version 14 reads them itself, also for new scripts. */
+  var VO_SEED={"1":{"1":["JOY"],"7":["JOY","CESS"],"8":["AMARA"],"14":["KARANJA"]},"2":{"11":["PURITY"],"12":["SAMANTHA"],"13":["KIMUNYA"],"15":["JOY"]},"3":{"1":["CONMAN"],"7":["WOMAN"],"14":["JOY","WILLIS","MAISH"],"15":["JOY"],"17":["HENRY"]},"4":{"1":["PHONE AUDIO"],"7":["JOY"],"10":["SHIKU"],"13":["JOY"]},"5":{"1":["COLLINS"],"13":["VIDEO PRESENTER"],"14":["JAYDEN"]},"6":{"1":["SHIRO"],"10":["KAYLEEN","NJORO"],"11":["CHRISTINE"],"12":["CHRISTINE"],"13":["CHRISTINE"],"16":["HENRY"],"19":["PURITY"]},"7":{"12":["MAMA SYLVIA"],"16":["PURITY"]},"8":{"7":["TASHA"],"13":["ODANGA"],"14":["KEVIN"]},"9":{"3":["HARRIET"],"7":["STACY"],"8":["STACY"],"9":["STACY","NJORO"],"22":["JOY"]},"10":{"11":["WIFE","HUSBAND"],"13":["JOY"]},"12":{"1":["NJORO"],"7":["ANN"],"10":["RITA"],"17":["NJORO"]},"13":{"3":["DRUNK SUPPORTER 2","JOY"],"5":["MAMA NAOMI"],"8":["JOY"],"10":["NADIA"]}};
   var SCENE_COUNT={1:19,2:32,3:19,4:16,5:25,6:19,7:19,8:23,9:26,10:16,12:25,13:24};
   function sceneList(ep){
     var sc=state.scripts&&state.scripts[ep],out=[],seen={};
@@ -202,7 +202,7 @@
     return starts.map(function(st,k){return lines.slice(st,k+1<starts.length?starts[k+1]:lines.length).join('\n').trim()}).filter(Boolean);
   }
   function parseReport(raw){
-    var out={day:null,date:'',iso:'',cast:'',location:'',times:[],pages:'',shot:[],ignored:[],raw:raw,warnings:[]};
+    var out={day:null,date:'',iso:'',cast:'',location:'',times:[],pages:'',shot:[],dups:[],ignored:[],raw:raw,warnings:[]};
     var mode=null,secTag='',seen={};
     raw.split(/\r?\n/).forEach(function(line0,li){
       var line=line0.replace(/[*_~]/g,'').replace(/[⌛⏳]/g,'').replace(/\s+/g,' ').trim().replace(/^[^A-Za-z0-9]+(?=[A-Za-z])/,'');
@@ -239,7 +239,7 @@
       found.forEach(function(f){
         var k=keyOf(f.ep,f.sc)+(isVO?'|vo':'');
         if(mode==='skip'){out.ignored.push(keyOf(f.ep,f.sc));return}
-        if(seen[k]){tags.forEach(function(t){if(seen[k].tags.indexOf(t)<0)seen[k].tags.push(t)});return}
+        if(seen[k]){tags.forEach(function(t){if(seen[k].tags.indexOf(t)<0)seen[k].tags.push(t)});if(note&&note!==seen[k].note)out.dups.push({ep:f.ep,sc:f.sc,note:note,tags:[],line:li});return}
         f.note=note;f.tags=tags.slice();f.line=li;seen[k]=f;out.shot.push(f);
       });
     });
@@ -1183,7 +1183,7 @@
   }
   function scriptsOf(res){return scriptsFromRows(gvizRows(res,['episode','script','link','updated','scenes','notes'])||[])}
   /* Voice-overs per scene from the robot (Notes "vo", version 3 rules and later). */
-  function voOf(v){var o=null;try{o=JSON.parse(String(v||''))}catch(e){return null}if(!o||!(o._v>=3)||!o.vo||typeof o.vo!=='object')return null;
+  function voOf(v){var o=null;try{o=JSON.parse(String(v||''))}catch(e){return null}if(!o||!(o._v>=4)||!o.vo||typeof o.vo!=='object')return null;
     var out={};Object.keys(o.vo).forEach(function(k){if(/^\d{1,3}[A-Za-z]?$/.test(k)&&Array.isArray(o.vo[k]))out[normSc(k)]=o.vo[k].map(function(x){return String(x).slice(0,40)}).filter(Boolean)});return out}
   /* Scripts tab Notes column: {"4":"E|Various activities","2":"F|Cess telling Njoro..."} */
   function notesOf(v){
@@ -1199,6 +1199,19 @@
       if(m&&d>0&&(v[2]==='Reshoot'||v[2]==='Duplicate'||v[2]==='Continued'))out[keyOf(m[1],m[2])+'@'+d]={decision:v[2],by:String(v[3]||''),when:String(v[4]||'')}});
     return out;
   }
+  /* "Joy 3/14", "3/14 Joy" or "Purity 2/11": a line that only names a VO voice of that scene records that VO,
+     whether or not it also says VO. Works for any later script too, since the names come from the script. */
+  function voNameHit(f){
+    var names=sceneVO(+f.ep)[String(scParts(f.sc)[0])];if(!names||!names.length)return false;
+    var words=String(f.note||'').toLowerCase().replace(/\bv\.?\s?o'?s?\b|voice[\s-]?overs?|recorded|done|\(|\)/g,' ').split(/[^a-z0-9'\u2019]+/).filter(Boolean);
+    if(!words.length)return false;
+    var pool={};names.forEach(function(n){String(n).toLowerCase().split(/[^a-z0-9'\u2019]+/).forEach(function(w){if(w)pool[w]=1})});
+    return words.every(function(w){return pool[w]});
+  }
+  function voByName(p){
+    p.shot.forEach(function(f){if(f.tags.indexOf('VO')<0&&voNameHit(f))f.tags.push('VO')});
+    (p.dups||[]).forEach(function(f){if(voNameHit(f)){f.tags=['VO'];p.shot.push(f)}});
+  }
   function buildDays(sheetRows,formRows){
     var seen={},ordered=[];
     function add(r){var k=r.raw.replace(/\s+/g,' ').trim()+'|'+r.log;if(seen[k])return;seen[k]=1;ordered.push(r)}
@@ -1208,6 +1221,7 @@
     ordered.forEach(function(r){
       if(!r.raw||!r.raw.trim())return;
       var p=parseReport(r.raw);if(!p.day||!p.shot.length)return;
+      voByName(p);
       var d={day:p.day,date:p.date,iso:p.iso,cast:p.cast,location:p.location,times:p.times,pages:p.pages,shot:p.shot,pulled:[],raw:r.raw.trim(),log:safeUrl(r.log)};
       var prev=byDay[p.day];if(prev&&!d.log)d.log=prev.log;
       if(!d.log&&LOG_SEED[p.day]&&LOG_SEED[p.day].iso===p.iso)d.log=LOG_SEED[p.day].url;

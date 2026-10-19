@@ -46,7 +46,7 @@ var SCRIPTS_TAB = 'Scripts';
 var REPEATS_TAB = 'Repeats';
 var ACTIVITY_TAB = 'Activity';
 var TZ = 'Africa/Nairobi';
-var VERSION = 13;
+var VERSION = 14;
 // Drive > 02. NJORO WA UBA SN 25-28 - 2026 > N.W.U Cycle 7 | SCENE TRACKER (holds this Sheet).
 var TRACKER_FOLDER_ID = '18qREQGQgviZBWPuh3e6BwEl8bBhYnRfY';
 var EXPORTS_FOLDER_NAME = 'POST PRODUCTION EXPORTS';
@@ -754,23 +754,14 @@ function sceneHeads_(t) {
  *  heard (O.S.) is still the establishing shot of the next scene, and counts as shot.
  *  Flashback: FLASH in the heading or the first line.
  *  Returns {"_v":2,"4":"E|Various activities","2":"F|Cess telling ..."}. */
-var NOTES_V = 3;   // 3: also lists voice-overs per scene ("vo")
+var NOTES_V = 4;   // 3: lists V.O. lines per scene ("vo"). 4: also phone/TV audio and unseen O.S. voices
 function sceneNotes_(text) {
   var t = cleanScript_(text), heads = sceneHeads_(t), out = { _v: NOTES_V, vo: {} };
-  // Voice-overs: "JOY (V.O.)", "CESS (VO)", "JOY (V.O) (CONT'D)". A V.O. is usually recorded on its own
-  // later (a phone call, a TV, thoughts), so the app lists them as VOs to record.
-  var VO = /([A-Z][A-Z0-9'\u2019 .\-]{1,28}?)\s*\(\s*V\.?\s?O\.?\s*\)/g;
   var JUNK = /^(?:\d{1,3}[A-Z]?\.?|.{0,30}Rev\.\s*\([^)]*\)\s*\d*\.?|\(MORE\)|\(?CONTINUED\)?:?|CONT(?:'|’)?D|CUT TO:?|INTERCUT(?: WITH)?:?|NEW DAY|LATER|DAY \d+|NIGHT \d+|END OF EPISODE|FADE (?:IN|OUT|TO BLACK)\.?:?|NJORO WA UBA TITLE SEQUENCE|TITLE SEQUENCE|BACK TO(?: [A-Z ]+)?\.?|MATCH CUT TO:?|SMASH CUT TO:?)$/i;
   var SPEAKER = /^([A-Z][A-Z0-9 .'’\-]{1,30}?)\s*(\([^)]*\)\s*)*$/;
   var CUE = /\b(?:estab|various|time ?lapse|transition|wipes? (?:the )?frame|whips? past|drives? past|passes by|glides|moves (?:through|along)|in motion|navigates|sunrise|sunset|day turns|night turns|is parked)/i;
   heads.forEach(function (h, i) {
-    var whole = t.slice(h.end, i + 1 < heads.length ? heads[i + 1].at : t.length), vm, who = [];
-    VO.lastIndex = 0;
-    while ((vm = VO.exec(whole))) {
-      var nm = vm[1].replace(/^.*?\b(?=[A-Z][A-Z'\u2019\-]+(?:\s[A-Z][A-Z'\u2019\-]+)?$)/, '').replace(/\s+/g, ' ').trim();
-      if (nm && /[A-Z]{2}/.test(nm) && who.indexOf(nm) < 0) who.push(nm);
-    }
-    if (who.length) out.vo[h.n] = who;
+    var whole = t.slice(h.end, i + 1 < heads.length ? heads[i + 1].at : t.length);
     var lines = whole.split('\n')
       .map(function (l) { return l.replace(/.{0,30}Rev\.\s*\([^)]*\)\s*\d*\.?/g, ' ').replace(/\s+/g, ' ').trim(); })
       .filter(function (l) { return l && !JUNK.test(l); });
@@ -792,16 +783,66 @@ function sceneNotes_(text) {
     act = act.replace(/\s+/g, ' ').trim();
     var words = act ? act.split(' ').length : 0;
     var note = act.length > 90 ? act.slice(0, 87).replace(/\s+\S*$/, '') + '…' : act;
-    if (/FLASH/i.test(head) || /^FLASH(?:BACK)?\b/i.test(act)) { out[h.n] = 'F|' + (note || head); return; }
+    var flash = /FLASH/i.test(head) || /^FLASH(?:BACK)?\b/i.test(act);
     var ext = /^(?:EXT|I\/E)\b/i.test(head) || /\bVARIOUS\b/i.test(head);
     var estab = /\bestab/i.test(head) || /^estab/i.test(act) ||
       (CUE.test(act) && words <= 25) ||
       (ext && words <= 18 && (!spoken || spokenOs) && /\b(?:pulls up|comes? to a stop|stops|parked)\b/i.test(act)) ||
       (ext && !spoken && words <= 18) ||
       (ext && spokenOs && words <= 6);                // "The DOORBELL RINGS." then a voice from inside
-    if (estab) out[h.n] = 'E|' + (/^estab\.?$/i.test(act) || !act ? head : note);
+    if (flash) out[h.n] = 'F|' + (note || head);
+    else if (estab) out[h.n] = 'E|' + (/^estab\.?$/i.test(act) || !act ? head : note);
+    var who = voices_(whole, !flash && estab);
+    if (who.length) out.vo[h.n] = who;
   });
   return out;
+}
+
+/** Voices to record on their own (VOs) in one scene's text, for this and every later script:
+ *  - every V.O. line ("JOY (V.O.)"), and audio played back: "PHONE AUDIO", "PURITY (ON TV)", "(FILTERED)";
+ *  - an O.S. / O.C. voice whose speaker is not seen: the other end of a call, someone in another room,
+ *    a voice over a drive-by. It is NOT a VO when the person is seen right after ("Willis is seated",
+ *    "Jezebel approaches", "The passenger gets in") or was just talking on camera and has not left
+ *    (kids shouting as they run to the door);
+ *  - in an establishing shot (cab drives past), every line spoken is a VO, tagged or not. */
+function voices_(text, estab) {
+  var t = ' ' + String(text).replace(/.{0,30}Rev\.\s*\([^)]*\)\s*\d*\.?/g, ' ').replace(/\s+/g, ' ') + ' ';
+  var SKIP = /^(?:CUT|TO|INSERT|INTERCUT|WITH|SMASH|MATCH|FADE|BACK|NEW|DAY|NIGHT|LATER|CONTINUOUS|THE|A|AN|AND|ON|SCREEN|INT|EXT|MORE|CONT'?D|CONT\u2019D|SFX|V\.?O\.?|O\.?S\.?)$/;
+  function nameOf(raw) {
+    var w = raw.split(/\.\s|\.\.+|\u2026/).pop().replace(/[.\-]+$/, '').split(/\s+/).filter(Boolean);
+    while (w.length && (SKIP.test(w[0]) || w.length > 3)) w.shift();
+    var n = w.join(' ');
+    return /[A-Z]{2}/.test(n) ? n : '';
+  }
+  function esc(n) { return n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/'/g, "['\u2019]"); }
+  var who = [], m;
+  function add(n) { if (n && who.indexOf(n) < 0) who.push(n); }
+  var NAME = "([A-Z][A-Z0-9'\u2019.\\-]*(?:\\s[A-Z0-9][A-Z0-9'\u2019.\\-]*){0,4})";
+  // Always a VO: V.O. and playback.
+  var ALWAYS = new RegExp(NAME + "\\s*\\(\\s*(?:V\\.?\\s?O\\.?|ON (?:TV|RADIO|SPEAKER|THE RADIO|THE TV|SCREEN|VIDEO)|FILTERED|OVER (?:THE )?PHONE)\\s*\\)", 'g');
+  while ((m = ALWAYS.exec(t))) add(nameOf(m[1]));
+  var PLAY = /(?:^|[.!?"\u201D)\u2014:]\s*)((?:[A-Z]+ )?(?:AUDIO|RECORDING|VOICEMAIL|VOICE NOTE)|ANNOUNCER|NEWS ANCHOR|RADIO HOST|TV PRESENTER)(?=\s*(?:\([^)]*\)\s*)*\s+[A-Z]?[a-z\u2019'])/g;
+  while ((m = PLAY.exec(t))) add(nameOf(m[1]));
+  // O.S. / O.C.: a VO unless the speaker is seen.
+  var OS = new RegExp(NAME + "\\s*\\(\\s*O\\.?\\s?[SC]\\.?\\s*\\)", 'g');
+  var SEEN = "[^.!?]{0,40}?\\b(?:approach|emerge|appear|enter|walk|run|rush|hurr|step|return|stand|seated|sitting|sits|gets? in|gets? out|comes?|arriv|burst|broken away|turns? up|is there|reveal|stumbl|storms? in)";
+  var LEAVE = /\b(?:away|disappears?|exits?|leaves?|walks out|heads (?:off|out|to|into|toward)|goes (?:to|into|out)|bathroom|washroom|toilet|bedroom|kitchen|inside|outside|another room|next room|out of (?:frame|view|sight)|off ?screen)\b/i;
+  while ((m = OS.exec(t))) {
+    var n = nameOf(m[1]); if (!n || who.indexOf(n) >= 0) continue;
+    if (estab) { add(n); continue; }
+    var after = t.slice(m.index + m[0].length), before = t.slice(0, m.index), key = esc(n.split(' ').pop());
+    if (new RegExp('\\b' + key + '\\b' + SEEN, 'i').test(after)) continue;          // seen right after
+    var plain = new RegExp('(?:^|[\\s.!?"\u201D)])' + esc(n) + "(?:\\s*\\((?:CONT|cont|[a-z])[^)]*\\))*(?=\\s+[A-Z]?[a-z\u2019'(])", 'g'), last = -1, pm;
+    while ((pm = plain.exec(before))) last = pm.index + pm[0].length;
+    if (last >= 0 && !LEAVE.test(before.slice(last).replace(/"[^"]*"/g, ''))) continue;  // on camera a moment ago
+    add(n);
+  }
+  // Establishing shot: lines spoken with no tag are heard over the shot ("Njoro's cab passes by. SHIRO But ...").
+  if (estab) {
+    var CUE = /(?:^|[\s.!?"\u201D)])([A-Z][A-Z'\u2019\-]{2,}(?:\s[A-Z0-9][A-Z0-9'\u2019\-]*){0,2})(?:\s*\([a-z][^)]*\))?\s+(?=[A-Z]?[a-z\u2019'])/g;
+    while ((m = CUE.exec(t))) { var c = nameOf(m[1]); if (c && !/^(?:ESTAB|VARIOUS|EXT|INT|INSERT|HOOTS?|BANG|PING|DING)/.test(c)) add(c); }
+  }
+  return who;
 }
 
 /* ---------- post production ---------- */
