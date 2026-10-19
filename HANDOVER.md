@@ -74,6 +74,8 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Post production: the airing episode row is dark-edged; the next to air gets a full lime row highlight (tr.pe.nextup), also on phones.
 - Season picker is shared with Scenes (ui.season, localStorage njw-season).
 
+- VOs (app v28, robot v13): the robot lists every NAME (V.O.) per scene in the Notes JSON as "vo" (notes _v 3). The app keeps VO_SEED for robots older than 13. Show "VOs to record" lists the pending ones per episode; episode rows get an "N VO" pill and scene lines a "VO Name" tag. A VO counts as recorded when a report line for that scene carries "VO" (e.g. "Joy VO - 1/1") or sits under a "VOs recorded" heading; with two VO names in one scene the line must name the person. VO-only takes never count the scene as shot.
+
 ## Architecture
 - Reads: robot GET ?read=1 (reports, scripts, repeats; 30 s cache in CacheService). Falls back to gviz JSONP from the Sheet while the robot is older than 6.
 - Writes: POST text/plain JSON with a session token. Actions: login (PASSCODE), logout, touch, check, save, saveMany, remove, drive, decide, post, postSave, note, signoutAll, activity. Writes return `data` (same as the read) so the saving phone updates at once.
@@ -83,6 +85,6 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Scopes: spreadsheets.currentonly, drive.readonly, drive.file, script.scriptapp, script.external_request (Drive export only). No Gmail.
 
 ## Rules
-- Bump sw.js VERSION and index.html ?v= on each release (now njw-v27 / v=27).
+- Bump sw.js VERSION and index.html ?v= on each release (now njw-v28 / v=28).
 - Commit as Nick Kibathi <nicholaskibathi@gmail.com>. Test with Playwright at 390 px and 1280 px.
 - Never ask for or store the passcode or anyone's password. Plain language, no em/en dashes, honest pushback.

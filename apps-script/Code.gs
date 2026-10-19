@@ -46,7 +46,7 @@ var SCRIPTS_TAB = 'Scripts';
 var REPEATS_TAB = 'Repeats';
 var ACTIVITY_TAB = 'Activity';
 var TZ = 'Africa/Nairobi';
-var VERSION = 12;
+var VERSION = 13;
 // Drive > 02. NJORO WA UBA SN 25-28 - 2026 > N.W.U Cycle 7 | SCENE TRACKER (holds this Sheet).
 var TRACKER_FOLDER_ID = '18qREQGQgviZBWPuh3e6BwEl8bBhYnRfY';
 var EXPORTS_FOLDER_NAME = 'POST PRODUCTION EXPORTS';
@@ -754,14 +754,24 @@ function sceneHeads_(t) {
  *  heard (O.S.) is still the establishing shot of the next scene, and counts as shot.
  *  Flashback: FLASH in the heading or the first line.
  *  Returns {"_v":2,"4":"E|Various activities","2":"F|Cess telling ..."}. */
-var NOTES_V = 2;
+var NOTES_V = 3;   // 3: also lists voice-overs per scene ("vo")
 function sceneNotes_(text) {
-  var t = cleanScript_(text), heads = sceneHeads_(t), out = { _v: NOTES_V };
+  var t = cleanScript_(text), heads = sceneHeads_(t), out = { _v: NOTES_V, vo: {} };
+  // Voice-overs: "JOY (V.O.)", "CESS (VO)", "JOY (V.O) (CONT'D)". A V.O. is usually recorded on its own
+  // later (a phone call, a TV, thoughts), so the app lists them as VOs to record.
+  var VO = /([A-Z][A-Z0-9'\u2019 .\-]{1,28}?)\s*\(\s*V\.?\s?O\.?\s*\)/g;
   var JUNK = /^(?:\d{1,3}[A-Z]?\.?|.{0,30}Rev\.\s*\([^)]*\)\s*\d*\.?|\(MORE\)|\(?CONTINUED\)?:?|CONT(?:'|’)?D|CUT TO:?|INTERCUT(?: WITH)?:?|NEW DAY|LATER|DAY \d+|NIGHT \d+|END OF EPISODE|FADE (?:IN|OUT|TO BLACK)\.?:?|NJORO WA UBA TITLE SEQUENCE|TITLE SEQUENCE|BACK TO(?: [A-Z ]+)?\.?|MATCH CUT TO:?|SMASH CUT TO:?)$/i;
   var SPEAKER = /^([A-Z][A-Z0-9 .'’\-]{1,30}?)\s*(\([^)]*\)\s*)*$/;
   var CUE = /\b(?:estab|various|time ?lapse|transition|wipes? (?:the )?frame|whips? past|drives? past|passes by|glides|moves (?:through|along)|in motion|navigates|sunrise|sunset|day turns|night turns|is parked)/i;
   heads.forEach(function (h, i) {
-    var lines = t.slice(h.end, i + 1 < heads.length ? heads[i + 1].at : t.length).split('\n')
+    var whole = t.slice(h.end, i + 1 < heads.length ? heads[i + 1].at : t.length), vm, who = [];
+    VO.lastIndex = 0;
+    while ((vm = VO.exec(whole))) {
+      var nm = vm[1].replace(/^.*?\b(?=[A-Z][A-Z'\u2019\-]+(?:\s[A-Z][A-Z'\u2019\-]+)?$)/, '').replace(/\s+/g, ' ').trim();
+      if (nm && /[A-Z]{2}/.test(nm) && who.indexOf(nm) < 0) who.push(nm);
+    }
+    if (who.length) out.vo[h.n] = who;
+    var lines = whole.split('\n')
       .map(function (l) { return l.replace(/.{0,30}Rev\.\s*\([^)]*\)\s*\d*\.?/g, ' ').replace(/\s+/g, ' ').trim(); })
       .filter(function (l) { return l && !JUNK.test(l); });
     var head = h.line.replace(/^\d{1,3}[A-Z]?\s+/, '').replace(/\s+\d{1,3}[A-Z]?(?:\s+\d{1,3}[A-Z]?)?\s*$/, '').trim();

@@ -68,6 +68,8 @@
   /* Estab (E) and Flashback (F) scenes, read from the scripts by hand on 16.10.2026. The robot
      (version 10) reads every script itself and its Notes column takes over. */
   var SCENE_NOTES={"1":{"2":"F|Cess telling Njoro to denounce Zani and that Zani ni Mtoto wa Koome.","4":"E|Various Activities - We transition from Night to morning.","6":"E|Various activities, time lapse","8":"E|Various activities. Njoro’s car wipes frame.","12":"E|Various activities.","14":"E|Njoros car wipes frame, the sound of laughter fills the air.","16":"E|Various activities.","18":"E|We transition to night."},"2":{"3":"E|The cab whips past.","5":"E|The cab pulls up to an apartment gate.","7":"E|The cab glides through the city.","9":"E|Njoro comes to a stop.","12":"E|Sunrise. The cab whips past.","14":"E|Various activities.","17":"E|Various transition day to night to day","18":"E|EXT. STACY’S SCHOOL - DAY","24":"E|The cab pulls up outside the sleek office building.","26":"E|Various The car whips past. A phone ringing fills the air.","30":"E|EXT. NJORO'S PLACE - DAY"},"3":{"9":"E|Nairobi in motion. Cars inching through traffic.","13":"E|Njoro’s cab pulls up outside the apartment gate but doesn’t enter immediately. Inside,…"},"4":{"2":"E|Njoro’s cab comes to a stop","8":"E|Njoro’s cab parked at usual spot.","10":"E|The cab drives past us.","12":"E|Day turns into night"},"5":{"1":"E|The cab drives past us.","4":"F|A brief fragment. Mwajuma. The moment she realizes Njoro's lie.","5":"F|Joy and Njoro with their ice creams. Joy looking directly at him.","6":"F|His apartment door opening. Cess standing there. Njoro stares through the windscreen.…","8":"E|The cab drives through the city.","14":"E|Office estab.","18":"E|The cab drives past us.","24":"E|The small kibanda is still open."},"6":{"1":"E|Njoro’s cab passes by.","4":"F|Njoro holding the pregnancy stick.","9":"E|A time lapse of the city settling into night, then waking into a new day.","10":"E|Njoro’s cab glides past. Inside, a girl’s voice fills the air.","12":"E|Njoro’s cab glides past.","15":"E|Various city activities","16":"E|The DOORBELL RINGS."},"7":{"1":"E|Njoro’s cab comes to a stop.","4":"E|The cab whips past us.","10":"E|Various Activities","12":"E|The Cab whips past us.","18":"E|Day turns into night."},"8":{"1":"E|Njoro’s car navigates its way through narrow streets.","4":"E|An Estab shot of the building.","7":"E|Njoro’s car wipes frame.","10":"E|Njoro’s car comes to a stop at a gate - we don’t see exactly where he Is.","14":"E|Various activities - Njoro’s car wipes frame.","16":"E|Various activities.","18":"E|An estab shot of the building - we hear the door bell ring.","20":"E|Various activities.","22":"E|An Estab of the building. Crickets."},"9":{"3":"E|The city moves along. The cab whips past.","14":"E|The cab moves through the city.","19":"E|The cab is parked.","23":"E|Estab. Doorbell rings.","25":"E|Various."},"10":{"4":"E|The day has moved on. Transition night to day","15":"E|Various activities"},"12":{"1":"E|A heavy metal gate. Njoro’s cab pulls up and HOOTS.","7":"E|Sunday traffic. Njoro’s cab moves through frame.","10":"E|The cab whips past.","13":"E|Various","15":"E|Night turns to day","16":"E|Various","17":"E|The cab whips past.","21":"E|Various","23":"E|EXT. HOSPITAL - DAY"},"13":{"1":"E|Njoro’s car wipes frame.","5":"E|Various activities.","7":"E|Various activities.","10":"E|Njoro's cab moves through traffic.","12":"E|Transition to day.","17":"E|Laughter carries from inside.","23":"E|The car pulls up."}};
+  /* Voice-overs (V.O.) per scene, read from the scripts on 19.10.2026. Robot version 13 reads them itself. */
+  var VO_SEED={"1":{"1":["JOY"],"7":["JOY","CESS"]},"3":{"1":["CONMAN"],"14":["JOY"],"15":["JOY"]},"4":{"7":["JOY"],"13":["JOY"]},"5":{"13":["VIDEO PRESENTER"]},"6":{"11":["CHRISTINE"],"13":["CHRISTINE"]},"7":{"16":["PURITY"]},"9":{"7":["STACY"],"8":["STACY"],"9":["STACY","NJORO"],"22":["JOY"]},"10":{"13":["JOY"]},"13":{"8":["JOY"]}};
   var SCENE_COUNT={1:19,2:32,3:19,4:16,5:25,6:19,7:19,8:23,9:26,10:16,12:25,13:24};
   function sceneList(ep){
     var sc=state.scripts&&state.scripts[ep],out=[],seen={};
@@ -90,12 +92,36 @@
     var seed=SCENE_NOTES[ep]||{},out={};Object.keys(seed).forEach(function(k){var m=/^([EF])\|(.*)$/.exec(seed[k]);if(m)out[k]={type:m[1]==='E'?'Estab':'Flashback',note:m[2]}});
     return out;
   }
+  /* Voice-overs (V.O.) in the scripts: usually a phone call or a voice from a TV, recorded on its own
+     after the scene is shot. A VO counts as recorded when a daily report logs that scene with "VO"
+     on its line (like "Joy VO - 1/1") or under a "VOs recorded" heading. With two voices in one scene,
+     the line has to name the person. */
+  function sceneVO(ep){var sc=state.scripts&&state.scripts[ep];return (sc&&sc.vo)||VO_SEED[ep]||{}}
+  function niceName(n){return String(n).toLowerCase().replace(/(^|[\s\-'\u2019])([a-z])/g,function(m,a,b){return a+b.toUpperCase()})}
+  function voList(ep,all){
+    var vo=sceneVO(ep),out=[];
+    Object.keys(vo).sort(function(a,b){return cmpKey(ep+'/'+a,ep+'/'+b)}).forEach(function(k){
+      var base=scParts(k)[0],takes=all.filter(function(t){return t.ep===ep&&scParts(t.key.split('/')[1])[0]===base});
+      var shot=takes.filter(function(t){return t.tags.indexOf('VO')<0&&!/\bV\.?\s?O\b/i.test(t.note||'')}).length>0;
+      var names=vo[k];
+      names.forEach(function(name){
+        var rec=takes.filter(function(t){return (t.tags.indexOf('VO')>=0||/\bV\.?\s?O\b/i.test(t.note||''))&&(names.length===1||(t.note||'').toLowerCase().indexOf(String(name).toLowerCase().split(' ')[0])>=0)});
+        out.push({sc:k,name:niceName(name),done:rec.length?rec[rec.length-1].day:null,shot:shot||!!estabIn(ep,base)});
+      });
+    });
+    return out;
+  }
+  function voPending(ep,all){return voList(ep,all).filter(function(v){return !v.done})}
+  function voTag(ep,n,all){
+    var vs=voList(ep,all).filter(function(v){return scParts(v.sc)[0]===scParts(String(n))[0]});if(!vs.length)return '';
+    return vs.map(function(v){return '<span class="tag VO'+(v.done?' done':'')+'">VO '+esc(v.name)+(v.done?' \u2713':'')+'</span>'}).join('');
+  }
   function estabIn(ep,n){var x=sceneNotes(ep)[String(n)];return !!(x&&(x.type==='Estab'||x.type==='Flashback'))}   /* not counted as to shoot: estabs, and flashbacks (counted as shot) */
   function progress(ep,rows){
     var list=sceneList(ep).filter(function(n){return !estabIn(ep,n)});if(!list.length)return null;
     var full={},parts={};
     rows.forEach(function(t){
-      if(t.ep!==ep)return;
+      if(t.ep!==ep||t.tags.indexOf('VO')>=0)return;
       var sc=t.key.split('/')[1],p=scParts(sc);
       if(!p[1]||t.tags.indexOf('Completed')>=0||t.tags.indexOf('Continued')>=0)full[p[0]]=1;
       else{parts[p[0]]=parts[p[0]]||[];if(parts[p[0]].indexOf(sc)<0)parts[p[0]].push(sc)}
@@ -191,6 +217,7 @@
       if(!hasScene){
         if(/re-?shoot/i.test(line)){mode='shot';secTag='Reshoot';return}
         if(/pulled/i.test(line)){mode='shot';secTag='Pulled';return}
+        if(/\bv\.?\s?o'?s?\b|voice[\s-]?over/i.test(line)){mode='shot';secTag='VO';return}
         if(/dropped|not shot|already|moved|carried|postponed|cancel/i.test(line)){mode='skip';secTag='';return}
         if(/scenes?/i.test(line)){mode='shot';secTag='';return}
       }
@@ -280,7 +307,7 @@
     var f=document.getElementById('filters');
     if(ui.view==='post'){f.innerHTML='';return}
     if(ui.view!=='scenes'){f.innerHTML='';return}
-    f.innerHTML=seasonSeg()+'<label for="f-show" class="sr">Show</label><select id="f-show" autocomplete="off"><option value="all">All scenes</option><option value="todo"'+(ui.show==='todo'?' selected':'')+'>Not shot yet</option><option value="Check"'+(ui.show==='Check'?' selected':'')+'>Needs a check</option><option value="Pulled"'+(ui.show==='Pulled'?' selected':'')+'>Pulled</option><option value="Reshoot"'+(ui.show==='Reshoot'?' selected':'')+'>Reshoots</option></select>';
+    f.innerHTML=seasonSeg()+'<label for="f-show" class="sr">Show</label><select id="f-show" autocomplete="off"><option value="all">All scenes</option><option value="todo"'+(ui.show==='todo'?' selected':'')+'>Not shot yet</option><option value="vo"'+(ui.show==='vo'?' selected':'')+'>VOs to record</option><option value="Check"'+(ui.show==='Check'?' selected':'')+'>Needs a check</option><option value="Pulled"'+(ui.show==='Pulled'?' selected':'')+'>Pulled</option><option value="Reshoot"'+(ui.show==='Reshoot'?' selected':'')+'>Reshoots</option></select>';
   }
 
   /* A Continued choice lives on the scene's own line, with a small Undo for the team. */
@@ -307,15 +334,16 @@
         :it.ph==='part'?'<span class="ns-part">Part shot: only '+esc(it.parts.join(', '))+' logged</span>'
         :it.ph==='Estab'?'<span class="muted">Counted as shot</span>'
         :'<span class="muted">Counted as shot</span>';
-      var tags=(it.ph==='part'?'<span class="tag Part-shot">Part shot</span>':'')+lab;
+      var tags=(it.ph==='part'?'<span class="tag Part-shot">Part shot</span>':'')+lab+voTag(ep,scParts(it.key.split('/')[1])[0],takes());
       return '<tr class="sline '+(it.ph==='todo'?'todo':it.ph==='part'?'part':'quiet')+(hit===it.key?' hit':'')+'"><td class="sc">'+esc(it.key)+'</td><td class="when">'+txt+(tags?'<div class="sub show-sm">'+tags+'</div>':'')+'</td><td class="loc hide-sm"></td><td class="note hide-sm">'+tags+'</td></tr>';
     }).join('');
   }
   function row(t,hit,showEp){
     var other=t.tags.filter(function(x){return x!=='Reshoot'});
     var sn=sceneNotes(t.ep)[String(scParts(t.key.split('/')[1])[0])];if(sn)other=other.concat([sn.type]);
+    var vt=ui.view==='scenes'&&t.tags.indexOf('VO')<0?voTag(t.ep,scParts(t.key.split('/')[1])[0],takes()):'';
     if(!inScript(t.ep,t.key.split('/')[1]))other=other.concat(['Not in script']);
-    return '<tr'+(hit===t.key?' class="hit"':'')+'><td class="sc">'+esc(t.key)+(t.ext?'<span class="ext">'+esc(t.ext)+'</span>':'')+'</td><td class="when">'+esc(dayRef(t.day))+' '+logLink(t.day,'Log')+'<div class="sub show-sm">'+esc(t.day.location||'')+(other.length||t.note?'<br>':'')+tagsHtml(other)+contUndo(t)+(t.note?'<span class="muted">'+esc(t.note)+'</span>':'')+'</div></td><td class="loc hide-sm">'+esc(t.day.location||'')+'</td><td class="note hide-sm">'+tagsHtml(other)+contUndo(t)+(t.note?'<span class="muted">'+esc(t.note)+'</span>':'')+'</td></tr>';
+    return '<tr'+(hit===t.key?' class="hit"':'')+'><td class="sc">'+esc(t.key)+(t.ext?'<span class="ext">'+esc(t.ext)+'</span>':'')+'</td><td class="when">'+esc(dayRef(t.day))+' '+logLink(t.day,'Log')+'<div class="sub show-sm">'+esc(t.day.location||'')+(other.length||t.note||vt?'<br>':'')+tagsHtml(other)+vt+contUndo(t)+(t.note?'<span class="muted">'+esc(t.note)+'</span>':'')+'</div></td><td class="loc hide-sm">'+esc(t.day.location||'')+'</td><td class="note hide-sm">'+tagsHtml(other)+vt+contUndo(t)+(t.note?'<span class="muted">'+esc(t.note)+'</span>':'')+'</td></tr>';
   }
   var HEAD='<thead><tr><th>Scene</th><th>Shot on</th><th class="hide-sm">Location</th><th class="hide-sm">Notes</th></tr></thead>';
   /* Scenes, one season at a time: 13 episodes, numbered 1 to 52 the same way as Post production. */
@@ -323,8 +351,8 @@
     /* The Show menu on screen is the truth: a browser that restores an old choice after a reload
        can no longer leave the list filtered by something the menu does not show. */
     var fs=document.getElementById('f-show');if(fs&&fs.value&&fs.value!==ui.show)ui.show=fs.value;
-    var q=parseQuery(),all=takes(),rows=all,notShot=ui.show==='todo';
-    if(ui.show!=='all'&&!notShot)rows=rows.filter(function(t){return t.tags.indexOf(ui.show)>=0});
+    var q=parseQuery(),all=takes(),rows=all,notShot=ui.show==='todo',voMode=ui.show==='vo';
+    if(ui.show!=='all'&&!notShot&&!voMode)rows=rows.filter(function(t){return t.tags.indexOf(ui.show)>=0});
     var hit=null,only=null;
     if(q&&q.type==='scene'){only=+q.key.split('/')[0];ui.openEp=only;hit=q.key;if(!all.some(function(t){return t.key===q.key}))return ''}
     else if(q&&q.type==='ep'){only=q.ep;ui.openEp=q.ep}
@@ -332,15 +360,16 @@
     var season=only!=null&&only>=1&&only<=EPISODES?seasonOf(only):ui.season;
     var eps=only!=null?[only]:seasonEps(season);
     if(notShot)eps=eps.filter(function(ep){var pr=progress(ep,all);return pr&&(pr.left.length||pr.part.length)});
+    else if(voMode)eps=eps.filter(function(ep){return voPending(ep,all).length});
     else if(ui.show!=='all')eps=eps.filter(function(ep){return by[ep]&&by[ep].length});
     var a=(season-1)*PER_SEASON+1,b=season*PER_SEASON;
     var head='<div class="seasonhead"><b>Season '+season+'</b><span class="muted">Episodes '+a+' to '+b+'</span></div>';
     if(only!=null&&(only<1||only>EPISODES))head='';
     if(!eps.length){
-      var msg=notShot?'Every scene in the Season '+season+' scripts has been shot.':'Nothing in Season '+season+' matches this filter.';
+      var msg=notShot?'Every scene in the Season '+season+' scripts has been shot.':voMode?'Every VO in the Season '+season+' scripts has been recorded.':'Nothing in Season '+season+' matches this filter.';
       return '<div class="tablewrap">'+head+'<p class="empty">'+esc(msg)+' <button type="button" class="linkbtn" data-act="show-all">Show all scenes</button></p></div>';
     }
-    var html='<div class="tablewrap">'+head+'<table>'+(notShot?'':HEAD)+'<tbody>';
+    var html='<div class="tablewrap">'+head+'<table>'+(notShot||voMode?'':HEAD)+'<tbody>';
     eps.forEach(function(ep){
       var g=by[ep]||[],open=ui.openEp===ep,pr=progress(ep,all),sc=scriptFor(ep),sub;
       if(pr)sub=(pr.left.length||pr.part.length?'':'<span class="prog done">All shot \u2713</span>');
@@ -350,6 +379,7 @@
       html+='<tr class="grp'+(open?' open':'')+(pr||g.length?'':' empty')+'"><td colspan="4"><div class="grprow"><button type="button" class="grpbtn" data-ep="'+ep+'" aria-expanded="'+open+'">Episode '+ep+sub+'</button>'
         +(post.loaded&&airingEp()===ep?'<span class="onairchip">On air</span>':'')
         +(checks?'<span class="needcheck">'+checks+' to check</span>':'')
+        +(function(){var vp=voPending(ep,all).length;return vp?'<span class="vopill">'+vp+' VO</span>':''})()
         +(pr&&pr.left.length?'<span class="togo">'+pr.left.length+'<span class="lg"> to shoot</span><span class="sm"> left</span></span>':'')
         +(pr&&pr.part.length?'<span class="partpill">'+pr.part.length+' part<span class="lg"> shot</span></span>':'')
         +(sc?'<a class="scriptlink" href="'+esc(sc.url)+'" target="_blank" rel="noopener" title="'+esc(sc.name)+'">Script ↗</a>':'')
@@ -357,6 +387,11 @@
         +(pr?barHtml(pr):'')
         +'</td></tr>';
       if(!open)return;
+      if(voMode){
+        html+='<tr class="left vos"><td colspan="4"><div class="leftgrp"><span class="lbl vo">VOs to record</span><ul class="volist">'+voPending(ep,all).map(function(v){
+          return '<li><span class="mono">'+ep+'/'+esc(v.sc)+'</span><b>'+esc(v.name)+'</b><span class="muted">'+(v.shot?'Scene shot, VO missing':'Scene not shot yet')+'</span></li>'}).join('')+'</ul></div></td></tr>';
+        return;
+      }
       if(notShot){
         if(pr&&(pr.left.length||pr.part.length))html+='<tr class="left"><td colspan="4">'
           +(pr.left.length?'<div class="leftgrp"><span class="lbl">Not shot yet</span>'+pr.left.map(function(n){return '<span class="chip">'+ep+'/'+n+'</span>'}).join('')+'</div>':'')
@@ -1123,7 +1158,7 @@
   /* Scripts tab rows: Episode | Script | Link | Updated | Scenes, written by the robot. */
   function scriptsFromRows(rows){
     var out={};(rows||[]).forEach(function(v){var ep=parseInt(v[0],10),url=String(v[2]||'').trim();
-      if(ep>0&&safeUrl(url))out[ep]={url:url,name:String(v[1]||''),scenes:String(v[4]||'').split(/[\s,]+/).filter(function(x){return /^\d{1,3}[A-Za-z]?$/.test(x)}),notes:notesOf(v[5])}});
+      if(ep>0&&safeUrl(url))out[ep]={url:url,name:String(v[1]||''),scenes:String(v[4]||'').split(/[\s,]+/).filter(function(x){return /^\d{1,3}[A-Za-z]?$/.test(x)}),notes:notesOf(v[5]),vo:voOf(v[5])}});
     return out;
   }
   function gvizRows(res,want){
@@ -1133,6 +1168,9 @@
     return (res.table.rows||[]).map(function(r){var c=r.c||[];return idx.map(function(i){return i>=0?cellText(c[i]):''})});
   }
   function scriptsOf(res){return scriptsFromRows(gvizRows(res,['episode','script','link','updated','scenes','notes'])||[])}
+  /* Voice-overs per scene from the robot (Notes "vo", version 3 rules and later). */
+  function voOf(v){var o=null;try{o=JSON.parse(String(v||''))}catch(e){return null}if(!o||!(o._v>=3)||!o.vo||typeof o.vo!=='object')return null;
+    var out={};Object.keys(o.vo).forEach(function(k){if(/^\d{1,3}[A-Za-z]?$/.test(k)&&Array.isArray(o.vo[k]))out[normSc(k)]=o.vo[k].map(function(x){return String(x).slice(0,40)}).filter(Boolean)});return out}
   /* Scripts tab Notes column: {"4":"E|Various activities","2":"F|Cess telling Njoro..."} */
   function notesOf(v){
     var o=null;try{o=JSON.parse(String(v||''))}catch(e){return null}
