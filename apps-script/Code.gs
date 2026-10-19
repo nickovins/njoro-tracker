@@ -46,7 +46,7 @@ var SCRIPTS_TAB = 'Scripts';
 var REPEATS_TAB = 'Repeats';
 var ACTIVITY_TAB = 'Activity';
 var TZ = 'Africa/Nairobi';
-var VERSION = 11;
+var VERSION = 12;
 // Drive > 02. NJORO WA UBA SN 25-28 - 2026 > N.W.U Cycle 7 | SCENE TRACKER (holds this Sheet).
 var TRACKER_FOLDER_ID = '18qREQGQgviZBWPuh3e6BwEl8bBhYnRfY';
 var EXPORTS_FOLDER_NAME = 'POST PRODUCTION EXPORTS';
@@ -646,7 +646,10 @@ function refreshScripts(budgetMs) {
   /* Scene numbers already read are kept in the tab itself: same file, same "Updated" time,
      no need to read it again. A replaced or edited script is read again. */
   var known = {};
-  tabRows_(tab, 6).forEach(function (r) { if (r[4] && r[5]) known[r[2] + '|' + r[3]] = { scenes: r[4], notes: r[5] }; });
+  tabRows_(tab, 6).forEach(function (r) {
+    var v = 0; try { v = JSON.parse(r[5])._v || 0; } catch (e) {}
+    if (r[4] && r[5] && v >= NOTES_V) known[r[2] + '|' + r[3]] = { scenes: r[4], notes: r[5] };   // older rules: read again
+  });
   var started = Date.now();
   var rows = Object.keys(best).map(Number).sort(function (a, b) { return a - b; }).map(function (ep) {
     var b = best[ep], when = Utilities.formatDate(b.updated, TZ, 'yyyy-MM-dd HH:mm:ss');
@@ -720,8 +723,10 @@ function sceneHeads_(t) {
     if (parseInt(n, 10) > 300) return;
     // Where the heading line starts: at its number when the number comes first, else at the first letter.
     var start = m.index + (front ? m[0].search(/\d/) : m[0].search(/\S/));
-    var lineEnd = t.indexOf('\n', start);
-    heads.push({ n: n, at: start, end: lineEnd < 0 ? t.length : lineEnd, line: t.slice(start, lineEnd < 0 ? t.length : lineEnd).trim() });
+    // The heading ends with the line that holds INT./EXT. (the number can sit alone on the line above).
+    var lineEnd = t.indexOf('\n', m.index + m[0].length);
+    if (lineEnd < 0) lineEnd = t.length;
+    heads.push({ n: n, at: start, end: lineEnd, line: t.slice(start, lineEnd).replace(/\s+/g, ' ').trim() });
   }
   // Number in front of the heading.
   var front = new RegExp('(?:^|\\n|[.!?"\u201D)]\\s)\\s*(\\d{1,3}[A-Z]?)\\s+' + HEAD_, 'g'), m;
@@ -742,29 +747,49 @@ function sceneHeads_(t) {
   return out;
 }
 
-/** Establishing shots and flashbacks, from what each scene says.
- *  Estab: the scene says "Estab", or it is an exterior (or VARIOUS) with only a line or two
- *  of action and nobody speaking, like "Various activities, time lapse" or "The cab moves
- *  through the city." Flashback: the heading or the first line says FLASHBACK.
- *  Returns {"4":"E|Various activities - we transition from night to morning", "2":"F|Cess telling ..."}. */
+/** Establishing shots and flashbacks, from what each scene says. Version 2 of these rules
+ *  (NOTES_V): an Estab is a scene whose action (before anyone speaks) says Estab, or is a
+ *  drive-by / various / time lapse / transition in a few words, or a silent exterior of a
+ *  line or two. Dialogue after that does not matter: a cab whipping past with a passenger
+ *  heard (O.S.) is still the establishing shot of the next scene, and counts as shot.
+ *  Flashback: FLASH in the heading or the first line.
+ *  Returns {"_v":2,"4":"E|Various activities","2":"F|Cess telling ..."}. */
+var NOTES_V = 2;
 function sceneNotes_(text) {
-  var t = cleanScript_(text), heads = sceneHeads_(t), out = {};
+  var t = cleanScript_(text), heads = sceneHeads_(t), out = { _v: NOTES_V };
+  var JUNK = /^(?:\d{1,3}[A-Z]?\.?|.{0,30}Rev\.\s*\([^)]*\)\s*\d*\.?|\(MORE\)|\(?CONTINUED\)?:?|CONT(?:'|’)?D|CUT TO:?|INTERCUT(?: WITH)?:?|NEW DAY|LATER|DAY \d+|NIGHT \d+|END OF EPISODE|FADE (?:IN|OUT|TO BLACK)\.?:?|NJORO WA UBA TITLE SEQUENCE|TITLE SEQUENCE|BACK TO(?: [A-Z ]+)?\.?|MATCH CUT TO:?|SMASH CUT TO:?)$/i;
+  var SPEAKER = /^([A-Z][A-Z0-9 .'’\-]{1,30}?)\s*(\([^)]*\)\s*)*$/;
+  var CUE = /\b(?:estab|various|time ?lapse|transition|wipes? (?:the )?frame|whips? past|drives? past|passes by|glides|moves (?:through|along)|in motion|navigates|sunrise|sunset|day turns|night turns|is parked)/i;
   heads.forEach(function (h, i) {
-    var body = t.slice(h.end, i + 1 < heads.length ? heads[i + 1].at : t.length)
-      .replace(/^\s*\d{1,3}\.\s*$/gm, ' ')                 // page numbers
-      .replace(/\((?:MORE|CONTINUED|CONT'D|CONT\u2019D)\)|\bCONTINUED:?/gi, ' ')
-      .replace(/\b(?:END OF EPISODE|NJORO WA UBA TITLE SEQUENCE|CUT TO:?|INTERCUT WITH:?|NEW DAY|LATER|BACK TO(?: [A-Z]+)?)\b/g, ' ')
-      .replace(/\s+/g, ' ').trim();
+    var lines = t.slice(h.end, i + 1 < heads.length ? heads[i + 1].at : t.length).split('\n')
+      .map(function (l) { return l.replace(/.{0,30}Rev\.\s*\([^)]*\)\s*\d*\.?/g, ' ').replace(/\s+/g, ' ').trim(); })
+      .filter(function (l) { return l && !JUNK.test(l); });
     var head = h.line.replace(/^\d{1,3}[A-Z]?\s+/, '').replace(/\s+\d{1,3}[A-Z]?(?:\s+\d{1,3}[A-Z]?)?\s*$/, '').trim();
-    var words = body ? body.split(' ').length : 0;
-    var spoken = /\((?:V\.?\s?O|O\.?\s?S|O\.?\s?C)\.?\)/i.test(body) || /[!?"\u201C\u201D]/.test(body);
-    // The note is the action only: it stops where somebody starts talking ("AMARA What do...", "HENRY (O.S.) ...").
-    var action = body.replace(/(?:\s|[.!?])[A-Z][A-Z'\u2019]{2,}(?:\s[A-Z][A-Z'\u2019]{2,})?\s*(?:\((?:O\.?\s?S|V\.?\s?O|O\.?\s?C)[^)]*\)|(?=\s[A-Z][a-z'\u2019]))[\s\S]*$/, function (m) { return /^[.!?]/.test(m) ? m.charAt(0) : ''; }).trim() || body;
-    var note = action.length > 90 ? action.slice(0, 87).replace(/\s+\S*$/, '') + '\u2026' : action;
-    if (/FLASH/i.test(head) || /^FLASH(?:BACK)?\b/i.test(body)) { out[h.n] = 'F|' + (note || head); return; }
+    // Action = everything before the first line that is only a speaker's name ("SAMANTHA (O.S.)").
+    var action = [], spokenOs = false, spoken = false;
+    for (var k = 0; k < lines.length; k++) {
+      var m = SPEAKER.exec(lines[k]);
+      if (m && /[A-Z]{2,}/.test(m[1]) && !/^(?:EXT|INT)\b/.test(m[1]) && lines[k].length <= 40 && !/[a-z]/.test(m[1])) {
+        spoken = true; spokenOs = /\((?:V\.?\s?O|O\.?\s?S|O\.?\s?C)/i.test(lines[k]); break;
+      }
+      action.push(lines[k]);
+    }
+    var act = action.join(' ');
+    // Scripts read as one long line: cut the action where a speaker starts ("AMARA What...", "HENRY (O.S.) ...").
+    var cut = /(?:^|\s|[.!?])([A-Z][A-Z'’]{2,}(?:\s[A-Z][A-Z'’]{2,})?)\s*(\((?:O\.?\s?S|V\.?\s?O|O\.?\s?C)[^)]*\)|\([a-z][^)]*\)|(?=\s[A-Z][a-z'’]))/.exec(act);
+    if (cut && cut.index > 0) { spoken = true; spokenOs = spokenOs || /\((?:O|V)/.test(cut[2] || ''); act = act.slice(0, cut.index + (/^[.!?]/.test(cut[0]) ? 1 : 0)); }
+    else if (cut && cut.index === 0) { spoken = true; act = ''; }
+    act = act.replace(/\s+/g, ' ').trim();
+    var words = act ? act.split(' ').length : 0;
+    var note = act.length > 90 ? act.slice(0, 87).replace(/\s+\S*$/, '') + '…' : act;
+    if (/FLASH/i.test(head) || /^FLASH(?:BACK)?\b/i.test(act)) { out[h.n] = 'F|' + (note || head); return; }
     var ext = /^(?:EXT|I\/E)\b/i.test(head) || /\bVARIOUS\b/i.test(head);
-    var cue = /\b(?:estab|various|time ?lapse|transition|wipes (?:the )?frame|whips past|drives past|glides|moves through|in motion|sunrise|sunset|day turns|night turns|doorbell)/i.test(body) || (!spoken && /\b(?:comes? to a stop|pulls up)/i.test(body));
-    if (/\bestab/i.test(head) || /^estab/i.test(body) || (cue && words <= 25) || (ext && !spoken && words <= 18)) out[h.n] = 'E|' + (/^estab\.?$/i.test(body) || !body ? head : note);
+    var estab = /\bestab/i.test(head) || /^estab/i.test(act) ||
+      (CUE.test(act) && words <= 25) ||
+      (ext && words <= 18 && (!spoken || spokenOs) && /\b(?:pulls up|comes? to a stop|stops|parked)\b/i.test(act)) ||
+      (ext && !spoken && words <= 18) ||
+      (ext && spokenOs && words <= 6);                // "The DOORBELL RINGS." then a voice from inside
+    if (estab) out[h.n] = 'E|' + (/^estab\.?$/i.test(act) || !act ? head : note);
   });
   return out;
 }

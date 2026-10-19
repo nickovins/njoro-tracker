@@ -16,6 +16,11 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - UI: Nick tried the simplified v16 layout and asked to go back. App v17 = the v15 layout (logo plate, green stats bar, two search boxes, segmented views, header Daily reports menu) with v8 behaviour (master password sign-in, no password change in app, Activity times as DD.MM HH:MM).
 - Nick's v7 status unknown; v8 steps in apps-script/SETUP.md (cleanUp, setup, New version deploy).
 
+## Robot v12 / app v27 (19.10.2026): estab rules v2
+- The live Scripts tab (robot v11 on the real Drive text export) showed the export puts the scene number on its own line above the heading, so v1 took the heading line as body and missed drive-by estabs with O.S. dialogue (e.g. 2/12), and picked up "Blue Rev." page headers as notes.
+- sceneHeads_ now ends a heading at the end of the line holding INT./EXT.; sceneNotes_ (NOTES_V = 2) drops page junk line by line, splits action from dialogue (speaker-only lines like "SAMANTHA (O.S.)" or inline "NAME text"), and calls a scene Estab when the action says Estab, or has a drive-by/various/transition cue in <= 25 words (dialogue after it does not matter), or is a short exterior arrival with only O.S. voices, or a silent exterior <= 18 words. Notes carry "_v":2; rows with older notes are read again by refreshScripts.
+- App ignores robot notes without _v >= 2 and uses SCENE_NOTES (regenerated with v2 rules from the hand-read scripts; adds 12/1). Estab and Flashback lines say "Counted as shot".
+
 ## Robot v11 / app v26 (16.10.2026): Drive folders
 - Drive > 02. NJORO WA UBA SN 25-28 - 2026 (1N2MiJDIMEUC9n7C3BuJZSECg6DgYSgPO) > N.W.U Cycle 7 | SCENE TRACKER (18qREQGQgviZBWPuh3e6BwEl8bBhYnRfY): the data Sheet was moved here (same id, nothing else changes), plus "READ ME: Scene Tracker links" (Google Doc). LOG SHEETS and SCRIPTS sit next to it in the same parent.
 - Robot v11 exportsFolder_(): makes POST PRODUCTION EXPORTS inside TRACKER_FOLDER_ID itself (drive.file only allows writing into folders the robot made), keeps EXPORT_FOLDER, remakes it if trashed, falls back to My Drive with a log line if Drive refuses the parent. Export Sheets go in it, named "Njoro wa Uba Post Production (latest, dd.MM.yyyy HH.mm)"; the previous export is trashed. setup() makes the folder and logs its address.
@@ -78,6 +83,6 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Scopes: spreadsheets.currentonly, drive.readonly, drive.file, script.scriptapp, script.external_request (Drive export only). No Gmail.
 
 ## Rules
-- Bump sw.js VERSION and index.html ?v= on each release (now njw-v26 / v=26).
+- Bump sw.js VERSION and index.html ?v= on each release (now njw-v27 / v=27).
 - Commit as Nick Kibathi <nicholaskibathi@gmail.com>. Test with Playwright at 390 px and 1280 px.
 - Never ask for or store the passcode or anyone's password. Plain language, no em/en dashes, honest pushback.
