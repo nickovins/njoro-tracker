@@ -232,9 +232,13 @@
       if(/re-?shoot/i.test(line)&&tags.indexOf('Reshoot')<0)tags.push('Reshoot');
       if(/\bpulled\b/i.test(line)&&tags.indexOf('Pulled')<0)tags.push('Pulled');
       var note=line.replace(/\b\d{1,3}\s*\/\s*\d{1,3}[A-Za-z]?\b/g,'').replace(/\bre-?shoot\b|\bpulled\b/gi,'').replace(/\s+/g,' ').replace(/[\s\-:,;–()]+$/,'').replace(/^[\s\-:,;–()]+/,'').trim();
+      /* A VO line ("6/11 Christine VO", "Joy VO - 1/1", or under a VOs heading) is its own entry: it records the audio,
+         never the picture, so it does not merge into (or get dropped by) the picture line for the same scene. */
+      var isVO=tags.indexOf('VO')>=0||/\bV\.?\s?O\b|voice[\s-]?over/i.test(note);
+      if(isVO&&tags.indexOf('VO')<0)tags.push('VO');
       found.forEach(function(f){
-        var k=keyOf(f.ep,f.sc);
-        if(mode==='skip'){out.ignored.push(k);return}
+        var k=keyOf(f.ep,f.sc)+(isVO?'|vo':'');
+        if(mode==='skip'){out.ignored.push(keyOf(f.ep,f.sc));return}
         if(seen[k]){tags.forEach(function(t){if(seen[k].tags.indexOf(t)<0)seen[k].tags.push(t)});return}
         f.note=note;f.tags=tags.slice();f.line=li;seen[k]=f;out.shot.push(f);
       });
@@ -1218,6 +1222,7 @@
       d.shot.forEach(function(s){
         var k=keyOf(s.ep,s.sc);
         s.tags=s.tags.filter(function(t){return t!=='Check'&&t!=='Duplicate'});s.firstDay=0;
+        if(s.tags.indexOf('VO')>=0)return;   /* a VO recording is audio only: never a repeat of the picture */
         if(seen[k]&&s.tags.indexOf('Reshoot')<0&&s.tags.indexOf('Completed')<0){
           if(/\bcomplet|\bcont(inued)?\b|\bfinish/i.test(s.note)){s.tags.push('Completed');s.note=s.note.replace(/\b(completed?|continued|cont|finished)\b/ig,'').replace(/^[\s\-:,]+|[\s\-:,]+$/g,'')}
           else{
