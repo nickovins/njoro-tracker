@@ -68,10 +68,10 @@
   /* Estab (E) and Flashback (F) scenes, read from the scripts by hand on 16.10.2026. The robot
      (version 10) reads every script itself and its Notes column takes over. */
   var SCENE_NOTES={"1":{"2":"F|Cess telling Njoro to denounce Zani and that Zani ni Mtoto wa Koome.","4":"E|Various Activities - We transition from Night to morning.","6":"E|Various activities, time lapse","8":"E|Various activities. Njoro’s car wipes frame.","12":"E|Various activities.","14":"E|Njoros car wipes frame, the sound of laughter fills the air.","16":"E|Various activities.","18":"E|We transition to night."},"2":{"3":"E|The cab whips past.","5":"E|The cab pulls up to an apartment gate.","7":"E|The cab glides through the city.","9":"E|Njoro comes to a stop.","12":"E|Sunrise. The cab whips past.","14":"E|Various activities.","17":"E|Various transition day to night to day","18":"E|EXT. STACY’S SCHOOL - DAY","24":"E|The cab pulls up outside the sleek office building.","26":"E|Various The car whips past. A phone ringing fills the air.","30":"E|EXT. NJORO'S PLACE - DAY"},"3":{"9":"E|Nairobi in motion. Cars inching through traffic.","13":"E|Njoro’s cab pulls up outside the apartment gate but doesn’t enter immediately. Inside,…"},"4":{"2":"E|Njoro’s cab comes to a stop","8":"E|Njoro’s cab parked at usual spot.","10":"E|The cab drives past us.","12":"E|Day turns into night"},"5":{"1":"E|The cab drives past us.","4":"F|A brief fragment. Mwajuma. The moment she realizes Njoro's lie.","5":"F|Joy and Njoro with their ice creams. Joy looking directly at him.","6":"F|His apartment door opening. Cess standing there. Njoro stares through the windscreen.…","8":"E|The cab drives through the city.","14":"E|Office estab.","18":"E|The cab drives past us.","24":"E|The small kibanda is still open."},"6":{"1":"E|Njoro’s cab passes by.","4":"F|Njoro holding the pregnancy stick.","9":"E|A time lapse of the city settling into night, then waking into a new day.","10":"E|Njoro’s cab glides past. Inside, a girl’s voice fills the air.","12":"E|Njoro’s cab glides past.","15":"E|Various city activities","16":"E|The DOORBELL RINGS."},"7":{"1":"E|Njoro’s cab comes to a stop.","4":"E|The cab whips past us.","10":"E|Various Activities","12":"E|The Cab whips past us.","18":"E|Day turns into night."},"8":{"1":"E|Njoro’s car navigates its way through narrow streets.","4":"E|An Estab shot of the building.","7":"E|Njoro’s car wipes frame.","10":"E|Njoro’s car comes to a stop at a gate - we don’t see exactly where he Is.","14":"E|Various activities - Njoro’s car wipes frame.","16":"E|Various activities.","18":"E|An estab shot of the building - we hear the door bell ring.","20":"E|Various activities.","22":"E|An Estab of the building. Crickets."},"9":{"3":"E|The city moves along. The cab whips past.","14":"E|The cab moves through the city.","19":"E|The cab is parked.","23":"E|Estab. Doorbell rings.","25":"E|Various."},"10":{"4":"E|The day has moved on. Transition night to day","15":"E|Various activities"},"12":{"1":"E|A heavy metal gate. Njoro’s cab pulls up and HOOTS.","7":"E|Sunday traffic. Njoro’s cab moves through frame.","10":"E|The cab whips past.","13":"E|Various","15":"E|Night turns to day","16":"E|Various","17":"E|The cab whips past.","21":"E|Various","23":"E|EXT. HOSPITAL - DAY"},"13":{"1":"E|Njoro’s car wipes frame.","5":"E|Various activities.","7":"E|Various activities.","10":"E|Njoro's cab moves through traffic.","12":"E|Transition to day.","17":"E|Laughter carries from inside.","23":"E|The car pulls up."}};
-  /* Voice-overs per scene, read from the scripts on 19.10.2026: V.O. lines, phone or TV audio, and O.S. voices whose speaker is not seen and does not speak on camera in that scene or the scene before or after (so a drive-by line that continues inside the cab is not a VO). Robot version 14 reads them itself, also for new scripts. */
+  /* Voice-overs per scene for episodes 1 to 13, read by hand on 19.10.2026 and checked by Nick. This list wins over the robot for these episodes (an early robot v14 wrote wrong lists on 19.10.2026). The robot (notes _v 5, version 15) reads every other script itself. Wrong ones: fix with the x / + Add a VO buttons. */
   /* Corrections Nick made in chat; the team's own (saved by the Google script) come on top. */
   var VO_FIX_SEED={"9/9|STACY":"no","9/9|NJORO":"no"};
-  var VO_SEED={"1":{"1":["JOY"],"7":["JOY","CESS"]},"2":{"11":["PURITY"],"13":["KIMUNYA"],"15":["JOY"]},"3":{"1":["CONMAN"],"7":["WOMAN"],"14":["JOY"],"15":["JOY"]},"4":{"1":["PHONE AUDIO"],"7":["JOY"],"13":["JOY"]},"5":{"13":["VIDEO PRESENTER"]},"6":{"19":["PURITY"]},"7":{"16":["PURITY"]},"9":{"7":["STACY"],"8":["STACY"],"9":["STACY","NJORO"],"22":["JOY"]},"10":{"13":["JOY"]},"13":{"8":["JOY"]}};
+  var VO_SEED={"1":{"1":["JOY"],"7":["JOY","CESS"]},"2":{"11":["PURITY"],"13":["KIMUNYA"],"15":["JOY"]},"3":{"1":["CONMAN"],"7":["WOMAN"],"14":["JOY"],"15":["JOY"]},"4":{"1":["PHONE AUDIO"],"7":["JOY"],"13":["JOY"]},"5":{"13":["VIDEO PRESENTER"]},"6":{"19":["PURITY"]},"7":{"16":["PURITY"]},"8":{},"9":{"7":["STACY"],"8":["STACY"],"9":["STACY","NJORO"],"22":["JOY"]},"10":{"13":["JOY"]},"12":{},"13":{"8":["JOY"]}};
   var SCENE_COUNT={1:19,2:32,3:19,4:16,5:25,6:19,7:19,8:23,9:26,10:16,12:25,13:24};
   function sceneList(ep){
     var sc=state.scripts&&state.scripts[ep],out=[],seen={};
@@ -103,7 +103,7 @@
   function voFixes(){var o={},k;for(k in VO_FIX_SEED)o[k]=VO_FIX_SEED[k];for(k in (state.voFix||{}))o[k]=state.voFix[k];return o}
   function voFixOf(ep,sc,name){var f=voFixes()[ep+'/'+sc+'|'+String(name).toUpperCase()];return f||''}
   function sceneVO(ep){
-    var sc=state.scripts&&state.scripts[ep],base=(sc&&sc.vo)||VO_SEED[ep]||{},out={},k,fx=voFixes();
+    var sc=state.scripts&&state.scripts[ep],base=VO_SEED[ep]||(sc&&sc.vo)||{},out={},k,fx=voFixes();
     for(k in base)out[k]=base[k].slice();
     for(k in fx){var m=/^(\d+)\/(\d+)\|(.+)$/.exec(k);if(!m||+m[1]!==+ep)continue;var n=m[2],nm=m[3],L=out[n]||[];
       if(fx[k]==='no')L=L.filter(function(x){return String(x).toUpperCase()!==nm});
@@ -1230,7 +1230,7 @@
   }
   function scriptsOf(res){return scriptsFromRows(gvizRows(res,['episode','script','link','updated','scenes','notes'])||[])}
   /* Voice-overs per scene from the robot (Notes "vo", version 3 rules and later). */
-  function voOf(v){var o=null;try{o=JSON.parse(String(v||''))}catch(e){return null}if(!o||!(o._v>=4)||!o.vo||typeof o.vo!=='object')return null;
+  function voOf(v){var o=null;try{o=JSON.parse(String(v||''))}catch(e){return null}if(!o||!(o._v>=5)||!o.vo||typeof o.vo!=='object')return null;
     var out={};Object.keys(o.vo).forEach(function(k){if(/^\d{1,3}[A-Za-z]?$/.test(k)&&Array.isArray(o.vo[k]))out[normSc(k)]=o.vo[k].map(function(x){return String(x).slice(0,40)}).filter(Boolean)});return out}
   /* Scripts tab Notes column: {"4":"E|Various activities","2":"F|Cess telling Njoro..."} */
   function notesOf(v){
@@ -1250,7 +1250,7 @@
      whether or not it also says VO. Works for any later script too, since the names come from the script. */
   function voNameHit(f){
     var names=sceneVO(+f.ep)[String(scParts(f.sc)[0])];if(!names||!names.length)return false;
-    var words=String(f.note||'').toLowerCase().replace(/\bv\.?\s?o'?s?\b|voice[\s-]?overs?|recorded|done|\(|\)/g,' ').split(/[^a-z0-9'\u2019]+/).filter(Boolean);
+    var words=String(f.note||'').toLowerCase().replace(/\bv\.?\s?o'?s?\b|voice[\s-]?overs?|recorded|done|\btv\b|\bclips?\b|\bb-?\s?rolls?\b|\bplayback\b|\bon\b|\(|\)/g,' ').split(/[^a-z0-9'\u2019]+/).filter(Boolean);
     if(!words.length)return false;
     var pool={};names.forEach(function(n){String(n).toLowerCase().split(/[^a-z0-9'\u2019]+/).forEach(function(w){if(w)pool[w]=1})});
     return words.every(function(w){return pool[w]});

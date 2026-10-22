@@ -46,7 +46,7 @@ var SCRIPTS_TAB = 'Scripts';
 var REPEATS_TAB = 'Repeats';
 var ACTIVITY_TAB = 'Activity';
 var TZ = 'Africa/Nairobi';
-var VERSION = 14;
+var VERSION = 15;
 // Drive > 02. NJORO WA UBA SN 25-28 - 2026 > N.W.U Cycle 7 | SCENE TRACKER (holds this Sheet).
 var TRACKER_FOLDER_ID = '18qREQGQgviZBWPuh3e6BwEl8bBhYnRfY';
 var EXPORTS_FOLDER_NAME = 'POST PRODUCTION EXPORTS';
@@ -776,7 +776,7 @@ function sceneHeads_(t) {
  *  heard (O.S.) is still the establishing shot of the next scene, and counts as shot.
  *  Flashback: FLASH in the heading or the first line.
  *  Returns {"_v":2,"4":"E|Various activities","2":"F|Cess telling ..."}. */
-var NOTES_V = 4;   // 3: lists V.O. lines per scene ("vo"). 4: also phone/TV audio and unseen O.S. voices
+var NOTES_V = 5;   // 3: V.O. lines ("vo"). 4: phone/TV audio, unseen O.S. 5: drive-by / doorway lines that continue in the next scene, people in the room, and walk-ins are not VOs
 function sceneNotes_(text) {
   var t = cleanScript_(text), heads = sceneHeads_(t), out = { _v: NOTES_V, vo: {} }, found = [];
   var JUNK = /^(?:\d{1,3}[A-Z]?\.?|.{0,30}Rev\.\s*\([^)]*\)\s*\d*\.?|\(MORE\)|\(?CONTINUED\)?:?|CONT(?:'|’)?D|CUT TO:?|INTERCUT(?: WITH)?:?|NEW DAY|LATER|DAY \d+|NIGHT \d+|END OF EPISODE|FADE (?:IN|OUT|TO BLACK)\.?:?|NJORO WA UBA TITLE SEQUENCE|TITLE SEQUENCE|BACK TO(?: [A-Z ]+)?\.?|MATCH CUT TO:?|SMASH CUT TO:?)$/i;

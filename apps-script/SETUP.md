@@ -1,4 +1,4 @@
-# Installing the tracker update (Google robot version 14)
+# Installing the tracker update (Google robot version 15)
 
 About 10 minutes, on a computer, signed in to the Google account that owns the
 "Njoro wa Uba Scene Tracker Data" Sheet (nicholaskibathi@gmail.com).
@@ -16,18 +16,18 @@ Script Properties are cleaned up. The app (the website) is already updated and k
 2. Open https://raw.githubusercontent.com/nickovins/njoro-tracker/main/apps-script/Code.gs
    Press Ctrl+A then Ctrl+C (Mac: Cmd+A, Cmd+C).
    In the editor click **Code.gs**, press Ctrl+A, then Ctrl+V. Press **Ctrl+S**.
-   Check: press Ctrl+F, search `VERSION`, it says `var VERSION = 14;`.
+   Check: press Ctrl+F, search `VERSION`, it says `var VERSION = 15;`.
    (appsscript.json did not change since version 7. If you skipped version 7,
    also paste https://raw.githubusercontent.com/nickovins/njoro-tracker/main/apps-script/appsscript.json
    into **appsscript.json**.)
 3. Choose **cleanUp** in the function list at the top and click **Run**.
    The log says how many unused lines it removed and lists what is left (step 6 explains them).
 4. Choose **setup** and click **Run**. If Google asks for permission, allow it as before.
-   The log shows `Version 14 ready. ... scene numbers read for 12.` and then the address of the POST PRODUCTION EXPORTS folder.
+   The log shows `Version 15 ready. ... scene numbers read for 12.` and then the address of the POST PRODUCTION EXPORTS folder.
 5. **Deploy > Manage deployments** > the Web app whose ID starts with `AKfycbzts4XJrONLd9`
    > **pencil** > Version: **New version** > **Deploy**.
-   Check https://script.google.com/macros/s/AKfycbzts4XJrONLd9LMRi_MgDsfK4_LqBLTRXAv7nuQpKHXOF88zw7x2-hbwTpZa8jZNFbk/exec?x=14
-   says `"version":14`.
+   Check https://script.google.com/macros/s/AKfycbzts4XJrONLd9LMRi_MgDsfK4_LqBLTRXAv7nuQpKHXOF88zw7x2-hbwTpZa8jZNFbk/exec?x=15
+   says `"version":15`.
 
 ## Part B: Script Properties
 

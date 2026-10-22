@@ -85,6 +85,8 @@ Full handover doc for Nick: https://claude.ai/code/artifact/fe5468f1-15f3-4790-a
 - Scopes: spreadsheets.currentonly, drive.readonly, drive.file, script.scriptapp, script.external_request (Drive export only). No Gmail.
 
 ## Rules
-- Bump sw.js VERSION and index.html ?v= on each release (now njw-v35 / v=35).
+- Bump sw.js VERSION and index.html ?v= on each release (now njw-v36 / v=36).
 - Commit as Nick Kibathi <nicholaskibathi@gmail.com>. Test with Playwright at 390 px and 1280 px.
 - Never ask for or store the passcode or anyone's password. Plain language, no em/en dashes, honest pushback.
+
+- 22.10.2026 (app v36, robot v15, notes _v 5): the live robot had run the FIRST draft of v14 and wrote wrong VO lists (drive-bys, broken names like "PASSENGER CONMAN"). Rule fixes made after Nick pasted v14 kept VERSION 14 / NOTES_V 4, so the robot never re-read. Lesson: bump VERSION and NOTES_V on every rule change. VO_SEED now wins for episodes 1 to 13 (sceneVO); robot lists used only for other episodes and only at _v>=5. voNameHit ignores TV/clip/B-roll/playback words ("Purity TV clip/BRoll- 6/19A" records 6/19).
