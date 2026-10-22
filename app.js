@@ -567,7 +567,6 @@
   function myProfile(){var p=(post.me&&post.me.profile)||auth.profile||{};return {name:p.name||String(auth.name||'Team').replace(/\s*\(.*$/,''),animal:p.animal||''}}
   /* Names compared ignoring capitals, spaces and punctuation, the same way the Google robot does. */
   function nkey(name){return String(name||'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim()}
-  function profileFor(name){var k=nkey(name);return (post.logins||[]).filter(function(p){return nkey(p.name)===k})[0]||null}
 
   /* The signed-in person's own page: the next episode on air, their episodes with TX dates,
      and the producer's notes on them. An editor sees nothing about anyone else's episodes. */

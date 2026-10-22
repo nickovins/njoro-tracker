@@ -1209,18 +1209,20 @@ function txAll_(tx1, eps) {
 function mePage_(person, isAdmin) {
   var eps = postEpsOf_(), tx = txAll_(props_().getProperty('POST_TX') || '', eps), k = nkey_(person);
   var today = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'), mine = epsOfPerson_(k, eps);
-  var next = 0, airing = 0;
+  var next = 0, last = 0;
   for (var n = 1; n <= EPISODES; n++) {
-    if (tx[n] && tx[n] <= today) airing = n;
+    if (tx[n] && tx[n] <= today) last = n;
     if (!next && tx[n] && tx[n] >= today) next = n;
   }
+  // On air: the last episode whose TX has come, until the next one airs (or a week after the last).
+  var airing = last && today < (last < EPISODES && tx[last + 1] ? tx[last + 1] : isoAdd_(tx[last], 7)) ? last : 0;
   var upNext = next ? { ep: next, tx: tx[next], editors: peopleIn_((eps[next] || {}).editor).map(function (x) { return profileOf_(x); }) } : null;
   var notes = notesAll_().filter(function (x) { return mine.indexOf(x.ep) >= 0; }).map(function (x) {
     return { id: x.id, ep: x.ep, text: x.text, at: x.at, readAt: (x.read || {})[k] || '' };
   });
   return {
     profile: profileOf_(person), admin: !!isAdmin, today: today,
-    upNext: upNext, airing: airing, season: Math.min(4, Math.max(1, Math.ceil((airing || next || 1) / 13))),
+    upNext: upNext, airing: airing, season: Math.min(4, Math.max(1, Math.ceil((airing || next || last || 1) / 13))),
     eps: mine.map(function (n) { return { ep: n, tx: tx[n], aired: !!(tx[n] && tx[n] <= today) }; }),
     notes: notes
   };
