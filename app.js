@@ -17,7 +17,10 @@
   var auth={token:'',name:'',idle:30};
   try{var au=JSON.parse(localStorage.getItem('njw-auth')||'null');if(au&&au.token)auth=au;localStorage.removeItem('njw-pass')}catch(e){}
   var lastAct=Date.now(),lastPing=0;try{lastAct=+localStorage.getItem('njw-last')||Date.now()}catch(e){}
-  function isEditor(){return !!(SCRIPT_URL&&auth.token)}
+  /* Signed in: sees Drive links and Post production. Editor (the admin, master password):
+     also makes changes. A personal password (PASS_<NAME>) signs in as a viewer. */
+  function isSignedIn(){return !!(SCRIPT_URL&&auth.token)}
+  function isEditor(){return isSignedIn()&&auth.role!=='viewer'}
   function isAdmin(){return isEditor()}
   var installPrompt=null;
   try{var v=localStorage.getItem('njw-view');if(v==='scenes'||v==='days'||v==='post'||v==='admin')ui.view=v}catch(e){}
@@ -145,10 +148,10 @@
       +(pr.part.length?'<i class="pt" style="width:'+(pr.part.length/pr.total*100).toFixed(1)+'%"></i>':'')+'</div>';
   }
   /* Drive links (scripts, log sheets, their folders) show only to a signed-in device. */
-  function scriptFor(ep){var x=isEditor()&&state.scripts&&state.scripts[ep];return x&&safeUrl(x.url)?x:null}
-  function folderLink(url,label,cls){return isEditor()?'<a'+(cls?' class="'+cls+'"':'')+' href="'+esc(url)+'" target="_blank" rel="noopener">'+label+'</a>':''}
+  function scriptFor(ep){var x=isSignedIn()&&state.scripts&&state.scripts[ep];return x&&safeUrl(x.url)?x:null}
+  function folderLink(url,label,cls){return isSignedIn()?'<a'+(cls?' class="'+cls+'"':'')+' href="'+esc(url)+'" target="_blank" rel="noopener">'+label+'</a>':''}
   function safeUrl(u){return /^https:\/\/(drive|docs)\.google\.com\//.test(u||'')?u:''}
-  function logLink(d,label){var u=isEditor()&&safeUrl(d.log);return u?'<a class="log" href="'+esc(u)+'" target="_blank" rel="noopener">'+(label||'Log sheet')+' \u2197</a>':''}
+  function logLink(d,label){var u=isSignedIn()&&safeUrl(d.log);return u?'<a class="log" href="'+esc(u)+'" target="_blank" rel="noopener">'+(label||'Log sheet')+' \u2197</a>':''}
   function dayRef(d){var f=fmtDate(d.iso);return 'Day '+d.day+(f?' | '+f:(d.date?' | '+d.date:''))}
   function toMin(t){var m=/(\d{1,2})[:.](\d{2})\s*([ap])m/i.exec(t||'');if(!m)return null;var h=+m[1]%12;if(m[3].toLowerCase()==='p')h+=12;return h*60+ +m[2]}
   function hours(d){
@@ -313,9 +316,9 @@
     return '<div class="seg" role="group" aria-label="Season">'+[1,2,3,4].map(function(n){return '<button type="button" data-season="'+n+'" aria-pressed="'+(ui.season===n)+'"><span class="hide-xs">Season </span><span class="show-xs">S</span>'+n+'</button>'}).join('')+'</div>';
   }
   function renderControls(){
-    if((ui.view==='post'&&!isEditor())||(ui.view==='admin'&&!isAdmin()))ui.view='scenes';
+    if((ui.view==='post'&&!isSignedIn())||(ui.view==='admin'&&!isAdmin()))ui.view='scenes';
     try{document.body.setAttribute('data-view',ui.view)}catch(e){}
-    var vs=[['scenes','Scenes'],['days','Daily reports']];if(isEditor())vs.push(['post','Post production']);if(isAdmin())vs.push(['admin','Activity']);
+    var vs=[['scenes','Scenes'],['days','Daily reports']];if(isSignedIn())vs.push(['post','Post production']);if(isAdmin())vs.push(['admin','Activity']);
     document.getElementById('views').innerHTML=vs.map(function(v){return '<button type="button" data-view="'+v[0]+'" aria-pressed="'+(ui.view===v[0])+'">'+v[1]+'</button>'}).join('');
     var srch=document.querySelector('.search');if(srch)srch.hidden=ui.view==='post'||ui.view==='admin';
     var f=document.getElementById('filters');
@@ -480,7 +483,7 @@
     if(!days.length)return '<div class="tablewrap"><p class="empty">No daily reports logged yet.</p></div>';
     var miss=daysAsc().filter(logMissing);
     var html=(miss.length&&!kw?'<div class="logwarn" role="status"><strong>'+(miss.length===1?'1 day is':miss.length+' days are')+' missing a log sheet:</strong> '+miss.map(function(d){return 'Day '+d.day}).join(', ')
-        +'. Upload the PDF named like <span class="mono">Day '+miss[0].day+' '+esc(fmtDate(miss[0].iso).replace(/^0/,'').replace(/\.0/,'.'))+'.pdf</span> to the '+(isEditor()?folderLink(LOG_FOLDER,'log sheets folder \u2197'):'log sheets folder')+'. It links by itself.</div>':'')
+        +'. Upload the PDF named like <span class="mono">Day '+miss[0].day+' '+esc(fmtDate(miss[0].iso).replace(/^0/,'').replace(/\.0/,'.'))+'.pdf</span> to the '+(isSignedIn()?folderLink(LOG_FOLDER,'log sheets folder \u2197'):'log sheets folder')+'. It links by itself.</div>':'')
       +'<div class="tablewrap"><table class="daytbl"><thead><tr><th>Shoot day</th><th>Location</th><th class="num hide-sm">Scenes</th><th class="num hide-sm">Pages</th><th class="num hide-sm">Call to wrap</th></tr></thead><tbody>';
     days.forEach(function(d){
       var open=ui.openDay===d.day,ents=entriesOf(d);
@@ -536,14 +539,15 @@
   function trailerUrl(u){return /^https:\/\/[^\s"'<>]+$/.test(u||'')?u:''}
 
   function renderPost(){
-    if(!isEditor())return '';
+    if(!isSignedIn())return '';
+    var ed=isEditor();
     if(!post.loaded){
       if(post.err)return '<div class="tablewrap"><p class="empty">'+esc(postErrText(post.err))+'</p></div>';
       return '<div class="tablewrap"><p class="empty">Loading post production…</p></div>';
     }
     var s=curSeason(),a=(s-1)*PER_SEASON+1,b=s*PER_SEASON,t=todayIso(),air=airingEp(),nx=upNextEp();
     if(post.openEp==null)post.openEp=air||nx||0;
-    var html='<div class="txbar"><div class="txfld"><label for="tx">Episode 1 TX</label><input id="tx" type="date" value="'+esc(post.tx)+'"></div>'
+    var html='<div class="txbar"><div class="txfld"><label for="tx">Episode 1 TX</label>'+(ed?'<input id="tx" type="date" value="'+esc(post.tx)+'">':'<span class="cellro">'+(post.tx?txHtml(post.tx):'TBC')+'</span>')+'</div>'
       +'<button type="button" class="btn small exportbtn" data-act="export"><span aria-hidden="true">\u2913</span> Export</button>'
       +'<p class="muted">'+(post.tx?'One episode a week, every '+esc(weekday(post.tx))+(movedCount()?', with '+movedCount()+' episode'+(movedCount()===1?'':'s')+' moved':'')+'. Episode 52 airs '+esc(weekday(txOf(EPISODES)).slice(0,3)+' '+fmtDate(txOf(EPISODES)))+'.'
         :'Not confirmed by the broadcaster yet. Set it here and all 52 dates fill in, one week apart.')+'</p>'
@@ -563,11 +567,11 @@
         +'<td class="sum"><button type="button" class="pexp sumbtn" data-pexp="'+n+'" aria-expanded="'+exp+'"><span>'+sum+'</span><span class="chev" aria-hidden="true">\u203A</span></button></td>'
         +'<td data-l="Editor">'+cellInput(n,'editor',e.editor,'Who is editing')+'</td>'
         +'<td data-l="Sound">'+cellInput(n,'sound',e.sound,'Who is on sound')+'</td>'
-        +'<td class="txd" data-l="TX"><div class="txcell">'+(tx&&n>1?'<button type="button" class="datebtn" data-move="'+n+'" title="Move this episode\u2019s TX date" aria-label="'+esc(weekday(tx)+' '+fmtDate(tx))+', move Episode '+n+' TX">'+txHtml(tx)+'</button>':txHtml(tx))+(tx&&n>1?'<button type="button" class="movebtn'+(sh?' moved':'')+'" data-move="'+n+'" aria-expanded="'+mv+'" title="Move this episode\u2019s TX date">'+(sh?esc(shiftLabel(sh)):'Move')+'</button>':'')+'</div></td>'
+        +'<td class="txd" data-l="TX"><div class="txcell">'+(ed&&tx&&n>1?'<button type="button" class="datebtn" data-move="'+n+'" title="Move this episode\u2019s TX date" aria-label="'+esc(weekday(tx)+' '+fmtDate(tx))+', move Episode '+n+' TX">'+txHtml(tx)+'</button>':txHtml(tx))+(ed&&tx&&n>1?'<button type="button" class="movebtn'+(sh?' moved':'')+'" data-move="'+n+'" aria-expanded="'+mv+'" title="Move this episode\u2019s TX date">'+(sh?esc(shiftLabel(sh)):'Move')+'</button>':'')+'</div></td>'
         +'<td data-l="Trailer" class="trl"><div class="trlwrap">'+cellInput(n,'trailer',e.trailer,'Paste link')+(tl?'<a class="go" href="'+esc(tl)+'" target="_blank" rel="noopener" aria-label="Open Episode '+n+' trailer">↗</a>':'')+'</div></td>'
         +'<td data-l="Dropped" class="drp"><button type="button" class="dropbtn'+(drop.length?' has':'')+'" data-drop="'+n+'" aria-expanded="'+open+'"><span class="dlbl">Dropped scenes</span><span>'+(drop.length?drop.length+' dropped':'None')+'</span><span class="chev" aria-hidden="true">›</span></button></td></tr>';
       if(open)html+='<tr class="dropdet"><td colspan="6">'+dropPanel(n,drop)+'</td></tr>';
-      if(mv&&tx)html+='<tr class="dropdet movedet"><td colspan="6">'+movePanel(n)+'</td></tr>';
+      if(ed&&mv&&tx)html+='<tr class="dropdet movedet"><td colspan="6">'+movePanel(n)+'</td></tr>';
     }
     html+='</tbody></table>'+seasonCrewHtml(s)+'</div>';
     for(var q1=s+1;q1<=SEASONS;q1++)html+=seasonFold(q1);
@@ -600,6 +604,7 @@
       +'<div class="crewgrid">'+block('Editors','editor')+block('Sound','sound')+'</div></section>';
   }
   function cellInput(n,f,v,ph){
+    if(!isEditor())return f==='trailer'?(trailerUrl(v)?'':'<span class="cellro muted">None</span>'):'<span class="cellro">'+(v?esc(v):'<span class="muted">Not set</span>')+'</span>';
     var k=n+':'+f,fl=post.flash&&post.flash[k]||'';
     if(pending[k]!=null){v=pending[k];fl=(fl?fl+' ':'')+'unsaved'}
     return '<input class="cell'+(fl?' '+fl:'')+'" '+(f==='trailer'?'type="url" inputmode="url" ':'type="text" ')+'data-pep="'+n+'" data-pf="'+f+'" value="'+esc(v||'')+'" placeholder="'+ph+'" maxlength="'+(f==='trailer'?500:80)+'" autocomplete="off" aria-label="Episode '+n+' '+f+'">';
@@ -624,12 +629,12 @@
     return '<div class="drophead"><b>Dropped from Episode '+n+'</b><span class="muted">Shot, but not in the final episode.</span></div>'
       +(list.length?'<ul class="droplist">'+list.map(function(d){
           return '<li><span class="mono">'+esc(n+'/'+d.sc)+'</span><span class="why '+esc(d.why)+'">'+esc(WHY[d.why]||d.why)+'</span>'+(d.note?'<span class="muted note">'+esc(d.note)+'</span>':'')
-            +'<button type="button" class="rm" data-dropdel="'+esc(d.sc)+'" data-pep="'+n+'" aria-label="Remove '+esc(n+'/'+d.sc)+'">✕</button></li>'}).join('')+'</ul>'
+            +(isEditor()?'<button type="button" class="rm" data-dropdel="'+esc(d.sc)+'" data-pep="'+n+'" aria-label="Remove '+esc(n+'/'+d.sc)+'">✕</button>':'')+'</li>'}).join('')+'</ul>'
         :'<p class="muted nodrop">No dropped scenes yet.</p>')
-      +'<form class="dropadd" data-pep="'+n+'"><input name="sc" class="mono" placeholder="Scene" maxlength="4" autocomplete="off" aria-label="Scene number" required>'
+      +(!isEditor()?'':'<form class="dropadd" data-pep="'+n+'"><input name="sc" class="mono" placeholder="Scene" maxlength="4" autocomplete="off" aria-label="Scene number" required>'
       +'<select name="why" aria-label="Reason"><option value="Length">Episode too long</option><option value="Performance">Performance</option><option value="Other">Other</option></select>'
       +'<input name="note" placeholder="Note (optional)" maxlength="200" autocomplete="off" aria-label="Note">'
-      +'<button type="submit" class="btn small primary">Add</button></form>';
+      +'<button type="submit" class="btn small primary">Add</button></form>');
   }
   function postErrText(code){
     if(code==='old'||code==='old_robot')return ERR.old_robot;
@@ -709,11 +714,11 @@
   function applyPost(r){post.tx=r.tx||'';post.eps=r.eps||{};post.loaded=true;post.err='';post.at=Date.now();cachePost()}
   /* quiet: the 30-second background refresh, which must not keep a sign-in alive. */
   function loadPost(quiet){
-    if(!isEditor()||post.loading)return;
+    if(!isSignedIn()||post.loading)return;
     post.loading=true;var ver=post.ver||0;
     callScript({action:'post'},quiet).then(function(r){
       post.loading=false;
-      if(!isEditor()){renderAll();return}
+      if(!isSignedIn()){renderAll();return}
       if((post.ver||0)!==ver)return;            /* a save finished meanwhile; its answer is newer */
       if(r.ok)applyPost(r);else if(r.error!=='network'||!post.loaded)post.err=r.error==='bad_request'?'old':r.error;
       renderPostKeep();
@@ -721,6 +726,7 @@
     });
   }
   function savePost(body,key,clearForm){
+    if(!isEditor())return Promise.resolve({ok:false,error:'admin_only'});
     post.ver=(post.ver||0)+1;post.saving=(post.saving||0)+1;
     body.action='postSave';
     return callScript(body).then(function(r){
@@ -1059,7 +1065,7 @@
     openDlg('<div class="dlgbody"><div class="dlghead"><h2 id="dlg-title">Export post production</h2><button type="button" class="x" data-dlg="close" aria-label="Close">✕</button></div>'
       +'<p class="muted">All 52 episodes, the crew season by season and the dropped scenes, in the tracker colours.</p>'
       +'<div class="expopts">'
-      +'<button type="button" class="expopt" data-dlg="exp-sheets"><b>Open in Google Sheets</b><span>A Google Sheet in Drive: 02. NJORO WA UBA SN 25-28 &gt; N.W.U Cycle 7 | SCENE TRACKER &gt; POST PRODUCTION EXPORTS. Only the newest export is kept. Anyone you send the link to can view it.</span></button>'
+      +(!isEditor()?'':'<button type="button" class="expopt" data-dlg="exp-sheets"><b>Open in Google Sheets</b><span>A Google Sheet in Drive: 02. NJORO WA UBA SN 25-28 &gt; N.W.U Cycle 7 | SCENE TRACKER &gt; POST PRODUCTION EXPORTS. Only the newest export is kept. Anyone you send the link to can view it.</span></button>')
       +'<button type="button" class="expopt" data-dlg="exp-xlsx"><b>Download Excel file</b><span>An .xlsx file for this phone or computer. Opens in Excel, Numbers or Google Sheets.</span></button>'
       +'</div><p class="dlgerr" id="dlgerr" role="alert"></p></div>');
   }
@@ -1306,7 +1312,7 @@
   /* Signed in: the same data with the log sheet and script links. null = use the public read
      (signed out, or a robot older than version 16). */
   function fullRead(){
-    if(!isEditor())return Promise.resolve(null);
+    if(!isSignedIn())return Promise.resolve(null);
     return callScript({action:'read'},true).then(function(r){return r&&r.ok&&Array.isArray(r.reports)&&r.version>=16?r:null});
   }
   async function refresh(quiet){
@@ -1376,10 +1382,10 @@
   function renderHeader(){
     var last=daysAsc().slice(-1)[0];
     document.getElementById('stats').innerHTML='<div class="cyc">'+esc(CYCLE)+'</div><div><dt>Last report</dt><dd>'+(last?esc(dayRef(last)):'None')+'</dd></div>';
-    var signed=isEditor();
+    var signed=isSignedIn();
     document.getElementById('acts').innerHTML=
       (installPrompt?'<button type="button" class="btn primary wide" data-act="install">Install app</button>':'')
-      +(signed?'<div class="menuwrap wide"><button type="button" class="btn primary" data-act="menu" aria-haspopup="true" aria-expanded="'+!!ui.menu+'">Daily reports <span class="caret2" aria-hidden="true">\u25BE</span></button>'
+      +(isEditor()?'<div class="menuwrap wide"><button type="button" class="btn primary" data-act="menu" aria-haspopup="true" aria-expanded="'+!!ui.menu+'">Daily reports <span class="caret2" aria-hidden="true">\u25BE</span></button>'
         +(ui.menu?'<div class="menu" role="menu">'
           +'<button type="button" role="menuitem" data-act="add"><b>Add a day</b><span>Paste one report</span></button>'
           +'<button type="button" role="menuitem" data-act="add-many"><b>Add several days</b><span>Paste many reports at once</span></button>'
@@ -1482,7 +1488,7 @@
     return Promise.resolve(legacyCopy(txt));
   }
   function legacyCopy(txt){try{var ta=document.createElement('textarea');ta.value=txt;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();var ok=document.execCommand('copy');ta.remove();return ok}catch(e){return false}}
-  var ERR={wrong_passcode:'That setup passcode is not right.',not_set_up:'The Google robot is not set up yet (no PASSCODE).',wrong_login:'That password is not right.',no_passcode:'No master password is set in Google yet (Script Property PASSCODE).',locked:'Too many wrong passwords. Sign-in is paused on this device for 15 minutes.',too_long:'That report is too long (over 20,000 characters). Paste one day at a time.',signed_out:'You were signed out. Sign in again.',not_allowed:'Only an admin can do that.',bad_name:'Type a name of at least 2 letters.',weak_password:'The new password needs at least 8 characters.',wrong_current:'The current password is not right.',old_robot:'The Google robot is still an old version. Follow the install steps to update it to version 8.',no_day:'No shoot day number found in the report.',no_scenes:'No scenes found in the report. Scenes are written as episode/scene, like 7/4.',bad_link:'The log sheet link must be a Google Drive link.',busy:'Someone else is saving right now. Try again in a moment.',not_found:'That day is not in the tracker any more.',network:'No connection to Google. Check your signal and try again.',server:'Google had a problem saving. Try again in a moment.',bad_link_any:'The trailer link must be a full web link, like https://youtu.be/...',bad_scene:'Type a scene number, like 12 or 12A.',bad_move:'That date could not be saved. Pick a date after the episode before.'};
+  var ERR={wrong_passcode:'That setup passcode is not right.',not_set_up:'The Google robot is not set up yet (no PASSCODE).',wrong_login:'That password is not right.',no_passcode:'No master password is set in Google yet (Script Property PASSCODE).',admin_only:'Only the admin can make changes. Your sign-in is view only.',locked:'Too many wrong passwords. Sign-in is paused on this device for 15 minutes.',too_long:'That report is too long (over 20,000 characters). Paste one day at a time.',signed_out:'You were signed out. Sign in again.',not_allowed:'Only an admin can do that.',bad_name:'Type a name of at least 2 letters.',weak_password:'The new password needs at least 8 characters.',wrong_current:'The current password is not right.',old_robot:'The Google robot is still an old version. Follow the install steps to update it to version 8.',no_day:'No shoot day number found in the report.',no_scenes:'No scenes found in the report. Scenes are written as episode/scene, like 7/4.',bad_link:'The log sheet link must be a Google Drive link.',busy:'Someone else is saving right now. Try again in a moment.',not_found:'That day is not in the tracker any more.',network:'No connection to Google. Check your signal and try again.',server:'Google had a problem saving. Try again in a moment.',bad_link_any:'The trailer link must be a full web link, like https://youtu.be/...',bad_scene:'Type a scene number, like 12 or 12A.',bad_move:'That date could not be saved. Pick a date after the episode before.'};
   function errText(r){return ERR[r&&r.error]||ERR.server}
   /* quiet: a background check that must not count as someone using the app. */
   function callScript(body,quiet){
@@ -1504,7 +1510,7 @@
   /* ---------- signing in and out ---------- */
   function saveAuth(){try{if(auth.token)localStorage.setItem('njw-auth',JSON.stringify(auth));else localStorage.removeItem('njw-auth')}catch(e){}}
   function signedIn(r){
-    auth={token:r.token,name:(r.user&&r.user.name)||'Team',idle:r.idle||30};saveAuth();
+    auth={token:r.token,name:(r.user&&r.user.name)||'Team',idle:r.idle||30,role:r.role==='viewer'?'viewer':'admin'};saveAuth();
     lastAct=Date.now();lastPing=Date.now();try{localStorage.setItem('njw-last',String(lastAct))}catch(e){}
     post.loaded=false;admin.activity=null;
     /* Back to the tab they were on before signing in (Post production or Activity are hidden until then). */
@@ -1568,7 +1574,7 @@
   }
   function openLogin(){
     openDlg('<form class="dlgbody" id="loginform"><div class="dlghead"><h2 id="dlg-title">Team sign-in</h2><button type="button" class="x" data-dlg="close" aria-label="Close">\u2715</button></div>'
-      +'<p class="muted">Turns on adding reports, Post production and Activity on this device.</p>'
+      +'<p class="muted">Shows scripts, log sheets and Post production on this device. The admin can also make changes.</p>'
       +'<input type="text" autocomplete="username" value="team" hidden>'
       +'<label class="fld">Password<input id="lpass" type="password" autocomplete="current-password" required></label>'
       +'<p class="muted">Your own password, or the team\u2019s master password.</p>'

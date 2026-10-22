@@ -1,4 +1,4 @@
-# Installing the tracker update (Google robot version 16)
+# Installing the tracker update (Google robot version 17)
 
 About 15 minutes, on a computer, signed in to the Google account that owns the
 "Njoro wa Uba Scene Tracker Data" Sheet (nicholaskibathi@gmail.com).
@@ -6,19 +6,23 @@ About 15 minutes, on a computer, signed in to the Google account that owns the
 Sheet: https://docs.google.com/spreadsheets/d/13mpLW2iFSSqDja--dwxXEEz_jVpjOeDudyWYy0fvT3I/edit
 App: https://nickovins.github.io/njoro-tracker/
 
+What changed in version 17: personal passwords (`PASS_GEORGE` ...) are **view only**. They see the
+script and log sheet links, Post production (TX dates, editors) and the daily reports, but cannot
+change anything. Only the master password (`PASSCODE`, the admin) can add, edit or delete.
+
 What changed in version 16 (security):
 - The public read no longer sends Drive links. Script links, log sheet links and the Scripts /
   Log sheets buttons show only on a signed-in device.
 - Optional personal passwords (`PASS_GEORGE` ...), so the activity log names the person and one
-  person's access can be taken away without changing the master password.
+  person's access can be taken away without changing the master password (view only from version 17).
 - A stranger guessing passwords can no longer lock the team out: a device that signed in before
   has its own limit.
 - Export > Open in Google Sheets is no longer shared with "anyone with the link".
 - Remove day keeps a copy in a new **Deleted** tab; Activity > Recently deleted puts it back.
 - Reports over 20,000 characters are refused, and errors no longer show Google's internal messages.
 
-The app (the website) is already updated and still works with version 15, but until you install
-version 16 the robot still hands the Drive links to anyone who asks it directly.
+The app (the website) is already updated. Install version 17 **before** adding any `PASS_` line:
+older versions let every password make changes.
 
 ## Part A: update the Google robot
 
@@ -26,18 +30,18 @@ version 16 the robot still hands the Drive links to anyone who asks it directly.
 2. Open https://raw.githubusercontent.com/nickovins/njoro-tracker/main/apps-script/Code.gs
    Press Ctrl+A then Ctrl+C (Mac: Cmd+A, Cmd+C).
    In the editor click **Code.gs**, press Ctrl+A, then Ctrl+V. Press **Ctrl+S**.
-   Check: press Ctrl+F, search `VERSION`, it says `var VERSION = 16;`.
+   Check: press Ctrl+F, search `VERSION`, it says `var VERSION = 17;`.
    (appsscript.json did not change since version 7. If you skipped version 7,
    also paste https://raw.githubusercontent.com/nickovins/njoro-tracker/main/apps-script/appsscript.json
    into **appsscript.json**.)
 3. Choose **cleanUp** in the function list at the top and click **Run**.
    The log says how many unused lines it removed and lists what is left (step 6 explains them).
 4. Choose **setup** and click **Run**. If Google asks for permission, allow it as before.
-   The log shows `Version 16 ready. ... scene numbers read for 12.` and then the address of the POST PRODUCTION EXPORTS folder.
+   The log shows `Version 17 ready. ... scene numbers read for 12.` and then the address of the POST PRODUCTION EXPORTS folder.
 5. **Deploy > Manage deployments** > the Web app whose ID starts with `AKfycbzts4XJrONLd9`
    > **pencil** > Version: **New version** > **Deploy**.
-   Check https://script.google.com/macros/s/AKfycbzts4XJrONLd9LMRi_MgDsfK4_LqBLTRXAv7nuQpKHXOF88zw7x2-hbwTpZa8jZNFbk/exec?x=16
-   says `"version":16`.
+   Check https://script.google.com/macros/s/AKfycbzts4XJrONLd9LMRi_MgDsfK4_LqBLTRXAv7nuQpKHXOF88zw7x2-hbwTpZa8jZNFbk/exec?x=17
+   says `"version":17`.
 
 ## Part B: Script Properties
 
@@ -45,8 +49,8 @@ version 16 the robot still hands the Drive links to anyone who asks it directly.
 
    | Property | What it is | Touch it? |
    |---|---|---|
-   | `PASSCODE` | The **master password** for Team sign-in | Yes: this is where you change it |
-   | `PASS_GEORGE`, `PASS_MARY_W` ... | Optional. One person's own password (at least 8 characters) | Yes: add one per person, delete it to take their access away |
+   | `PASSCODE` | The **master password**: the admin, the only sign-in that can make changes | Yes: this is where you change it. Keep it to yourself |
+   | `PASS_GEORGE`, `PASS_MARY_W` ... | Optional. One person's own **view-only** password (at least 8 characters) | Yes: add one per person, delete it to take their access away |
    | `IDLE_MINUTES` | Optional. Minutes without use before sign-out (default 30) | Optional |
    | `POST_TX` | Post production: Episode 1 TX date | No |
    | `POST_EP_1`, `POST_EP_2` ... | Post production: one line per episode with anything filled in (editor, sound, trailer, dropped scenes, moved TX) | **No: deleting one deletes that episode's post data** |
@@ -71,9 +75,9 @@ version 16 the robot still hands the Drive links to anyone who asks it directly.
 
 8b. Personal passwords (recommended): **Edit script properties** > **Add script property** >
    Property `PASS_GEORGE`, Value: George's own password (8+ characters) > **Save**.
-   George signs in with it; the activity log then says "George (iPhone, Safari)". When
-   someone leaves the team, delete their line: their devices are signed out at once.
-   Then stop sharing the master password and keep it for yourself.
+   George signs in with it and can see everything but change nothing; the activity log says
+   "George (iPhone, Safari)". When someone leaves the team, delete their line: their devices
+   are signed out at once. Keep the master password for yourself.
 
 ## Part C: make the Sheet and the Drive folders private (do this even if done before)
 

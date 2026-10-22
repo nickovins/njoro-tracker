@@ -16,15 +16,17 @@
  * It has no access to Gmail, Calendar, Contacts or any other spreadsheet.
  * In Drive it only ever opens the log sheets and scripts folders below.
  *
- * Team sign-in: the master password PASSCODE, and optionally one password per person
- * (PASS_GEORGE, PASS_MARY_W ...), all kept in Project Settings > Script Properties.
+ * Team sign-in: the master password PASSCODE (the admin: can change everything), and
+ * optionally one password per person (PASS_GEORGE, PASS_MARY_W ...): view only. They see
+ * the script and log sheet links, Post production and the TX dates, but change nothing.
+ * All are kept in Project Settings > Script Properties.
  * They are never in this file or in the app. Changing or deleting a password signs out
  * every device that signed in with it. A sign-in also ends after IDLE_MINUTES without
  * use, or after 12 hours. The activity log names the person and device ("George (iPhone, Safari)").
  *
  * Script Properties, all of them:
- *   PASSCODE       the master password
- *   PASS_<NAME>    optional: one person's own password (at least 8 characters), like PASS_GEORGE.
+ *   PASSCODE       the master password: the admin, the only sign-in that can make changes
+ *   PASS_<NAME>    optional: one person's own VIEW-ONLY password (at least 8 characters), like PASS_GEORGE.
  *                  Delete the line to take that person's access away.
  *   IDLE_MINUTES   optional: minutes without use before sign-out (default 30)
  *   POST_TX        post production: Episode 1 TX date
@@ -52,7 +54,7 @@ var REPEATS_TAB = 'Repeats';
 var ACTIVITY_TAB = 'Activity';
 var DELETED_TAB = 'Deleted';
 var TZ = 'Africa/Nairobi';
-var VERSION = 16;
+var VERSION = 17;
 // Drive > 02. NJORO WA UBA SN 25-28 - 2026 > N.W.U Cycle 7 | SCENE TRACKER (holds this Sheet).
 var TRACKER_FOLDER_ID = '18qREQGQgviZBWPuh3e6BwEl8bBhYnRfY';
 var EXPORTS_FOLDER_NAME = 'POST PRODUCTION EXPORTS';
@@ -89,9 +91,12 @@ function route_(b) {
   var me = session_(b.token, b.touch !== false);
   if (!me) return { ok: false, error: 'signed_out' };
 
-  if (a === 'check' || a === 'touch') return { ok: true, user: { name: me.name }, idle: idleMinutes_() };
+  if (a === 'check' || a === 'touch') return { ok: true, user: { name: me.name }, role: me.role, idle: idleMinutes_() };
   if (a === 'read') return readAll_();             // signed in: with the log sheet and script links
   if (a === 'post') return postAll_();
+  if (a === 'note') { if (String(b.what || '') === 'export') log_(me.name, 'Exported post production to Excel', ''); return { ok: true }; }
+  // Everything below is for the admin (master password) only: changes, Activity, exports to Drive.
+  if (me.role !== 'admin') return { ok: false, error: 'admin_only' };
   if (a === 'activity') return readActivity_();
   if (a === 'exportSheet') return exportSheet_(b, me);
 
@@ -142,11 +147,6 @@ function write_(a, b, me) {
   }
   if (a === 'postSave') return postSave_(b, me);
   if (a === 'vofix') return withData_(voFix_(b, me));
-  if (a === 'note') {
-    var what = String(b.what || '').slice(0, 80);
-    if (what === 'export') log_(me.name, 'Exported post production to Excel', '');
-    return { ok: true };
-  }
   if (a === 'signoutAll') {
     props_().setProperty('SESS_GEN', String((Number(props_().getProperty('SESS_GEN')) || 0) + 1));
     log_(me.name, 'Signed everyone out', 'Every device has to sign in again');
@@ -367,6 +367,7 @@ function login_(b) {
   log_(who, 'Signed in', hit.key === 'PASSCODE' ? 'Master password' : 'Own password');
   var out = startSession_(who, hit.key);
   out.dk = dk;
+  out.role = hit.key === 'PASSCODE' ? 'admin' : 'viewer';
   return out;
 }
 
@@ -386,7 +387,7 @@ function session_(token, touch) {
   var now = Date.now();
   if (now - s.a > idleMinutes_() * 60000 || now - s.c > SESSION_MAX_HOURS * 3600000 || s.g !== gen_(s.k)) { cache.remove('S_' + token); return null; }
   if (touch) { s.a = now; cache.put('S_' + token, JSON.stringify(s), idleMinutes_() * 60); }
-  return { name: s.n };
+  return { name: s.n, role: !s.k || s.k === 'PASSCODE' ? 'admin' : 'viewer' };
 }
 
 function endSession_(token) {
