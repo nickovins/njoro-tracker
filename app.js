@@ -1,12 +1,10 @@
 /* Njoro wa Uba Scene Tracker: installable app.
-   Data comes from a Google Sheet that anyone with the link can read.
+   Data comes from the Google robot (apps-script/Code.gs), which reads the private Sheet.
    Each row is one continuity report, pasted exactly as sent; this app parses it. */
 (function(){
   "use strict";
-  var SHEET_ID='13mpLW2iFSSqDja--dwxXEEz_jVpjOeDudyWYy0fvT3I';
-  var TABS=['Reports','Scripts','Repeats'];
   /* Address of the Apps Script web app attached to the Sheet (apps-script/Code.gs).
-     Not secret: every change it makes needs the continuity passcode, which only Google checks. */
+     Not secret: every change it makes needs a team password, which only Google checks. */
   var SCRIPT_URL='https://script.google.com/macros/s/AKfycbzts4XJrONLd9LMRi_MgDsfK4_LqBLTRXAv7nuQpKHXOF88zw7x2-hbwTpZa8jZNFbk/exec';
   var CACHE_KEY='njw-data-v1';
   var MONTHS=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
@@ -57,11 +55,6 @@
   }
   var LOG_FOLDER='https://drive.google.com/drive/folders/1KQgFJwqSnT5e3fR0aS7sNptej30-5Bs9?usp=sharing';
   var SCRIPTS_FOLDER='https://drive.google.com/drive/folders/1keWRPeybj1YUOr8c6MtPNM-tHS-zmnjZ?usp=sharing';
-  /* Scripts found on 09.10.2026. Used until the Apps Script writes the Scripts tab, which then takes over. */
-  var SCRIPT_SEED={"1":{"url":"https://drive.google.com/file/d/1h1cAMNHBmJMRAIrUrWy0MkGey5zmwK5i/view","name":"EPISODE 1.pdf"},"2":{"url":"https://drive.google.com/file/d/1KuVpCzPWDxe7qjauTwRf54n4htM3NNo1/view","name":"EPISODE 2.pdf"},"3":{"url":"https://drive.google.com/file/d/1sMdHvFZx6vyPP-3VWA4wtBdH8OZ1KtTz/view","name":"EPISODE 3.pdf"},"4":{"url":"https://drive.google.com/file/d/15sqGsYtc7PyhxUcPUJjbAwyS0CUN0GUg/view","name":"EPISODE 4.pdf"},"5":{"url":"https://drive.google.com/file/d/1EFwA0n0w2RUkeLPI77hTuCJIL7ZC2C-_/view","name":"EPISODE 5.pdf"},"6":{"url":"https://drive.google.com/file/d/1WR2ASggbojN7txYiNlbpnCKBTmGQ0fB0/view","name":"EPISODE 6.pdf"},"7":{"url":"https://drive.google.com/file/d/1hhq-4FzgDySJv3ZbfZT_gG7VDIcjqyOR/view","name":"EPISODE 7.pdf"},"8":{"url":"https://drive.google.com/file/d/1QecGLJVOesXV61RK_iRqHQFt_3w-3z9Y/view","name":"EPISODE 8.pdf"},"9":{"url":"https://drive.google.com/file/d/1SeEoTN0EuRMrPN4-KJlhZZP9zirL--kW/view","name":"EPISODE 9.pdf"},"10":{"url":"https://drive.google.com/file/d/1lcotMO-QHO3f7YVGfHoANFKlyi9klemw/view","name":"EPISODE 10.pdf"},"12":{"url":"https://drive.google.com/file/d/1nX0gBt6v9fIf3P-T17CcEdBwWNDBgpMD/view","name":"EPISODE 12.pdf"},"13":{"url":"https://drive.google.com/file/d/1KBgIIb7ji5a1MVF1u3oFJ50kL_cV7G43/view","name":"EPISODE 13.pdf"}};
-  /* Log sheets found in Drive on 13.10.2026 for days that had no link yet. The robot fills the
-     Sheet itself once version 6 runs; a link already in the Sheet always wins over these. */
-  var LOG_SEED={9:{iso:'2026-10-09',url:'https://drive.google.com/file/d/1w3ZbfyRHPNAA476kJkVmLya7buysg5FA/view'}};
   /* Scene numbers per episode. The Google robot reads every script in the Scripts folder and
      writes them to the Scripts tab (Scenes column). These counts are only a fallback, read by hand
      on 10.10.2026 and 13.10.2026, for when that tab is missing. */
@@ -151,9 +144,11 @@
     return '<div class="bar2" aria-hidden="true"><i style="width:'+(pr.shot/pr.total*100).toFixed(1)+'%"></i>'
       +(pr.part.length?'<i class="pt" style="width:'+(pr.part.length/pr.total*100).toFixed(1)+'%"></i>':'')+'</div>';
   }
-  function scriptFor(ep){var x=(state.scripts&&state.scripts[ep])||SCRIPT_SEED[ep];return x&&safeUrl(x.url)?x:null}
+  /* Drive links (scripts, log sheets, their folders) show only to a signed-in device. */
+  function scriptFor(ep){var x=isEditor()&&state.scripts&&state.scripts[ep];return x&&safeUrl(x.url)?x:null}
+  function folderLink(url,label,cls){return isEditor()?'<a'+(cls?' class="'+cls+'"':'')+' href="'+esc(url)+'" target="_blank" rel="noopener">'+label+'</a>':''}
   function safeUrl(u){return /^https:\/\/(drive|docs)\.google\.com\//.test(u||'')?u:''}
-  function logLink(d,label){var u=safeUrl(d.log);return u?'<a class="log" href="'+esc(u)+'" target="_blank" rel="noopener">'+(label||'Log sheet')+' \u2197</a>':''}
+  function logLink(d,label){var u=isEditor()&&safeUrl(d.log);return u?'<a class="log" href="'+esc(u)+'" target="_blank" rel="noopener">'+(label||'Log sheet')+' \u2197</a>':''}
   function dayRef(d){var f=fmtDate(d.iso);return 'Day '+d.day+(f?' | '+f:(d.date?' | '+d.date:''))}
   function toMin(t){var m=/(\d{1,2})[:.](\d{2})\s*([ap])m/i.exec(t||'');if(!m)return null;var h=+m[1]%12;if(m[3].toLowerCase()==='p')h+=12;return h*60+ +m[2]}
   function hours(d){
@@ -306,7 +301,7 @@
         +(function(){var x=sceneNotes(+parts[0])[String(scParts(parts[1])[0])];if(!x)return '';return '<p><span class="tag '+x.type+'">'+x.type+'</span> '+(x.type==='Estab'?'An establishing shot in the script, so it is not counted as to shoot.':'A flashback in the script, so it is counted as shot.')+'</p>'})()
         +(function(){var L=sceneList(+parts[0]);return L.length&&L.indexOf(scParts(parts[1])[0])<0?'<p><strong>Check the number.</strong> Scene '+esc(parts[1])+' is not in the Episode '+esc(parts[0])+' script, which runs from scene '+L[0]+' to '+L[L.length-1]+'.</p>':''})()
         +(nearKeys.length?'<p><strong>Similar scene shot:</strong> '+nearKeys.map(function(k){return esc(k)+' on '+esc(dayRef(near[k]))}).join(', ')+'. Check it is not the same scene under another number.</p>':'')
-        +'<div class="tip"><strong>Before you mark it missing,</strong> check whether it was shot as an establishing shot, insert, cutaway, B-roll, VO or pickup and left out of the report. Type the scene\u2019s location in the Location box to find the days the crew was there, then check those days\u2019 log sheets. <a href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Open log sheets \u2197</a></div></div>';
+        +'<div class="tip"><strong>Before you mark it missing,</strong> check whether it was shot as an establishing shot, insert, cutaway, B-roll, VO or pickup and left out of the report. Type the scene\u2019s location in the Location box to find the days the crew was there, then check those days\u2019 log sheets. '+folderLink(LOG_FOLDER,'Open log sheets \u2197')+'</div></div>';
       return;
     }
     box.innerHTML='<div class="answer shot"><div class="line"><span class="sc">'+esc(q.key)+'</span><span class="verdict">Shot'+(list.length>1?' '+list.length+' times':'')+'</span></div><ul>'
@@ -485,7 +480,7 @@
     if(!days.length)return '<div class="tablewrap"><p class="empty">No daily reports logged yet.</p></div>';
     var miss=daysAsc().filter(logMissing);
     var html=(miss.length&&!kw?'<div class="logwarn" role="status"><strong>'+(miss.length===1?'1 day is':miss.length+' days are')+' missing a log sheet:</strong> '+miss.map(function(d){return 'Day '+d.day}).join(', ')
-        +'. Upload the PDF named like <span class="mono">Day '+miss[0].day+' '+esc(fmtDate(miss[0].iso).replace(/^0/,'').replace(/\.0/,'.'))+'.pdf</span> to the <a href="'+LOG_FOLDER+'" target="_blank" rel="noopener">log sheets folder \u2197</a>. It links by itself.</div>':'')
+        +'. Upload the PDF named like <span class="mono">Day '+miss[0].day+' '+esc(fmtDate(miss[0].iso).replace(/^0/,'').replace(/\.0/,'.'))+'.pdf</span> to the '+(isEditor()?folderLink(LOG_FOLDER,'log sheets folder \u2197'):'log sheets folder')+'. It links by itself.</div>':'')
       +'<div class="tablewrap"><table class="daytbl"><thead><tr><th>Shoot day</th><th>Location</th><th class="num hide-sm">Scenes</th><th class="num hide-sm">Pages</th><th class="num hide-sm">Call to wrap</th></tr></thead><tbody>';
     days.forEach(function(d){
       var open=ui.openDay===d.day,ents=entriesOf(d);
@@ -493,7 +488,7 @@
       if(open){
         html+='<tr class="detail"><td colspan="5"><dl class="dl">'
           +(d.location?'<dt>Location</dt><dd>'+esc(d.location)+'</dd>':'')
-          +'<dt>Log sheet</dt><dd>'+(logLink(d,'Open Day '+esc(d.day)+' log sheet')||(logMissing(d)?'<span class="bad">Missing. It was due by the end of '+esc(dmy(logDue(d)-864e5))+'.</span> ':'<span class="muted">Waiting for upload. </span>')+'<a class="log" href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Log sheets folder \u2197</a>')+'</dd>'
+          +'<dt>Log sheet</dt><dd>'+(logLink(d,'Open Day '+esc(d.day)+' log sheet')||(d.log?'<span class="muted">Attached. Sign in to open it.</span>':(logMissing(d)?'<span class="bad">Missing. It was due by the end of '+esc(dmy(logDue(d)-864e5))+'.</span> ':'<span class="muted">Waiting for upload. </span>')+folderLink(LOG_FOLDER,'Log sheets folder \u2197','log')))+'</dd>'
           +(d.cast?'<dt>Cast</dt><dd>'+esc(d.cast)+'</dd>':'')
           +'<dt>Shot</dt><dd>'+ents.length+' scene'+(ents.length===1?'':'s')+(d.pages?' \u00b7 '+esc(d.pages)+' pages':'')+(hours(d)?' \u00b7 call to wrap '+esc(hours(d)):'')+'</dd>'
           +((d.times&&d.times.length)?'<dt>Times</dt><dd>'+d.times.map(function(t){return esc(t.label)+' <span class="mono">'+esc(t.time)+'</span>'}).join(' · ')+'</dd>':'')
@@ -1099,7 +1094,7 @@
       if(w&&!w.closed){try{w.location.href=url}catch(e){window.open(url,'_blank')}}
       else window.open(url,'_blank');
       openDlg('<div class="dlgbody done"><h2 id="dlg-title">Google Sheet ready</h2><p>'+esc(r.name||'Post production')+'</p>'
-        +'<p class="muted">Saved in Drive under N.W.U Cycle 7 | SCENE TRACKER \u203a POST PRODUCTION EXPORTS. The one before it went to the Drive bin. The link is view only for anyone you send it to.</p>'
+        +'<p class="muted">Saved in Drive under N.W.U Cycle 7 | SCENE TRACKER \u203a POST PRODUCTION EXPORTS. The one before it went to the Drive bin. It is not shared by link: it opens only for people that folder is shared with.</p>'
         +(safeUrl(r.folder)?'<p><a href="'+esc(r.folder)+'" target="_blank" rel="noopener">Open the exports folder \u2197</a></p>':'')
         +'<div class="dlgacts"><button type="button" class="btn" data-dlg="close">Done</button><a class="btn primary" href="'+esc(url)+'" target="_blank" rel="noopener">Open it ↗</a></div></div>');
     }).catch(function(){if(w)try{w.close()}catch(e){}btn.disabled=false;btn.querySelector('b').textContent='Open in Google Sheets';err.textContent='Could not build the sheet. Check your connection and try again.'});
@@ -1109,7 +1104,7 @@
   function loadAdmin(){
     if(!isAdmin())return;
     admin.err='';
-    callScript({action:'activity'},true).then(function(r){if(r.ok){admin.activity=r.rows;admin.private=r.private}else admin.err=errText(r);if(ui.view==='admin')renderMain()});
+    callScript({action:'activity'},true).then(function(r){if(r.ok){admin.activity=r.rows;admin.private=r.private;admin.deleted=Array.isArray(r.deleted)?r.deleted:null}else admin.err=errText(r);if(ui.view==='admin')renderMain()});
   }
   function renderAdmin(){
     if(!isAdmin())return '';
@@ -1122,7 +1117,11 @@
     if(!act)html+='<p class="empty">Loading activity\u2026</p>';
     else if(!act.length)html+='<p class="empty">Nothing yet.</p>';
     else html+=activityTable(act);
-    html+='</section>'+(ui.robot&&ui.robot<11?'<section class="tablewrap adm admsec upd"><div class="seasonhead"><b>Google script update</b><span class="muted">'+(ui.robot>=6?'Version '+esc(ui.robot)+' is':'An older version is')+' installed. Version 11 reads estabs and flashbacks from new scripts by itself and saves exports as Google Sheets in the Scene Tracker folder in Drive.</span></div><p class="updlinks">'+updateLinks()+'</p></section>':'')+'<section class="tablewrap adm admsec"><div class="seasonhead"><b>Team sign-in</b><span class="muted">One master password for everyone. Sign-ins end after '+esc(auth.idle||30)+' minutes without use. To change the password, change PASSCODE in the Google script\u2019s Script Properties: every device is then signed out.</span></div>'
+    html+='</section>';
+    if(admin.deleted&&admin.deleted.length)html+='<section class="tablewrap adm admsec"><div class="seasonhead"><b>Recently deleted</b><span class="muted">Days taken out with Remove day, newest first. Kept in the Deleted tab of the Google Sheet.</span></div>'
+      +admin.deleted.map(function(x){var live=dayByNum(x.day);return '<div class="admrow"><span><b>Day '+esc(x.day)+'</b> <span class="muted">deleted '+esc(x.when)+(x.by?' by '+esc(x.by):'')+(live?' \u00b7 Day '+esc(x.day)+' is in the tracker again; putting this back replaces it':'')+'</span></span><button type="button" class="btn small" data-act="adm-restore" data-row="'+esc(x.row)+'" data-day="'+esc(x.day)+'">Put back</button></div>'}).join('')
+      +'</section>';
+    html+=''+(ui.robot&&ui.robot<16?'<section class="tablewrap adm admsec upd"><div class="seasonhead"><b>Google script update</b><span class="muted">'+(ui.robot>=6?'Version '+esc(ui.robot)+' is':'An older version is')+' installed. Version 16 stops sending Drive links to people who are not signed in, adds personal passwords, keeps strangers from locking the team out, and adds Recently deleted.</span></div><p class="updlinks">'+updateLinks()+'</p></section>':'')+'<section class="tablewrap adm admsec"><div class="seasonhead"><b>Team sign-in</b><span class="muted">One master password for everyone. Sign-ins end after '+esc(auth.idle||30)+' minutes without use. To change the password, change PASSCODE in the Google script\u2019s Script Properties: every device is then signed out.</span></div>'
       +'<div class="admrow">'
       +(admin.confirmAll?'<span class="confirm">Sign out every device, including this one?</span><button type="button" class="btn small danger" data-act="adm-all-yes">Sign everyone out</button><button type="button" class="btn small" data-act="adm-cancel">Cancel</button>'
         :'<button type="button" class="btn small" data-act="adm-all">Sign everyone out</button>')+'</div></section>';
@@ -1162,42 +1161,22 @@
       }).join(''))+'</tbody>';
     }).join('')+'</table>';
   }
-  function adminAction(act){
+  function adminAction(act,b){
+    if(act==='adm-restore'){
+      var day=+b.dataset.day;b.disabled=true;b.textContent='Putting back\u2026';
+      callScript({action:'restore',row:+b.dataset.row,day:day}).then(function(r){
+        if(!r.ok){toast(r.error==='bad_request'?'Putting days back needs the Google script at version 16.':r.error==='not_found'?'That list was out of date. Try again.':errText(r));loadAdmin();return}
+        applyServerRows(r);loadAdmin();toast('Day '+day+' is back');
+      });
+      return;
+    }
     if(act==='adm-refresh'){admin.activity=null;renderMain();loadAdmin();return}
     if(act==='adm-cancel'){admin.confirmAll=false;renderMain();return}
     if(act==='adm-all'){admin.confirmAll=true;renderMain();return}
     if(act==='adm-all-yes'){admin.confirmAll=false;callScript({action:'signoutAll'}).then(function(r){if(!r.ok){toast(errText(r));return}signOut('')})}
   }
 
-  /* ---------- loading from the Google Sheet ---------- */
-  var cbN=0;
-  function loadTab(tab){
-    return new Promise(function(resolve,reject){
-      var name='__njw'+(++cbN),s=document.createElement('script'),done=false;
-      var t=setTimeout(function(){finish();reject(new Error('timeout'))},15000);
-      function finish(){done=true;clearTimeout(t);try{delete window[name]}catch(e){window[name]=undefined}if(s.parentNode)s.parentNode.removeChild(s)}
-      window[name]=function(res){if(done)return;finish();resolve(res)};
-      s.onerror=function(){if(done)return;finish();reject(new Error('network'))};
-      s.src='https://docs.google.com/spreadsheets/d/'+SHEET_ID+'/gviz/tq?headers=1&tqx=responseHandler:'+name+'&sheet='+encodeURIComponent(tab)+'&_='+Date.now();
-      document.head.appendChild(s);
-    });
-  }
-  function cellText(c){if(!c)return '';if(c.v==null)return c.f||'';if(typeof c.v==='string'&&/^Date\(/.test(c.v))return c.f||c.v;return String(c.v)}
-  function cellTime(c){
-    if(!c||c.v==null)return 0;
-    var m=/^Date\((\d+),(\d+),(\d+)(?:,(\d+),(\d+),(\d+))?/.exec(String(c.v));
-    if(m)return new Date(+m[1],+m[2],+m[3],+(m[4]||0),+(m[5]||0),+(m[6]||0)).getTime();
-    var t=Date.parse(String(c.v).replace(' ','T'));return isNaN(t)?0:t;
-  }
-  function rowsOf(res){
-    if(!res||res.status==='error'||!res.table)return [];
-    var cols=res.table.cols||[],rows=res.table.rows||[];
-    var labels=cols.map(function(c){return String(c.label||'').toLowerCase()});
-    if(!labels.some(Boolean)&&rows.length){labels=(rows[0].c||[]).map(function(c){return cellText(c).toLowerCase()});rows=rows.slice(1)}
-    var iR=labels.findIndex(function(l){return /report/.test(l)}),iL=labels.findIndex(function(l){return /log/.test(l)}),iT=labels.findIndex(function(l){return /time|date/.test(l)});
-    if(iR<0)return [];
-    return rows.map(function(r,i){var c=r.c||[];return {raw:cellText(c[iR]),log:iL>=0?cellText(c[iL]).trim():'',time:iT>=0?cellTime(c[iT]):0,order:i}});
-  }
+  /* ---------- reading the reports ---------- */
   /* A report pasted into a cell that was only selected (not opened) lands one line per row.
      Stitch those rows back into whole reports. Rows that already hold a whole report are left alone. */
   function stitch(rows){
@@ -1218,17 +1197,10 @@
   /* Scripts tab: Episode | Script | Link | Updated, written by the Apps Script. */
   /* Scripts tab rows: Episode | Script | Link | Updated | Scenes, written by the robot. */
   function scriptsFromRows(rows){
-    var out={};(rows||[]).forEach(function(v){var ep=parseInt(v[0],10),url=String(v[2]||'').trim();
-      if(ep>0&&safeUrl(url))out[ep]={url:url,name:String(v[1]||''),scenes:String(v[4]||'').split(/[\s,]+/).filter(function(x){return /^\d{1,3}[A-Za-z]?$/.test(x)}),notes:notesOf(v[5]),vo:voOf(v[5])}});
+    var out={};(rows||[]).forEach(function(v){var ep=parseInt(v[0],10),url=safeUrl(String(v[2]||'').trim());
+      if(ep>0&&(url||v[4]||v[5]))out[ep]={url:url,name:String(v[1]||''),scenes:String(v[4]||'').split(/[\s,]+/).filter(function(x){return /^\d{1,3}[A-Za-z]?$/.test(x)}),notes:notesOf(v[5]),vo:voOf(v[5])}});
     return out;
   }
-  function gvizRows(res,want){
-    if(!res||res.status==='error'||!res.table)return null;
-    var labels=(res.table.cols||[]).map(function(c){return String(c.label||'').toLowerCase().trim()});
-    var idx=want.map(function(w){return labels.indexOf(w)});if(idx[0]<0)return null;
-    return (res.table.rows||[]).map(function(r){var c=r.c||[];return idx.map(function(i){return i>=0?cellText(c[i]):''})});
-  }
-  function scriptsOf(res){return scriptsFromRows(gvizRows(res,['episode','script','link','updated','scenes','notes'])||[])}
   /* Voice-overs per scene from the robot (Notes "vo", version 3 rules and later). */
   function voOf(v){var o=null;try{o=JSON.parse(String(v||''))}catch(e){return null}if(!o||!(o._v>=5)||!o.vo||typeof o.vo!=='object')return null;
     var out={};Object.keys(o.vo).forEach(function(k){if(/^\d{1,3}[A-Za-z]?$/.test(k)&&Array.isArray(o.vo[k]))out[normSc(k)]=o.vo[k].map(function(x){return String(x).slice(0,40)}).filter(Boolean)});return out}
@@ -1269,9 +1241,8 @@
       if(!r.raw||!r.raw.trim())return;
       var p=parseReport(r.raw);if(!p.day||!p.shot.length)return;
       voByName(p);
-      var d={day:p.day,date:p.date,iso:p.iso,cast:p.cast,location:p.location,times:p.times,pages:p.pages,shot:p.shot,pulled:[],raw:r.raw.trim(),log:safeUrl(r.log)};
+      var d={day:p.day,date:p.date,iso:p.iso,cast:p.cast,location:p.location,times:p.times,pages:p.pages,shot:p.shot,pulled:[],raw:r.raw.trim(),log:logOf(r.log)};
       var prev=byDay[p.day];if(prev&&!d.log)d.log=prev.log;
-      if(!d.log&&LOG_SEED[p.day]&&LOG_SEED[p.day].iso===p.iso)d.log=LOG_SEED[p.day].url;
       byDay[p.day]=d;
     });
     var days=Object.keys(byDay).map(function(k){return byDay[k]}).sort(function(a,b){return a.day-b.day});
@@ -1306,6 +1277,8 @@
   /* After a save the app shows Google's own copy of the sheet straight away. For a couple of
      minutes after that, an older copy of the sheet from the normal reader is not allowed to undo it. */
   var wrote={at:0,sig:''};
+  /* A log sheet link, or 'linked' when the public read says there is one but leaves the link out. */
+  function logOf(u){return u==='linked'?u:safeUrl(u)}
   function reportRows(rows){return (rows||[]).map(function(v,i){var t=Date.parse(String(v[0]||'').replace(' ','T'));return {raw:String(v[1]||''),log:String(v[2]||'').trim(),time:isNaN(t)?0:t,order:i}})}
   /* Everything the robot sends: reports, scripts and repeat decisions. */
   function applyData(d,fromWrite){
@@ -1321,7 +1294,8 @@
     if(r&&Array.isArray(r.rows)){state.rows=reportRows(r.rows);state.days=buildDays(state.rows,[]);state.fetchedAt=Date.now();saveCache();wrote={at:Date.now(),sig:sigOf(state.days)};renderAll();return true}
     return false;
   }
-  /* The robot's public read (version 6 and later). Works even when the Sheet is private. */
+  /* The robot's public read (version 6 and later). Works even when the Sheet is private.
+     From version 16 it leaves out the Drive links; a signed-in device gets them from fullRead. */
   function robotRead(){
     if(!SCRIPT_URL)return Promise.reject(new Error('none'));
     var ctl=window.AbortController?new AbortController():null,t=setTimeout(function(){if(ctl)ctl.abort()},20000);
@@ -1329,28 +1303,22 @@
       .then(function(r){clearTimeout(t);return r.json()})
       .then(function(d){if(!d||!d.ok||!(d.version>=6)||!Array.isArray(d.reports))throw new Error('old');return d});
   }
+  /* Signed in: the same data with the log sheet and script links. null = use the public read
+     (signed out, or a robot older than version 16). */
+  function fullRead(){
+    if(!isEditor())return Promise.resolve(null);
+    return callScript({action:'read'},true).then(function(r){return r&&r.ok&&Array.isArray(r.reports)&&r.version>=16?r:null});
+  }
   async function refresh(quiet){
     if(ui.loading){ui.again=true;return}
     ui.loading=true;ui.error='';if(!quiet)renderStatus();
     var before=sigOf(state.days)+'|'+JSON.stringify(state.scripts)+'|'+JSON.stringify(state.repeats),changed=true;
     try{
       var d=null;
-      try{d=await robotRead()}catch(e){d=null}
-      if(d){
-        var keep=Date.now()-wrote.at<150000&&sigOf(buildDays(reportRows(d.reports),[]))!==wrote.sig;
-        if(!keep)applyData(d,false);
-      }else{
-        /* Robot not on version 6 yet: read the Sheet directly (only works while it is shared by link). */
-        var results=await Promise.all(TABS.map(function(t,i){return loadTab(t).catch(function(e){return i===0?Promise.reject(e):null})}));
-        if(!results[0]||results[0].status==='error')throw new Error('sheet');
-        var rows=rowsOf(results[0]);
-        /* A missing tab makes Google send the first tab instead; the readers ignore it. */
-        var sc=results[1]?scriptsOf(results[1]):{};if(Object.keys(sc).length)state.scripts=sc;
-        var rp=results[2]?gvizRows(results[2],['scene','day','decision','by','when']):null;if(rp)state.repeats=repeatsFromRows(rp);
-        var days=buildDays(rows,[]);
-        if(!(Date.now()-wrote.at<150000&&sigOf(days)!==wrote.sig)){state.rows=rows.map(function(r){return {raw:r.raw,log:r.log,time:r.time,order:r.order}});state.days=days}
-        state.fetchedAt=Date.now();saveCache();ui.via='sheet';ui.robot=1;
-      }
+      try{d=await fullRead()}catch(e){d=null}
+      if(!d)d=await robotRead();
+      var keep=Date.now()-wrote.at<150000&&sigOf(buildDays(reportRows(d.reports),[]))!==wrote.sig;
+      if(!keep)applyData(d,false);
       changed=before!==sigOf(state.days)+'|'+JSON.stringify(state.scripts)+'|'+JSON.stringify(state.repeats)||ui.stale;
       ui.offline=false;ui.stale=false;
     }catch(e){
@@ -1419,8 +1387,8 @@
           +'<button type="button" role="menuitem" data-act="drive"><b>Check Drive now</b><span>Attach new log sheets and scripts</span></button>'
           +'<button type="button" role="menuitem" data-act="pick-del" class="del"><b>Delete a day</b><span>Take a day out of the tracker</span></button>'
           +'</div>':'')+'</div>':'')
-      +'<a class="btn" href="'+LOG_FOLDER+'" target="_blank" rel="noopener">Log sheets ↗</a>'
-      +(SCRIPTS_FOLDER?'<a class="btn" href="'+esc(SCRIPTS_FOLDER)+'" target="_blank" rel="noopener">Scripts ↗</a>':'')
+      +folderLink(LOG_FOLDER,'Log sheets ↗','btn')
+      +(SCRIPTS_FOLDER?folderLink(SCRIPTS_FOLDER,'Scripts ↗','btn'):'')
       +(SCRIPT_URL?(signed?'<div class="menuwrap wide"><button type="button" class="btn ghost acct" data-act="acct" aria-haspopup="true" aria-expanded="'+!!ui.acct+'"><span class="who">Signed in</span> <span class="caret2" aria-hidden="true">\u25BE</span></button>'
           +(ui.acct?'<div class="menu" role="menu"><p class="menuhead"><b>Team sign-in</b><br><span>Signs out by itself after '+esc(auth.idle||30)+' minutes without use.</span></p>'
             +'<button type="button" role="menuitem" data-act="logout" class="del"><b>Sign out</b><span>On this device</span></button></div>':'')+'</div>'
@@ -1481,7 +1449,7 @@
     if(act==='retry-save'){flushAll();renderSaveState();return}
     if(act==='goto-air'){var ge=airingEp()||upNextEp();if(ge){setSeason(seasonOf(ge));post.openEp=ge;renderControls();renderPostKeep(0,true);var row=document.getElementById('pe'+ge);if(row)row.scrollIntoView({block:'center',behavior:'smooth'})}return}
     if(act==='edit-day'){var edd=dayByNum(+b.dataset.day);if(edd)openAdd(edd.raw,edd.day);return}
-    if(act&&act.indexOf('adm-')===0){adminAction(act);return}
+    if(act&&act.indexOf('adm-')===0){adminAction(act,b);return}
     if(act==='show-all'){ui.show='all';renderControls();renderMain();return}
     if(act==='vo-no'){var vk=(+b.dataset.vep)+'/'+(+b.dataset.sc)+'|'+b.dataset.name;voFixSet(b.dataset.vep,b.dataset.sc,b.dataset.name,(state.voFix[vk]==='add')?'':'no');return}
     if(act==='vo-undo'){voFixSet(b.dataset.vep,b.dataset.sc,b.dataset.name,'');return}
@@ -1514,7 +1482,7 @@
     return Promise.resolve(legacyCopy(txt));
   }
   function legacyCopy(txt){try{var ta=document.createElement('textarea');ta.value=txt;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();var ok=document.execCommand('copy');ta.remove();return ok}catch(e){return false}}
-  var ERR={wrong_passcode:'That setup passcode is not right.',not_set_up:'The Google robot is not set up yet (no PASSCODE).',wrong_login:'That password is not right.',no_passcode:'No master password is set in Google yet (Script Property PASSCODE).',locked:'Too many wrong passwords. Sign-in is paused for 15 minutes.',signed_out:'You were signed out. Sign in again.',not_allowed:'Only an admin can do that.',bad_name:'Type a name of at least 2 letters.',weak_password:'The new password needs at least 8 characters.',wrong_current:'The current password is not right.',old_robot:'The Google robot is still an old version. Follow the install steps to update it to version 8.',no_day:'No shoot day number found in the report.',no_scenes:'No scenes found in the report. Scenes are written as episode/scene, like 7/4.',bad_link:'The log sheet link must be a Google Drive link.',busy:'Someone else is saving right now. Try again in a moment.',not_found:'That day is not in the tracker any more.',network:'No connection to Google. Check your signal and try again.',server:'Google had a problem saving. Try again in a moment.',bad_link_any:'The trailer link must be a full web link, like https://youtu.be/...',bad_scene:'Type a scene number, like 12 or 12A.',bad_move:'That date could not be saved. Pick a date after the episode before.'};
+  var ERR={wrong_passcode:'That setup passcode is not right.',not_set_up:'The Google robot is not set up yet (no PASSCODE).',wrong_login:'That password is not right.',no_passcode:'No master password is set in Google yet (Script Property PASSCODE).',locked:'Too many wrong passwords. Sign-in is paused on this device for 15 minutes.',too_long:'That report is too long (over 20,000 characters). Paste one day at a time.',signed_out:'You were signed out. Sign in again.',not_allowed:'Only an admin can do that.',bad_name:'Type a name of at least 2 letters.',weak_password:'The new password needs at least 8 characters.',wrong_current:'The current password is not right.',old_robot:'The Google robot is still an old version. Follow the install steps to update it to version 8.',no_day:'No shoot day number found in the report.',no_scenes:'No scenes found in the report. Scenes are written as episode/scene, like 7/4.',bad_link:'The log sheet link must be a Google Drive link.',busy:'Someone else is saving right now. Try again in a moment.',not_found:'That day is not in the tracker any more.',network:'No connection to Google. Check your signal and try again.',server:'Google had a problem saving. Try again in a moment.',bad_link_any:'The trailer link must be a full web link, like https://youtu.be/...',bad_scene:'Type a scene number, like 12 or 12A.',bad_move:'That date could not be saved. Pick a date after the episode before.'};
   function errText(r){return ERR[r&&r.error]||ERR.server}
   /* quiet: a background check that must not count as someone using the app. */
   function callScript(body,quiet){
@@ -1542,6 +1510,7 @@
     /* Back to the tab they were on before signing in (Post production or Activity are hidden until then). */
     try{var lv=localStorage.getItem('njw-view');if(lv==='post'||lv==='admin')ui.view=lv}catch(e){}
     closeDlg();renderAll();loadPost();if(ui.view==='admin')loadAdmin();
+    refresh(true);   /* fetches the log sheet and script links, which only a signed-in device gets */
     toast('Signed in');
   }
   /* why: '' (they tapped Sign out), 'idle' (no use for too long), 'expired' (Google ended it). */
@@ -1552,6 +1521,9 @@
     auth={token:'',name:'',idle:mins};saveAuth();
     try{localStorage.removeItem('njw-post')}catch(e){}
     post.tx='';post.eps={};post.loaded=false;post.err='';post.openDrop=null;post.openMove=null;
+    /* Drive links stay off this device once it is signed out. */
+    state.rows.forEach(function(r){if(r.log)r.log='linked'});state.days.forEach(function(d){if(d.log)d.log='linked'});
+    Object.keys(state.scripts||{}).forEach(function(k){state.scripts[k].url=''});saveCache();
     admin.activity=null;ui.confirmDel=null;ui.menu=false;ui.acct=false;
     if(ui.view==='post'||ui.view==='admin')ui.view='scenes';
     closeDlg();renderAll();
@@ -1598,7 +1570,8 @@
     openDlg('<form class="dlgbody" id="loginform"><div class="dlghead"><h2 id="dlg-title">Team sign-in</h2><button type="button" class="x" data-dlg="close" aria-label="Close">\u2715</button></div>'
       +'<p class="muted">Turns on adding reports, Post production and Activity on this device.</p>'
       +'<input type="text" autocomplete="username" value="team" hidden>'
-      +'<label class="fld">Master password<input id="lpass" type="password" autocomplete="current-password" required></label>'
+      +'<label class="fld">Password<input id="lpass" type="password" autocomplete="current-password" required></label>'
+      +'<p class="muted">Your own password, or the team\u2019s master password.</p>'
       +'<p class="dlgerr" id="dlgerr" role="alert"></p>'
       +'<div class="dlgacts"><button type="button" class="btn" data-dlg="close">Cancel</button><button type="submit" class="btn primary" id="loginbtn">Sign in</button></div></form>');
     document.getElementById('lpass').focus();
@@ -1607,10 +1580,13 @@
       var pw=document.getElementById('lpass').value,btn=document.getElementById('loginbtn'),err=document.getElementById('dlgerr');
       if(!pw)return;
       btn.disabled=true;btn.textContent='Checking…';err.textContent='';
-      callScript({action:'login',password:pw,device:deviceLabel()}).then(function(r){
+      var dk='';try{dk=localStorage.getItem('njw-dk')||''}catch(e){}
+      callScript({action:'login',password:pw,device:deviceLabel(),dk:dk}).then(function(r){
         btn.disabled=false;btn.textContent='Sign in';
         if(r.ok&&!r.token)r={ok:false,error:'old_robot'};
         if(!r.ok){err.textContent=errText(r);return}
+        /* This device's key: kept after signing out, so a stranger's wrong guesses never lock it out. */
+        if(/^[a-f0-9]{64}$/.test(r.dk||'')){try{localStorage.setItem('njw-dk',r.dk)}catch(e){}}
         signedIn(r);
       });
     });
@@ -1749,7 +1725,7 @@
   function confirmDelete(n){
     var d=dayByNum(n);if(!d)return;
     openDlg('<div class="dlgbody"><h2 id="dlg-title">Delete '+esc(dayRef(d))+'?</h2>'
-      +'<p>Its '+entriesOf(d).length+' scenes will no longer count as shot. You can add the day back later by pasting the report again.</p>'
+      +'<p>Its '+entriesOf(d).length+' scenes will no longer count as shot. You can put it back from Activity \u203a Recently deleted.</p>'
       +'<p class="dlgerr" id="dlgerr" role="alert"></p>'
       +'<div class="dlgacts"><button type="button" class="btn" data-dlg="close">Keep it</button><button type="button" class="btn danger" data-dlg="delyes" data-day="'+n+'" id="delbtn">Delete Day '+n+'</button></div></div>');
   }
@@ -1767,7 +1743,7 @@
       if(fromDlg)closeDlg();
       if(ui.openDay===n)ui.openDay=null;
       if(!applyServerRows(r)){state.days=state.days.filter(function(d){return d.day!==n});wrote={at:Date.now(),sig:sigOf(state.days)};saveCache();renderAll()}
-      toast('Day '+n+' deleted');
+      toast('Day '+n+' deleted. Put it back from Activity if needed.');
     });
   }
 

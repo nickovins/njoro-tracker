@@ -14,14 +14,16 @@ Put scripts in the scripts folder in Drive, with the episode in the name (`Ep 7`
 
 ## Who can change what
 
-- **Everyone:** sees Scenes (Season 1 to 4, 13 episodes each) and Daily reports. No edit controls.
-- **Team (signed in with the one master password):** adds, updates and deletes daily reports, marks repeated scenes as Reshoot, Duplicate or Continued, runs Check Drive now, uses Post production (52 episodes, editor, sound, weekly TX dates, trailer, dropped scenes, a formatted Excel export with a crew summary) and sees Activity.
-- The master password is the Script Property PASSCODE. Changing it there signs every device out. Activity > Sign everyone out does the same without changing it.
-- A sign-in ends after 30 minutes without use (Script Property IDLE_MINUTES) or after 12 hours. 20 wrong passwords in 15 minutes pause sign-in for 15 minutes. The activity log names the device (for example "Team (iPhone, Safari)").
-- The robot also serves the public read (`?read=1`), so the Sheet can be private.
+- **Everyone:** sees Scenes (Season 1 to 4, 13 episodes each) and Daily reports. No edit controls and no Drive links: the Scripts and Log sheets buttons, script links and log sheet links show only after signing in.
+- **Team (signed in with the master password or their own):** adds, updates and deletes daily reports, marks repeated scenes as Reshoot, Duplicate or Continued, runs Check Drive now, uses Post production (52 episodes, editor, sound, weekly TX dates, trailer, dropped scenes, a formatted Excel export with a crew summary) and sees Activity.
+- The master password is the Script Property PASSCODE. Each person can also have their own: a Script Property `PASS_<NAME>` (like `PASS_GEORGE`, at least 8 characters). Changing or deleting a password signs out the devices that used it. Activity > Sign everyone out signs out every device.
+- A sign-in ends after 30 minutes without use (Script Property IDLE_MINUTES) or after 12 hours. Wrong passwords: 20 in 15 minutes pause sign-in for new devices; a device that signed in before has its own limit (10), so a stranger cannot lock the team out. The activity log names the person and device (for example "George (iPhone, Safari)").
+- The robot also serves the public read (`?read=1`), without Drive links, so the Sheet can be private. A signed-in device gets the links through its sign-in.
+- Remove day keeps a copy in the Sheet's **Deleted** tab; Activity > Recently deleted puts it back.
+- Export > Open in Google Sheets is not shared by link. It opens for the people the POST PRODUCTION EXPORTS folder is shared with.
 - Log sheets attach automatically: on save, and every 30 minutes for days still missing one. Any PDF or image in the log sheets folder (any subfolder) named with the day and date (`Day 9 9.10.2026.pdf`), or the day alone if uploaded within 5 days of the shoot.
 - A scene logged on two days is flagged at the top of the app until someone marks it Reshoot (both count) or Duplicate (only the first day counts). Decisions are in the Repeats tab.
-- Script Properties: PASSCODE, IDLE_MINUTES (optional), POST_TX, POST_EP_<n>, ACT_RING, SESS_GEN. `cleanUp()` removes anything else.
+- Script Properties: PASSCODE, PASS_<NAME> (optional), IDLE_MINUTES (optional), POST_TX, POST_EP_<n>, ACT_RING, SESS_GEN, DEV_KEYS, EXPORT_ID, EXPORT_FOLDER, VO_FIX. `cleanUp()` removes anything else.
 
 The script can edit only this one spreadsheet and can only look at Drive (never change it). It has no Gmail access. Its only outside call is to Google Drive's own export address, to read the text of its temporary script copies. See `apps-script/appsscript.json`.
 

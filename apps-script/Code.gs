@@ -16,18 +16,22 @@
  * It has no access to Gmail, Calendar, Contacts or any other spreadsheet.
  * In Drive it only ever opens the log sheets and scripts folders below.
  *
- * Team sign-in: ONE master password, kept in Project Settings > Script Properties
- * as PASSCODE. It is never in this file or in the app. To change it, change it
- * there: every device is then signed out. A sign-in also ends after IDLE_MINUTES
- * without use, or after 12 hours. The activity log names the device (iPhone, Mac ...).
+ * Team sign-in: the master password PASSCODE, and optionally one password per person
+ * (PASS_GEORGE, PASS_MARY_W ...), all kept in Project Settings > Script Properties.
+ * They are never in this file or in the app. Changing or deleting a password signs out
+ * every device that signed in with it. A sign-in also ends after IDLE_MINUTES without
+ * use, or after 12 hours. The activity log names the person and device ("George (iPhone, Safari)").
  *
  * Script Properties, all of them:
- *   PASSCODE       the master password (the only one to edit by hand)
+ *   PASSCODE       the master password
+ *   PASS_<NAME>    optional: one person's own password (at least 8 characters), like PASS_GEORGE.
+ *                  Delete the line to take that person's access away.
  *   IDLE_MINUTES   optional: minutes without use before sign-out (default 30)
  *   POST_TX        post production: Episode 1 TX date
  *   POST_EP_<n>    post production: one line per episode that has anything filled in
  *   ACT_RING       the last few activity entries (backup of the Activity tab)
  *   SESS_GEN       goes up when someone taps "Sign everyone out"
+ *   DEV_KEYS       devices that signed in before: a stranger's wrong guesses cannot lock them out
  * Run cleanUp() from the editor to remove anything else (older versions left extras).
  *
  * Tabs in the Sheet:
@@ -36,6 +40,7 @@
  *   Repeats    reshoot / duplicate decisions for scenes logged twice
  *   Activity   who signed in and what they changed (written only while
  *              the Sheet is private, so names never sit in a public file)
+ *   Deleted    daily reports taken out with "Delete a day", so they can be put back
  * Post production and accounts live in Script Properties, never in the Sheet.
  */
 
@@ -45,8 +50,9 @@ var SCRIPTS_ROOT_ID = '1keWRPeybj1YUOr8c6MtPNM-tHS-zmnjZ'; // episode scripts fo
 var SCRIPTS_TAB = 'Scripts';
 var REPEATS_TAB = 'Repeats';
 var ACTIVITY_TAB = 'Activity';
+var DELETED_TAB = 'Deleted';
 var TZ = 'Africa/Nairobi';
-var VERSION = 15;
+var VERSION = 16;
 // Drive > 02. NJORO WA UBA SN 25-28 - 2026 > N.W.U Cycle 7 | SCENE TRACKER (holds this Sheet).
 var TRACKER_FOLDER_ID = '18qREQGQgviZBWPuh3e6BwEl8bBhYnRfY';
 var EXPORTS_FOLDER_NAME = 'POST PRODUCTION EXPORTS';
@@ -56,12 +62,12 @@ var SESSION_MAX_HOURS = 12;      // even an active sign-in ends after this
 
 /* ---------- entry points ---------- */
 
-/** GET: version check, or (with ?read=1) everything the app shows to anyone. */
+/** GET: version check, or (with ?read=1) what the app shows to anyone: no Drive links. */
 function doGet(e) {
   var p = (e && e.parameter) || {};
   if (p.read) {
-    try { return json_(readAll_()); }
-    catch (err) { return json_({ ok: false, error: 'server', message: String(err && err.message || err) }); }
+    try { return json_(publicView_(readAll_())); }
+    catch (err) { console.error('read: ' + (err && err.stack || err)); return json_({ ok: false, error: 'server' }); }
   }
   return json_({ ok: true, app: 'njoro-tracker', version: VERSION });
 }
@@ -71,7 +77,7 @@ function doPost(e) {
   try { body = JSON.parse((e && e.postData && e.postData.contents) || '{}'); }
   catch (err) { return json_({ ok: false, error: 'bad_request' }); }
   try { return json_(route_(body || {})); }
-  catch (err) { return json_({ ok: false, error: 'server', message: String(err && err.message || err) }); }
+  catch (err) { console.error('post: ' + (err && err.stack || err)); return json_({ ok: false, error: 'server' }); }
 }
 
 function route_(b) {
@@ -84,6 +90,7 @@ function route_(b) {
   if (!me) return { ok: false, error: 'signed_out' };
 
   if (a === 'check' || a === 'touch') return { ok: true, user: { name: me.name }, idle: idleMinutes_() };
+  if (a === 'read') return readAll_();             // signed in: with the log sheet and script links
   if (a === 'post') return postAll_();
   if (a === 'activity') return readActivity_();
   if (a === 'exportSheet') return exportSheet_(b, me);
@@ -115,8 +122,13 @@ function write_(a, b, me) {
     return withData_(out);
   }
   if (a === 'remove') {
-    out = remove_(Number(b.day));
-    if (out.ok) log_(me.name, 'Removed a day', 'Day ' + out.day);
+    out = remove_(Number(b.day), me);
+    if (out.ok) log_(me.name, 'Removed a day', 'Day ' + out.day + ' (kept in the Deleted tab)');
+    return withData_(out);
+  }
+  if (a === 'restore') {
+    out = restore_(Number(b.row), Number(b.day));
+    if (out.ok) log_(me.name, 'Put back a deleted day', 'Day ' + out.day);
     return withData_(out);
   }
   if (a === 'drive' || a === 'scripts') {
@@ -145,7 +157,8 @@ function write_(a, b, me) {
 
 /** Post production as a Google Sheet. The app builds the same formatted file it downloads
  *  as Excel and sends it here; Google turns it into a Google Sheet in the owner's Drive.
- *  Anyone with the link can view it (the link only goes to the person who exported).
+ *  It is NOT shared by link: it opens for the people the POST PRODUCTION EXPORTS folder
+ *  is shared with (share that folder once with the team's Google accounts).
  *  Only the newest export is kept: the previous one goes to the Drive bin. */
 function exportSheet_(b, me) {
   var b64 = String(b.xlsx || '');
@@ -156,7 +169,6 @@ function exportSheet_(b, me) {
   var meta = { name: name, mimeType: MimeType.GOOGLE_SHEETS };
   if (folder) meta.parents = [folder];
   var file = Drive.Files.create(meta, blob);
-  try { Drive.Permissions.create({ role: 'reader', type: 'anyone' }, file.id); } catch (e) { console.warn('Could not share the export: ' + e); }
   var p = props_(), old = p.getProperty('EXPORT_ID');
   if (old && old !== file.id) { try { Drive.Files.update({ trashed: true }, old); } catch (e) {} }
   p.setProperty('EXPORT_ID', file.id);
@@ -236,6 +248,16 @@ function readAll_() {
   return out;
 }
 
+/** The public read: the same data without Drive links. A report's log sheet becomes
+ *  'linked' (so the app can still say it is there), a script's link becomes ''. */
+function publicView_(d) {
+  var out = {};
+  Object.keys(d).forEach(function (k) { out[k] = d[k]; });
+  out.reports = (d.reports || []).map(function (r) { return [r[0], r[1], String(r[2] || '').trim() ? 'linked' : '']; });
+  out.scripts = (d.scripts || []).map(function (r) { return [r[0], r[1], '', r[3], r[4], r[5]]; });
+  return out;
+}
+
 function tabRows_(sh, cols) {
   if (!sh) return [];
   var last = sh.getLastRow();
@@ -268,46 +290,89 @@ function getChunks_(key) {
 }
 function clearReadCache_() { try { CacheService.getScriptCache().remove('READ_N'); } catch (e) {} }
 
-/* ---------- sign-in: one admin password ---------- */
+/* ---------- sign-in: the master password, or a person's own ---------- */
 
 function props_() { return PropertiesService.getScriptProperties(); }
 function idleMinutes_() { var n = Number(props_().getProperty('IDLE_MINUTES')); return n >= 5 && n <= 720 ? n : IDLE_MINUTES_DEFAULT; }
 function cleanName_(n) { return String(n || '').replace(/[\u0000-\u001F<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40); }
 function now_() { return Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm'); }
-/** Changes when someone taps "Sign everyone out" or the master password is changed
- *  in Script Properties. A sign-in made before the change stops working. */
-function gen_() {
-  var pw = props_().getProperty('PASSCODE') || '';
-  var d = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, 'njw:' + pw).slice(0, 6)
-    .map(function (b) { return ('0' + ((b + 256) % 256).toString(16)).slice(-2); }).join('');
+function hex_(bytes, n) {
+  return bytes.slice(0, n).map(function (b) { return ('0' + ((b + 256) % 256).toString(16)).slice(-2); }).join('');
+}
+function newKey_() { return Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, ''); }
+
+/** Changes when someone taps "Sign everyone out", or when the password a sign-in was made
+ *  with (key: PASSCODE or PASS_<NAME>) is changed or deleted. Older sign-ins stop working. */
+function gen_(key) {
+  var pw = props_().getProperty(key || 'PASSCODE') || '';
+  var d = pw ? hex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, 'njw:' + pw), 6) : 'none';
   return (Number(props_().getProperty('SESS_GEN')) || 0) + ':' + d;
 }
 
-/** A short, harmless description of the device, for the activity log: "iPhone, Safari". */
-function deviceLabel_(d) {
+/** Every password that can sign in: the master one, then each person's own. A person's
+ *  password needs at least 8 characters; a shorter one is ignored. */
+function passwords_() {
+  var all = props_().getProperties(), out = [];
+  if (all.PASSCODE) out.push({ key: 'PASSCODE', pw: all.PASSCODE, name: 'Team' });
+  Object.keys(all).sort().forEach(function (k) {
+    var m = /^PASS_([A-Za-z0-9_]{1,30})$/.exec(k);
+    if (!m || String(all[k]).length < 8) return;
+    var name = m[1].toLowerCase().replace(/_/g, ' ').replace(/\b[a-z]/g, function (c) { return c.toUpperCase(); });
+    out.push({ key: k, pw: all[k], name: name });
+  });
+  return out;
+}
+
+/** A short, harmless description of the device, for the activity log: "George (iPhone, Safari)". */
+function deviceLabel_(d, person) {
   var t = cleanName_(d).replace(/[^A-Za-z0-9 ,.()]/g, '').slice(0, 40);
-  return t ? 'Team (' + t + ')' : 'Team';
+  return (person || 'Team') + (t ? ' (' + t + ')' : '');
+}
+
+/* Devices that signed in before keep a random device key. Only a short hash of it is kept
+   here, with when it was last used. A stranger's wrong guesses can pause sign-in for new
+   devices, but never for these: each known device has its own count of wrong passwords. */
+var DEV_KEYS_MAX = 60;
+function devHash_(dk) {
+  return /^[a-f0-9]{64}$/.test(String(dk || '')) ? hex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, 'dev:' + dk), 12) : '';
+}
+function devKeys_() { try { var o = JSON.parse(props_().getProperty('DEV_KEYS') || '{}'); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } }
+function rememberDevice_(h) {
+  var all = devKeys_();
+  all[h] = Date.now();
+  var keys = Object.keys(all).sort(function (a, b) { return all[b] - all[a]; });
+  keys.slice(DEV_KEYS_MAX).forEach(function (k) { delete all[k]; });
+  props_().setProperty('DEV_KEYS', JSON.stringify(all));
 }
 
 function login_(b) {
-  var who = deviceLabel_(b.device), cache = CacheService.getScriptCache();
-  if (!props_().getProperty('PASSCODE')) return { ok: false, error: 'no_passcode' };
-  // Many wrong passwords in 15 minutes, from anywhere: pause all sign-ins for a while.
-  var fails = Number(cache.get('LOGIN_FAILS')) || 0;
-  if (fails >= 20) { return { ok: false, error: 'locked' }; }
-  if (!same_(String(b.password || ''), props_().getProperty('PASSCODE'))) {
-    cache.put('LOGIN_FAILS', String(fails + 1), 900);
+  var cache = CacheService.getScriptCache(), list = passwords_();
+  if (!list.length) return { ok: false, error: 'no_passcode' };
+  var h = devHash_(b.dk), known = !!(h && devKeys_()[h]);
+  // Wrong passwords in 15 minutes: 10 per known device, 20 for all new devices together.
+  var failKey = known ? 'LF_' + h : 'LOGIN_FAILS', limit = known ? 10 : 20;
+  var fails = Number(cache.get(failKey)) || 0;
+  if (fails >= limit) return { ok: false, error: 'locked' };
+  var pw = String(b.password || ''), hit = null;
+  list.forEach(function (x) { if (same_(pw, x.pw) && !hit) hit = x; });   // checks them all, so timing says nothing
+  if (!hit) {
+    cache.put(failKey, String(fails + 1), 900);
     Utilities.sleep(3000);                     // makes guessing slow
-    log_(who, 'Failed sign-in', 'Wrong password');
+    log_(deviceLabel_(b.device, known ? 'Known device' : 'New device'), 'Failed sign-in', 'Wrong password');
     return { ok: false, error: 'wrong_login' };
   }
-  log_(who, 'Signed in', '');
-  return startSession_(who);
+  var dk = known ? String(b.dk) : newKey_();
+  rememberDevice_(known ? h : devHash_(dk));
+  var who = deviceLabel_(b.device, hit.name);
+  log_(who, 'Signed in', hit.key === 'PASSCODE' ? 'Master password' : 'Own password');
+  var out = startSession_(who, hit.key);
+  out.dk = dk;
+  return out;
 }
 
-function startSession_(who) {
-  var token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
-  var s = { n: who, g: gen_(), c: Date.now(), a: Date.now() };
+function startSession_(who, key) {
+  var token = newKey_();
+  var s = { n: who, k: key, g: gen_(key), c: Date.now(), a: Date.now() };
   CacheService.getScriptCache().put('S_' + token, JSON.stringify(s), idleMinutes_() * 60);
   return { ok: true, token: token, user: { name: who }, idle: idleMinutes_() };
 }
@@ -319,7 +384,7 @@ function session_(token, touch) {
   if (!raw) return null;
   var s; try { s = JSON.parse(raw); } catch (e) { return null; }
   var now = Date.now();
-  if (now - s.a > idleMinutes_() * 60000 || now - s.c > SESSION_MAX_HOURS * 3600000 || s.g !== gen_()) { cache.remove('S_' + token); return null; }
+  if (now - s.a > idleMinutes_() * 60000 || now - s.c > SESSION_MAX_HOURS * 3600000 || s.g !== gen_(s.k)) { cache.remove('S_' + token); return null; }
   if (touch) { s.a = now; cache.put('S_' + token, JSON.stringify(s), idleMinutes_() * 60); }
   return { name: s.n };
 }
@@ -335,11 +400,15 @@ function endSession_(token) {
 /** Run from the editor: removes Script Properties the robot no longer uses and
  *  prints what is left. Never touches PASSCODE, IDLE_MINUTES or post production. */
 function cleanUp() {
-  var p = props_(), all = p.getProperties(), keep = /^(PASSCODE|IDLE_MINUTES|POST_TX|POST_EP_\d+|ACT_RING|SESS_GEN|EXPORT_ID|EXPORT_FOLDER|VO_FIX)$/, gone = [];
+  var p = props_(), all = p.getProperties(), keep = /^(PASSCODE|PASS_.+|IDLE_MINUTES|POST_TX|POST_EP_\d+|ACT_RING|SESS_GEN|DEV_KEYS|EXPORT_ID|EXPORT_FOLDER|VO_FIX)$/, gone = [];
   Object.keys(all).forEach(function (k) { if (!keep.test(k)) { p.deleteProperty(k); gone.push(k); } });
   var left = Object.keys(p.getProperties()).sort();
   console.log('Removed ' + gone.length + ' unused line' + (gone.length === 1 ? '' : 's') + (gone.length ? ': ' + gone.join(', ') : '') + '.');
-  console.log('Left (' + left.length + '): ' + left.join(', ') + '. PASSCODE is the master password. POST_ lines are your post production data: do not delete them.');
+  console.log('Left (' + left.length + '): ' + left.join(', ') + '. PASSCODE is the master password, PASS_ lines are personal passwords. POST_ lines are your post production data: do not delete them.');
+  Object.keys(p.getProperties()).forEach(function (k) {
+    if (/^PASS_/.test(k) && (!/^PASS_[A-Za-z0-9_]{1,30}$/.test(k) || String(p.getProperty(k)).length < 8))
+      console.warn(k + ' does not work: the name may only have letters, digits or _ (like PASS_MARY_W) and the password needs at least 8 characters.');
+  });
   return gone.length;
 }
 
@@ -405,7 +474,7 @@ function readActivity_() {
   } else {
     try { rows = JSON.parse(props_().getProperty('ACT_RING') || '[]'); } catch (e) { rows = []; }
   }
-  return { ok: true, private: priv, rows: rows };
+  return { ok: true, private: priv, rows: rows, deleted: deletedList_() };
 }
 
 /* ---------- repeated scenes: reshoot or duplicate ---------- */
@@ -478,8 +547,12 @@ function linkMissingLogs() {
   return found;
 }
 
+var REPORT_MAX = 20000;   // characters; a long daily report is about 3000
+
 function save_(report, log, originalDay) {
   report = report.replace(/\r/g, '').trim();
+  if (report.length > REPORT_MAX) return { ok: false, error: 'too_long' };
+  if (log.length > 500) return { ok: false, error: 'bad_link' };
   var info = parseHead_(report);
   if (!info.day) return { ok: false, error: 'no_day' };
   if (!/\d+\s*\/\s*\d+/.test(report)) return { ok: false, error: 'no_scenes' };
@@ -525,13 +598,56 @@ function saveMany_(reports) {
   return { ok: any, error: any ? undefined : results[0].error, results: results };
 }
 
-function remove_(day) {
+function remove_(day, me) {
   if (!day) return { ok: false, error: 'bad_request' };
   var sh = sheet_(), rows = rows_(sh).filter(function (r) { return r.day === day; });
   if (!rows.length) return { ok: false, error: 'not_found' };
+  // Copied to the Deleted tab first, so "Recently deleted" in Activity can put it back.
+  var del = deletedTab_(), when = now_();
+  rows.forEach(function (r) {
+    var v = sh.getRange(r.row, 1, 1, 3).getDisplayValues()[0];
+    var to = del.getRange(del.getLastRow() + 1, 1, 1, 5);
+    to.setNumberFormat('@');
+    to.setValues([[when, me ? me.name : '', v[0], v[1], v[2]]]);
+  });
   rows.map(function (r) { return r.row; }).sort(function (a, b) { return b - a; })
     .forEach(function (n) { sh.deleteRow(n); });
+  var last = del.getLastRow();
+  if (last > 501) del.deleteRows(2, last - 501);   // keeps the newest 500
   return { ok: true, day: day, removed: rows.length };
+}
+
+function deletedTab_() {
+  var ss = SpreadsheetApp.getActive(), sh = ss.getSheetByName(DELETED_TAB);
+  if (!sh) {
+    sh = ss.insertSheet(DELETED_TAB);
+    sh.getRange(1, 1, 1, 5).setValues([['Deleted', 'By', 'Saved', 'Report', 'Log sheet']]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+/** The newest deleted reports, newest first: [{row, when, by, day}]. */
+function deletedList_() {
+  var sh = SpreadsheetApp.getActive().getSheetByName(DELETED_TAB);
+  var last = sh ? sh.getLastRow() : 0;
+  if (last < 2) return [];
+  var first = Math.max(2, last - 29);
+  return sh.getRange(first, 1, last - first + 1, 4).getDisplayValues()
+    .map(function (v, i) { return { row: first + i, when: v[0], by: v[1], day: parseHead_(v[3]).day }; })
+    .filter(function (x) { return x.day; }).reverse().slice(0, 20);
+}
+
+/** Puts a deleted report back (row in the Deleted tab). If that day was added again since,
+ *  the deleted copy replaces it, like saving the report again. */
+function restore_(row, day) {
+  var sh = SpreadsheetApp.getActive().getSheetByName(DELETED_TAB);
+  if (!sh || !(row >= 2 && row <= sh.getLastRow() && row === Math.floor(row))) return { ok: false, error: 'not_found' };
+  var v = sh.getRange(row, 1, 1, 5).getDisplayValues()[0];
+  if (parseHead_(v[3]).day !== day) return { ok: false, error: 'not_found' };   // the list was out of date
+  var out = save_(String(v[3] || ''), /^https:\/\/(drive|docs)\.google\.com\//.test(v[4]) ? v[4] : '', 0);
+  if (out.ok) sh.deleteRow(row);
+  return out;
 }
 
 /* ---------- sheet ---------- */
