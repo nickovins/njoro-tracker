@@ -23,7 +23,7 @@
   function isEditor(){return isSignedIn()&&auth.role!=='viewer'}
   function isAdmin(){return isEditor()}
   var installPrompt=null;
-  try{var v=localStorage.getItem('njw-view');if(v==='scenes'||v==='days'||v==='post'||v==='admin')ui.view=v}catch(e){}
+  try{var v=localStorage.getItem('njw-view');if(v==='scenes'||v==='days'||v==='post'||v==='admin'||v==='me')ui.view=v}catch(e){}
   try{var ag=localStorage.getItem('njw-actgroup');if(ag==='day'||ag==='week'||ag==='month')ui.actGroup=ag}catch(e){}
   try{var sv=+localStorage.getItem('njw-season');if(sv>=1&&sv<=4)ui.season=sv}catch(e){}
   /* Post production: signed-in team only. Kept by the Google robot, never in the Sheet. */
@@ -32,7 +32,7 @@
   function seasonEps(s){var a=[];for(var n=(s-1)*PER_SEASON+1;n<=s*PER_SEASON;n++)a.push(n);return a}
   function setSeason(s){ui.season=s;try{localStorage.setItem('njw-season',String(s))}catch(e){}}
   var post={tx:'',eps:{},loaded:false,loading:false,err:'',at:0,openDrop:null,openMove:null};
-  try{var pc=JSON.parse(localStorage.getItem('njw-post')||'null');if(pc&&pc.eps&&auth.token){post.tx=pc.tx||'';post.eps=pc.eps;post.loaded=true;post.at=pc.at||0}}catch(e){}
+  try{var pc=JSON.parse(localStorage.getItem('njw-post')||'null');if(pc&&pc.eps&&auth.token){post.tx=pc.tx||'';post.eps=pc.eps;post.me=pc.me||null;post.notes=pc.notes||[];post.logins=pc.logins||[];post.loaded=true;post.at=pc.at||0}}catch(e){}
   var admin={activity:null,private:null,err:''};
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function normSc(sc){return String(sc).toUpperCase().replace(/^0+(?=\d)/,'')}
@@ -316,13 +316,16 @@
     return '<div class="seg" role="group" aria-label="Season">'+[1,2,3,4].map(function(n){return '<button type="button" data-season="'+n+'" aria-pressed="'+(ui.season===n)+'"><span class="hide-xs">Season </span><span class="show-xs">S</span>'+n+'</button>'}).join('')+'</div>';
   }
   function renderControls(){
-    if((ui.view==='post'&&!isSignedIn())||(ui.view==='admin'&&!isAdmin()))ui.view='scenes';
+    if((ui.view==='post'&&!isEditor())||(ui.view==='admin'&&!isAdmin()))ui.view=isSignedIn()?'me':'scenes';
+    if(ui.view==='me'&&!isSignedIn())ui.view='scenes';
     try{document.body.setAttribute('data-view',ui.view)}catch(e){}
-    var vs=[['scenes','Scenes'],['days','Daily reports']];if(isSignedIn())vs.push(['post','Post production']);if(isAdmin())vs.push(['admin','Activity']);
-    document.getElementById('views').innerHTML=vs.map(function(v){return '<button type="button" data-view="'+v[0]+'" aria-pressed="'+(ui.view===v[0])+'">'+v[1]+'</button>'}).join('');
-    var srch=document.querySelector('.search');if(srch)srch.hidden=ui.view==='post'||ui.view==='admin';
+    var vs=[['scenes','Scenes'],['days','Daily reports']];
+    if(isSignedIn())vs.push(['me',badge(myProfile().animal,'sm')+'<span class="metxt">Signed in as </span>'+esc(myProfile().name)]);
+    if(isEditor())vs.push(['post','Post production']);if(isAdmin())vs.push(['admin','Activity']);
+    document.getElementById('views').innerHTML=vs.map(function(v){return '<button type="button" data-view="'+v[0]+'" aria-pressed="'+(ui.view===v[0])+'"'+(v[0]==='me'?' class="metab"':'')+'>'+v[1]+'</button>'}).join('');
+    var srch=document.querySelector('.search');if(srch)srch.hidden=ui.view==='post'||ui.view==='admin'||ui.view==='me';
     var f=document.getElementById('filters');
-    if(ui.view==='post'){f.innerHTML='';return}
+    if(ui.view==='post'||ui.view==='me'){f.innerHTML='';return}
     if(ui.view!=='scenes'){f.innerHTML='';return}
     f.innerHTML=seasonSeg()+'<label for="f-show" class="sr">Show</label><select id="f-show" autocomplete="off"><option value="all">All scenes</option><option value="todo"'+(ui.show==='todo'?' selected':'')+'>Not shot yet</option><option value="vo"'+(ui.show==='vo'?' selected':'')+'>VOs to record</option><option value="Check"'+(ui.show==='Check'?' selected':'')+'>Needs a check</option><option value="Pulled"'+(ui.show==='Pulled'?' selected':'')+'>Pulled</option><option value="Reshoot"'+(ui.show==='Reshoot'?' selected':'')+'>Reshoots</option></select>';
   }
@@ -538,6 +541,117 @@
   function txHtml(iso){return iso?'<span class="txdate"><span class="wd">'+esc(weekday(iso).slice(0,3))+'</span> '+esc(fmtDate(iso))+'</span>':'<span class="tbc">TBC</span>'}
   function trailerUrl(u){return /^https:\/\/[^\s"'<>]+$/.test(u||'')?u:''}
 
+  /* ---------- people: animal badges, own page, notes ---------- */
+  /* Each person keeps one animal (the Google robot hands them out: the Big 5 first). Drawn on a
+     48x48 grid in white on the person's colour; 'ink' parts take the colour back. */
+  var ANIMALS={
+    lion:{label:'Lion',d:'<path fill="#fff" opacity=".45" d="M24 5l3.6 4.4 5.5-1.6.6 5.7 5.3 2.3-2.6 5.1 2.6 5.1-5.3 2.3-.6 5.7-5.5-1.6L24 43l-3.6-4.4-5.5 1.6-.6-5.7-5.3-2.3 2.6-5.1-2.6-5.1 5.3-2.3.6-5.7 5.5 1.6z"/><circle cx="17.5" cy="16.5" r="3.2" fill="#fff"/><circle cx="30.5" cy="16.5" r="3.2" fill="#fff"/><circle cx="24" cy="25" r="10.5" fill="#fff"/><circle cx="20" cy="23" r="1.5" class="ink"/><circle cx="28" cy="23" r="1.5" class="ink"/><path class="ink" d="M21.5 27.5h5l-2.5 3z"/><path d="M24 30.5v2.2M21.5 33.5q2.5 1.6 5 0" class="inks" stroke-width="1.3" fill="none" stroke-linecap="round"/>'},
+    elephant:{label:'Elephant',d:'<ellipse cx="11.5" cy="22" rx="7.5" ry="10" fill="#fff" opacity=".8"/><ellipse cx="36.5" cy="22" rx="7.5" ry="10" fill="#fff" opacity=".8"/><circle cx="24" cy="20" r="10" fill="#fff"/><path d="M24 26c0 6-1 10 3.5 12.5" stroke="#fff" stroke-width="6" fill="none" stroke-linecap="round"/><circle cx="20" cy="19" r="1.5" class="ink"/><circle cx="28" cy="19" r="1.5" class="ink"/><path d="M19 27.5l-2.5 4M29 27.5l2.5 4" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>'},
+    leopard:{label:'Leopard',d:'<circle cx="15" cy="14.5" r="4.5" fill="#fff"/><circle cx="33" cy="14.5" r="4.5" fill="#fff"/><circle cx="24" cy="25" r="12.5" fill="#fff"/><circle cx="20" cy="22.5" r="1.6" class="ink"/><circle cx="28" cy="22.5" r="1.6" class="ink"/><path class="ink" d="M21.6 27h4.8L24 29.8z"/><circle cx="15.5" cy="25" r="1.4" class="ink" opacity=".7"/><circle cx="32.5" cy="25" r="1.4" class="ink" opacity=".7"/><circle cx="18" cy="16.5" r="1.2" class="ink" opacity=".7"/><circle cx="30" cy="16.5" r="1.2" class="ink" opacity=".7"/><circle cx="24" cy="15" r="1.3" class="ink" opacity=".7"/><circle cx="17" cy="30.5" r="1.1" class="ink" opacity=".7"/><circle cx="31" cy="30.5" r="1.1" class="ink" opacity=".7"/>'},
+    rhino:{label:'Rhino',d:'<ellipse cx="13" cy="17" rx="3" ry="4.5" fill="#fff" transform="rotate(-25 13 17)"/><ellipse cx="35" cy="17" rx="3" ry="4.5" fill="#fff" transform="rotate(25 35 17)"/><ellipse cx="24" cy="28" rx="11.5" ry="10" fill="#fff"/><path fill="#fff" d="M20.5 22.5L24 5.5l3.5 17z"/><path fill="#fff" d="M28.5 21.5l3-6.5 1 7z"/><circle cx="18.5" cy="26" r="1.5" class="ink"/><circle cx="29.5" cy="26" r="1.5" class="ink"/><path d="M20 33q4 2 8 0" class="inks" stroke-width="1.5" fill="none" stroke-linecap="round"/>'},
+    buffalo:{label:'Buffalo',d:'<path fill="#fff" d="M5 15c3 6 9 8 15 6.5 2-.5 2.5-3 4-3s2 2.5 4 3c6 1.5 12-.5 15-6.5-1 6-6 10.5-13 10.5h-12c-7 0-12-4.5-13-10.5z"/><ellipse cx="24" cy="29" rx="8.5" ry="10.5" fill="#fff"/><circle cx="20.5" cy="27" r="1.5" class="ink"/><circle cx="27.5" cy="27" r="1.5" class="ink"/><ellipse cx="24" cy="35" rx="5" ry="3" class="ink" opacity=".35"/>'},
+    cheetah:{label:'Cheetah',d:'<circle cx="15.5" cy="15" r="3.8" fill="#fff"/><circle cx="32.5" cy="15" r="3.8" fill="#fff"/><circle cx="24" cy="25" r="12" fill="#fff"/><circle cx="20" cy="22.5" r="1.6" class="ink"/><circle cx="28" cy="22.5" r="1.6" class="ink"/><path d="M19.8 24.5c-.6 3-1.8 5-3.2 6.5M28.2 24.5c.6 3 1.8 5 3.2 6.5" class="inks" stroke-width="1.6" fill="none" stroke-linecap="round"/><path class="ink" d="M21.6 27.5h4.8L24 30z"/><circle cx="17" cy="17.5" r="1" class="ink" opacity=".6"/><circle cx="31" cy="17.5" r="1" class="ink" opacity=".6"/><circle cx="24" cy="15.5" r="1" class="ink" opacity=".6"/>'},
+    giraffe:{label:'Giraffe',d:'<path d="M19.5 15V8.5M28.5 15V8.5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><circle cx="19.5" cy="8" r="2.4" fill="#fff"/><circle cx="28.5" cy="8" r="2.4" fill="#fff"/><ellipse cx="13" cy="18" rx="4.5" ry="2.4" fill="#fff" transform="rotate(-20 13 18)"/><ellipse cx="35" cy="18" rx="4.5" ry="2.4" fill="#fff" transform="rotate(20 35 18)"/><ellipse cx="24" cy="26" rx="8.5" ry="13" fill="#fff"/><circle cx="20.5" cy="22" r="1.5" class="ink"/><circle cx="27.5" cy="22" r="1.5" class="ink"/><path class="ink" opacity=".45" d="M19 15.5l3.5-1 1 3-3.5 1zM26 17l3 .5-.5 3-3-.5z"/><ellipse cx="24" cy="34" rx="5" ry="3.5" class="ink" opacity=".3"/>'},
+    zebra:{label:'Zebra',d:'<path fill="#fff" d="M18 6l3 8h6l3-8-3 2-3-3-3 3z"/><ellipse cx="14.5" cy="15" rx="3" ry="5" fill="#fff" transform="rotate(-25 14.5 15)"/><ellipse cx="33.5" cy="15" rx="3" ry="5" fill="#fff" transform="rotate(25 33.5 15)"/><ellipse cx="24" cy="26" rx="10" ry="13" fill="#fff"/><path d="M15 21h5M15 26h4M28 21h5M29 26h4M20 14.5l2 4M28 14.5l-2 4" class="inks" stroke-width="2" stroke-linecap="round"/><circle cx="20" cy="23" r="1.5" class="ink"/><circle cx="28" cy="23" r="1.5" class="ink"/><ellipse cx="24" cy="34.5" rx="6" ry="4" class="ink" opacity=".85"/>'}
+  };
+  function animalOf(a){return ANIMALS[a]?a:''}
+  /* size: 'sm' (in a tab or a line), 'md' (lists), 'lg' (own page). */
+  function badge(a,size,title){
+    var an=animalOf(a),cls='badge '+(size||'md')+' an-'+(a&&/^[a-z]+$/.test(a)?a:'none');
+    var inner=an?ANIMALS[an].d:'<circle cx="24" cy="20" r="7" fill="#fff"/><path fill="#fff" d="M11 40c1.5-8 7-11 13-11s11.5 3 13 11z"/>';
+    return '<svg class="'+cls+'" viewBox="0 0 48 48" role="img" aria-label="'+esc(title||(an?ANIMALS[an].label:'Person'))+'"><circle class="bg" cx="24" cy="24" r="24"/>'+inner+'</svg>';
+  }
+  /* "2026-10-22 12:49" from the robot as "Today 12:49" or "22.10.2026 12:49". */
+  function fmtStamp(w){var m=/^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}:\d{2}))?/.exec(w||'');if(!m)return String(w||'');var d=m[1]+'-'+m[2]+'-'+m[3];return (d===todayIso()?'Today':m[3]+'.'+m[2]+'.'+m[1])+(m[4]?' '+m[4]:'')}
+  function animalLabel(a){return ANIMALS[a]?ANIMALS[a].label:''}
+  function myProfile(){var p=(post.me&&post.me.profile)||auth.profile||{};return {name:p.name||String(auth.name||'Team').replace(/\s*\(.*$/,''),animal:p.animal||''}}
+  /* Names compared ignoring capitals, spaces and punctuation, the same way the Google robot does. */
+  function nkey(name){return String(name||'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim()}
+  function profileFor(name){var k=nkey(name);return (post.logins||[]).filter(function(p){return nkey(p.name)===k})[0]||null}
+
+  /* The signed-in person's own page: the next episode on air, their episodes with TX dates,
+     and the producer's notes on them. An editor sees nothing about anyone else's episodes. */
+  function renderMe(){
+    var me=post.me,p=myProfile();
+    if(!me){
+      if(post.loaded&&!post.err)return '<div class="tablewrap"><p class="empty">This page needs the Google script at version 18. Ask the admin to update it.</p></div>';
+      if(post.err)return '<div class="tablewrap"><p class="empty">'+esc(postErrText(post.err))+'</p></div>';
+      return '<div class="tablewrap"><p class="empty">Loading your page…</p></div>';
+    }
+    var t=me.today||todayIso(),mine=me.eps||[],aired=mine.filter(function(x){return x.aired}).length;
+    var nextMine=mine.filter(function(x){return x.tx&&x.tx>=t})[0];
+    var html='<section class="mecard an-'+esc(p.animal||'none')+'">'+badge(p.animal,'lg')
+      +'<div class="mewho"><p class="kick">Signed in as</p><h2>'+esc(p.name)+'</h2><p class="muted">'+esc(animalLabel(p.animal)||'Team')+' · '+(me.admin?'Admin':'Editor, view only')+'</p></div>'
+      +'<dl class="mestats"><div><dt>Assigned</dt><dd>'+mine.length+'</dd></div><div><dt>Aired</dt><dd>'+aired+'</dd></div>'
+      +'<div><dt>Your next TX</dt><dd>'+(nextMine?'Ep '+nextMine.ep+' · '+txHtml(nextMine.tx):'<span class="muted">None</span>')+'</dd></div></dl></section>';
+    var u=me.upNext;
+    html+='<section class="tablewrap mesec"><div class="seasonhead"><b>Up next on air</b>'+(me.airing&&!(u&&u.tx===t)?'<span class="muted">Episode '+esc(me.airing)+' is on air now</span>':'')+'</div>'
+      +(u?'<div class="upnext"><div class="upep"><span class="st '+(u.tx===t?'onair':'next')+'">'+(u.tx===t?'On air today':'Next')+'</span><b>Episode '+esc(u.ep)+'</b> '+txHtml(u.tx)+'</div>'
+        +'<div class="upby"><span class="muted">Edited by</span> '+(u.editors&&u.editors.length?u.editors.map(function(x){return '<span class="who2">'+badge(x.animal,'sm')+esc(x.name)+'</span>'}).join(' '):'<span class="muted">No editor yet</span>')+'</div></div>'
+        :'<p class="empty">The TX date for Episode 1 is not set yet.</p>')+'</section>';
+    html+='<section class="tablewrap mesec"><div class="seasonhead"><b>'+(me.admin?'Episodes you edit':'Your episodes')+'</b><span class="muted">'+(mine.length?mine.length+' assigned, '+aired+' aired':'')+'</span></div>';
+    if(!mine.length)html+='<p class="empty">No episodes are assigned to you yet. They show here when your name is in an episode’s Editor box.</p>';
+    else html+='<table class="metbl"><thead><tr><th>Ep</th><th class="hide-sm">Season</th><th>TX</th><th></th></tr></thead><tbody>'
+      +mine.map(function(x){var st=x.aired?'<span class="st aired">Aired</span>':(x.tx&&nextMine&&x.ep===nextMine.ep?'<span class="st next">Next</span>':(x.tx?'<span class="st up">Coming</span>':''));
+        return '<tr'+(x.aired?' class="past"':'')+'><td><b>'+esc(x.ep)+'</b></td><td class="hide-sm">'+seasonOf(x.ep)+'</td><td>'+txHtml(x.tx)+'</td><td>'+st+'</td></tr>'}).join('')+'</tbody></table>';
+    html+='</section>';
+    var notes=(me.notes||[]).slice().sort(function(a,b){return a.ep-b.ep||(a.at<b.at?1:-1)});
+    html+='<section class="tablewrap mesec"><div class="seasonhead"><b>Notes from the producer / director</b><span class="muted">On your episodes only</span></div>';
+    if(!notes.length)html+='<p class="empty">No notes yet.</p>';
+    else html+='<ul class="notelist">'+notes.map(function(x){
+        return '<li class="'+(x.readAt||me.admin?'':'unread')+'"><div class="nhead"><b>Episode '+esc(x.ep)+'</b><span class="muted">'+esc(fmtStamp(x.at))+'</span></div><p class="ntext">'+esc(x.text)+'</p>'
+          +(me.admin?'':(x.readAt?'<p class="nread">Read ✓ '+esc(fmtStamp(x.readAt))+'</p>':'<button type="button" class="btn small primary" data-noteseen="'+esc(x.id)+'">Mark as read</button>'))+'</li>'}).join('')+'</ul>';
+    return html+'</section>';
+  }
+
+  /* Admin, Post production: the Notes button and panel of one episode. */
+  function noteBtn(n){
+    var list=(post.notes||[]).filter(function(x){return x.ep===n}),eds=peopleIn((post.eps[n]||{}).editor);
+    var unread=list.filter(function(x){return eds.some(function(e){return !(x.read||{})[nkey(e)]})}).length;
+    return '<button type="button" class="dropbtn'+(list.length?' has':'')+'" data-notes="'+n+'" aria-expanded="'+(post.openNotes===n)+'"><span class="dlbl">Notes</span><span>'+(list.length?list.length+' note'+(list.length===1?'':'s')+(unread?' · '+unread+' unread':''):'None')+'</span><span class="chev" aria-hidden="true">›</span></button>';
+  }
+  function notesPanel(n){
+    var list=(post.notes||[]).filter(function(x){return x.ep===n}).sort(function(a,b){return a.at<b.at?1:-1}),eds=peopleIn((post.eps[n]||{}).editor);
+    return '<div class="drophead"><b>Notes on Episode '+n+'</b><span class="muted">Only '+(eds.length?esc(eds.join(' and ')):'the editor (none yet)')+' and you can read these.</span></div>'
+      +(list.length?'<ul class="notelist">'+list.map(function(x){
+          var reads=eds.map(function(e){var w=(x.read||{})[nkey(e)];return '<span class="'+(w?'nread':'nunread')+'">'+(w?'Read by '+esc(e)+' · '+esc(fmtStamp(w)):'Not read by '+esc(e)+' yet')+'</span>'}).join(' ');
+          return '<li><div class="nhead"><span class="muted">'+esc(fmtStamp(x.at))+'</span><button type="button" class="rm" data-notedel="'+esc(x.id)+'" aria-label="Delete this note">✕</button></div><p class="ntext">'+esc(x.text)+'</p>'+(reads?'<p class="nstat">'+reads+'</p>':'')+'</li>'}).join('')+'</ul>'
+        :'<p class="muted nodrop">No notes yet.</p>')
+      +'<form class="noteadd" data-pep="'+n+'"><textarea name="text" rows="3" maxlength="2000" placeholder="Note for the editor of Episode '+n+'" aria-label="New note" required></textarea><button type="submit" class="btn small primary">Add note</button></form>';
+  }
+  function noteCall(body,done){
+    return callScript(body).then(function(r){
+      if(!r.ok){toast(r.error==='bad_request'?'Notes need the Google script at version 18.':errText(r));return r}
+      applyPost(r);renderPostKeep('',true);toast(done);return r;
+    });
+  }
+  function onNoteAdd(form){
+    var ta=form.querySelector('textarea'),btn=form.querySelector('button'),text=ta.value.trim();if(!text)return;
+    btn.disabled=true;btn.textContent='Saving…';
+    noteCall({action:'noteAdd',ep:+form.dataset.pep,text:text},'Note added. Only that episode’s editor sees it.').then(function(r){
+      var f=document.querySelector('form.noteadd[data-pep="'+form.dataset.pep+'"]');if(!f)return;
+      var t2=f.querySelector('textarea'),b2=f.querySelector('button');b2.disabled=false;b2.textContent='Add note';
+      if(r&&r.ok){t2.value='';t2.blur()}
+    });
+  }
+  /* Admin, Post production: editor names that match nobody who can sign in. */
+  function nameCheckHtml(){
+    if(!post.logins||!post.logins.length)return '';
+    var known={};post.logins.forEach(function(p){known[nkey(p.name)]=1});
+    var miss={};for(var n=1;n<=EPISODES;n++)peopleIn((post.eps[n]||{}).editor).forEach(function(e){if(!known[nkey(e)]){(miss[e]=miss[e]||[]).push(n)}});
+    var names=Object.keys(miss);if(!names.length)return '';
+    return '<p class="warnbar"><b>No sign-in for '+(names.length===1?'this editor':'these editors')+':</b> '+names.map(function(e){return esc(e)+' (Ep '+esc(epList(miss[e]))+')'}).join(', ')
+      +'. They cannot see their episodes or notes. Check the spelling, or add <span class="mono">PASS_'+esc(nkey(names[0]).replace(/ /g,'_'))+'</span> in Script Properties.</p>';
+  }
+  /* Admin, Activity: everyone who can sign in, when they last opened the app, unread notes. */
+  function teamHtml(people){
+    return '<section class="tablewrap adm admsec"><div class="seasonhead"><b>Team</b><span class="muted">Everyone who can sign in. Last seen: when they last opened the app.</span></div>'
+      +'<table class="teamtbl"><thead><tr><th>Person</th><th>Last seen</th><th class="num">Eps</th><th class="num">Unread</th></tr></thead><tbody>'
+      +people.map(function(p){return '<tr><td><span class="who2">'+badge(p.animal,'md')+'<span><b>'+esc(p.name)+'</b><br><span class="muted"><span class="anl">'+esc(animalLabel(p.animal))+' · </span>'+(p.role==='admin'?'Admin':'View only')+'</span></span></span></td>'
+        +'<td class="seen">'+(p.lastSeen?esc(fmtStamp(p.lastSeen)):'<span class="muted">Never</span>')+'</td><td class="num">'+esc(p.episodes)+'</td><td class="num">'+(p.unread?'<span class="bad">'+esc(p.unread)+'</span>':'0')+'</td></tr>'}).join('')
+      +'</tbody></table></section>';
+  }
+
   function renderPost(){
     if(!isSignedIn())return '';
     var ed=isEditor();
@@ -554,9 +668,10 @@
       +(air||nx?'<button type="button" class="onairnow" data-act="goto-air"><span class="st onair">'+(air?(txOf(air)===t?'On air today':'On air'):'Airs next')+'</span> Episode '+(air||nx)+' \u00b7 '+esc(weekday(txOf(air||nx)).slice(0,3)+' '+fmtDate(txOf(air||nx)))+(air&&nx?'<span class="muted"> \u00b7 next: Episode '+nx+', '+esc(fmtDate(txOf(nx)))+'</span>':'')+'</button>':'')
       +'<p class="savestate" id="savestate" role="status">'+saveStateHtml()+'</p></div>';
     if(post.err)html+='<p class="sync err">'+esc(postErrText(post.err))+'</p>';
+    html+=nameCheckHtml();
     for(var q0=1;q0<s;q0++)html+=seasonFold(q0);
     html+='<div class="tablewrap seasonopen"><div class="seasonhead"><b>Season '+s+'</b><span class="muted">Episodes '+a+' to '+b+(post.tx?' · '+esc(fmtDate(txOf(a)))+' to '+esc(fmtDate(txOf(b))):'')+'</span></div><table class="posttbl">'
-      +'<thead><tr><th>Ep</th><th>Editor</th><th>Sound</th><th>TX</th><th>Trailer</th><th>Dropped</th></tr></thead><tbody>';
+      +'<thead><tr><th>Ep</th><th>Editor</th><th>Sound</th><th>TX</th><th>Trailer</th><th>Dropped</th><th>Notes</th></tr></thead><tbody>';
     for(var n=a;n<=b;n++){
       var e=post.eps[n]||{},tx=txOf(n),drop=e.dropped||[],open=post.openDrop===n,mv=post.openMove===n,sh=shiftOf(n),tl=trailerUrl(e.trailer);
       var st=n===air?'<span class="st onair">'+(tx===t?'On air today':'On air')+'</span>':(tx?(tx<t?'<span class="st aired">Aired</span>':(n===nx?'<span class="st next">Next</span>':'')):'');
@@ -569,9 +684,11 @@
         +'<td data-l="Sound">'+cellInput(n,'sound',e.sound,'Who is on sound')+'</td>'
         +'<td class="txd" data-l="TX"><div class="txcell">'+(ed&&tx&&n>1?'<button type="button" class="datebtn" data-move="'+n+'" title="Move this episode\u2019s TX date" aria-label="'+esc(weekday(tx)+' '+fmtDate(tx))+', move Episode '+n+' TX">'+txHtml(tx)+'</button>':txHtml(tx))+(ed&&tx&&n>1?'<button type="button" class="movebtn'+(sh?' moved':'')+'" data-move="'+n+'" aria-expanded="'+mv+'" title="Move this episode\u2019s TX date">'+(sh?esc(shiftLabel(sh)):'Move')+'</button>':'')+'</div></td>'
         +'<td data-l="Trailer" class="trl"><div class="trlwrap">'+cellInput(n,'trailer',e.trailer,'Paste link')+(tl?'<a class="go" href="'+esc(tl)+'" target="_blank" rel="noopener" aria-label="Open Episode '+n+' trailer">↗</a>':'')+'</div></td>'
-        +'<td data-l="Dropped" class="drp"><button type="button" class="dropbtn'+(drop.length?' has':'')+'" data-drop="'+n+'" aria-expanded="'+open+'"><span class="dlbl">Dropped scenes</span><span>'+(drop.length?drop.length+' dropped':'None')+'</span><span class="chev" aria-hidden="true">›</span></button></td></tr>';
-      if(open)html+='<tr class="dropdet"><td colspan="6">'+dropPanel(n,drop)+'</td></tr>';
-      if(ed&&mv&&tx)html+='<tr class="dropdet movedet"><td colspan="6">'+movePanel(n)+'</td></tr>';
+        +'<td data-l="Dropped" class="drp"><button type="button" class="dropbtn'+(drop.length?' has':'')+'" data-drop="'+n+'" aria-expanded="'+open+'"><span class="dlbl">Dropped scenes</span><span>'+(drop.length?drop.length+' dropped':'None')+'</span><span class="chev" aria-hidden="true">›</span></button></td>'
+        +'<td data-l="Notes" class="drp">'+noteBtn(n)+'</td></tr>';
+      if(open)html+='<tr class="dropdet"><td colspan="7">'+dropPanel(n,drop)+'</td></tr>';
+      if(ed&&mv&&tx)html+='<tr class="dropdet movedet"><td colspan="7">'+movePanel(n)+'</td></tr>';
+      if(post.openNotes===n)html+='<tr class="dropdet notedet"><td colspan="7">'+notesPanel(n)+'</td></tr>';
     }
     html+='</tbody></table>'+seasonCrewHtml(s)+'</div>';
     for(var q1=s+1;q1<=SEASONS;q1++)html+=seasonFold(q1);
@@ -640,7 +757,7 @@
     if(code==='old'||code==='old_robot')return ERR.old_robot;
     return ERR[code]||ERR.server;
   }
-  function cachePost(){try{localStorage.setItem('njw-post',JSON.stringify({tx:post.tx,eps:post.eps,at:post.at}))}catch(e){}}
+  function cachePost(){try{localStorage.setItem('njw-post',JSON.stringify({tx:post.tx,eps:post.eps,at:post.at,me:post.me,notes:post.notes,logins:post.logins}))}catch(e){}}
   /* Redraw without losing what someone is typing, or where the cursor is. */
   /* ---------- post production: nothing typed is ever lost ----------
      Every keystroke in Editor, Sound or Trailer is kept on this device until Google confirms
@@ -694,24 +811,31 @@
       try{fetch(SCRIPT_URL,{method:'POST',keepalive:true,headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'postSave',token:auth.token,ep:+p[0],set:set})})}catch(e){}
     });
   }
-  function typingInPost(){var a=document.activeElement;return !!(a&&a.matches&&a.matches('input.cell')&&document.getElementById('main').contains(a))}
+  function typingInPost(){var a=document.activeElement;return !!(a&&a.matches&&a.matches('input.cell, form.noteadd textarea')&&document.getElementById('main').contains(a))}
 
   function renderPostKeep(clearForm,force){
+    if(ui.view==='me'){renderMain();return}
     if(ui.view!=='post')return;
     /* Never redraw under someone's fingers: wait until they leave the box. */
     if(!force&&typingInPost()){post.deferRender=true;return}
     post.deferRender=false;
     var main=document.getElementById('main'),keep={},act=document.activeElement,fk='',sel=null;
-    function keyOf2(el){if(el.dataset&&el.dataset.pf)return el.dataset.pep+':'+el.dataset.pf;var fm=el.closest&&el.closest('form.dropadd');return fm?'d'+fm.dataset.pep+':'+el.name:''}
-    main.querySelectorAll('input,select').forEach(function(el){var k=keyOf2(el);if(k&&(el.value!==el.defaultValue||el===act||el.tagName==='SELECT'))keep[k]=el.value});
+    function keyOf2(el){if(el.dataset&&el.dataset.pf)return el.dataset.pep+':'+el.dataset.pf;var fm=el.closest&&el.closest('form.dropadd');if(fm)return 'd'+fm.dataset.pep+':'+el.name;var fn=el.closest&&el.closest('form.noteadd');return fn?'n'+fn.dataset.pep+':'+el.name:''}
+    main.querySelectorAll('input,select,textarea').forEach(function(el){var k=keyOf2(el);if(k&&(el.value!==el.defaultValue||el===act||el.tagName==='SELECT'))keep[k]=el.value});
     if(act&&main.contains(act)){fk=keyOf2(act);try{sel=[act.selectionStart,act.selectionEnd]}catch(e){}}
     if(clearForm)Object.keys(keep).forEach(function(k){if(k.indexOf('d'+clearForm+':')===0)delete keep[k]});
     /* Replacing a box someone is typing in makes the browser fire "change" on it; ignore that. */
     post.redrawing=true;try{main.innerHTML=renderPost()}finally{post.redrawing=false}
-    main.querySelectorAll('input,select').forEach(function(el){var k=keyOf2(el);if(k&&keep[k]!=null)el.value=keep[k];if(k&&k===fk){el.focus();if(sel&&sel[0]!=null)try{el.setSelectionRange(sel[0],sel[1])}catch(e){}}});
+    main.querySelectorAll('input,select,textarea').forEach(function(el){var k=keyOf2(el);if(k&&keep[k]!=null)el.value=keep[k];if(k&&k===fk){el.focus();if(sel&&sel[0]!=null)try{el.setSelectionRange(sel[0],sel[1])}catch(e){}}});
     if(clearForm){var f=main.querySelector('form.dropadd [name="sc"]');if(f)f.focus()}
   }
-  function applyPost(r){post.tx=r.tx||'';post.eps=r.eps||{};post.loaded=true;post.err='';post.at=Date.now();cachePost()}
+  function applyPost(r){
+    post.tx=r.tx||'';post.eps=r.eps||{};post.notes=Array.isArray(r.notes)?r.notes:[];post.logins=Array.isArray(r.logins)?r.logins:[];
+    if(r.me){post.me=r.me;if(r.me.profile&&r.me.profile.name){auth.profile=r.me.profile;saveAuth()}}
+    post.loaded=true;post.err='';post.at=Date.now();cachePost();
+    /* Opening the app or signing in: show the season that is on air now (Season 2 from Episode 14's TX, and so on). */
+    if(ui.autoSeason&&r.me&&r.me.season>=1&&r.me.season<=SEASONS){ui.autoSeason=false;if(ui.season!==r.me.season){setSeason(r.me.season);renderControls()}}
+  }
   /* quiet: the 30-second background refresh, which must not keep a sign-in alive. */
   function loadPost(quiet){
     if(!isSignedIn()||post.loading)return;
@@ -721,7 +845,7 @@
       if(!isSignedIn()){renderAll();return}
       if((post.ver||0)!==ver)return;            /* a save finished meanwhile; its answer is newer */
       if(r.ok)applyPost(r);else if(r.error!=='network'||!post.loaded)post.err=r.error==='bad_request'?'old':r.error;
-      renderPostKeep();
+      if(ui.view==='me')renderMain();else renderPostKeep();
       if(r.ok)flushAll();
     });
   }
@@ -1110,13 +1234,14 @@
   function loadAdmin(){
     if(!isAdmin())return;
     admin.err='';
-    callScript({action:'activity'},true).then(function(r){if(r.ok){admin.activity=r.rows;admin.private=r.private;admin.deleted=Array.isArray(r.deleted)?r.deleted:null}else admin.err=errText(r);if(ui.view==='admin')renderMain()});
+    callScript({action:'activity'},true).then(function(r){if(r.ok){admin.activity=r.rows;admin.private=r.private;admin.deleted=Array.isArray(r.deleted)?r.deleted:null;admin.people=Array.isArray(r.people)?r.people:null}else admin.err=errText(r);if(ui.view==='admin')renderMain()});
   }
   function renderAdmin(){
     if(!isAdmin())return '';
     var html='';
     if(admin.err)html+='<p class="sync err">'+esc(admin.err)+'</p>';
     var act=admin.activity;
+    if(admin.people&&admin.people.length)html+=teamHtml(admin.people);
     html+='<section class="tablewrap adm"><div class="seasonhead"><b>Recent activity</b><span class="muted">Sign-ins and changes, newest first. Also kept in the Activity tab of the Google Sheet.</span><button type="button" class="linkbtn" data-act="adm-refresh">Refresh</button></div>'
       +'<div class="actbar"><span class="muted">Group by</span><div class="seg" role="group" aria-label="Group activity by">'+[['day','Day'],['week','Week'],['month','Month']].map(function(g){return '<button type="button" data-actgroup="'+g[0]+'" aria-pressed="'+((ui.actGroup||'day')===g[0])+'">'+g[1]+'</button>'}).join('')+'</div></div>';
     if(admin.private===false)html+='<p class="warnbar">The Google Sheet is still shared with anyone who has the link, so the Activity tab is off and only the last few entries are kept. In the Sheet: Share > General access > <b>Restricted</b>.</p>';
@@ -1371,11 +1496,12 @@
     });
     app.addEventListener('input',function(e){if(ui.view==='post'&&e.target.matches&&e.target.matches('input.cell'))onCellInput(e.target)});
     app.addEventListener('focusout',function(e){
+      if(e.target.matches&&e.target.matches('form.noteadd textarea')){setTimeout(function(){if(post.deferRender&&!typingInPost())renderPostKeep()},0);return}
       if(!(e.target.matches&&e.target.matches('input.cell')))return;
       flushKey(e.target.dataset.pep+':'+e.target.dataset.pf);
       setTimeout(function(){if(post.deferRender&&!typingInPost())renderPostKeep()},0);
     });
-    app.addEventListener('submit',function(e){var f=e.target.closest&&e.target.closest('form.dropadd');if(f){e.preventDefault();onDropAdd(f)}});
+    app.addEventListener('submit',function(e){var f=e.target.closest&&e.target.closest('form.dropadd');if(f){e.preventDefault();onDropAdd(f);return}var fn=e.target.closest&&e.target.closest('form.noteadd');if(fn){e.preventDefault();onNoteAdd(fn)}});
     app.addEventListener('keydown',function(e){if(e.key==='Enter'&&e.target.matches&&e.target.matches('input.cell')){e.preventDefault();e.target.blur();return}var r=e.target.closest&&e.target.closest('tr.d');if(r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();toggleDay(+r.dataset.day)}});
   }
 
@@ -1395,8 +1521,8 @@
           +'</div>':'')+'</div>':'')
       +folderLink(LOG_FOLDER,'Log sheets ↗','btn')
       +(SCRIPTS_FOLDER?folderLink(SCRIPTS_FOLDER,'Scripts ↗','btn'):'')
-      +(SCRIPT_URL?(signed?'<div class="menuwrap wide"><button type="button" class="btn ghost acct" data-act="acct" aria-haspopup="true" aria-expanded="'+!!ui.acct+'"><span class="who">Signed in</span> <span class="caret2" aria-hidden="true">\u25BE</span></button>'
-          +(ui.acct?'<div class="menu" role="menu"><p class="menuhead"><b>Team sign-in</b><br><span>Signs out by itself after '+esc(auth.idle||30)+' minutes without use.</span></p>'
+      +(SCRIPT_URL?(signed?'<div class="menuwrap wide"><button type="button" class="btn ghost acct" data-act="acct" aria-haspopup="true" aria-expanded="'+!!ui.acct+'">'+badge(myProfile().animal,'sm')+'<span class="who">Signed in as '+esc(myProfile().name)+'</span> <span class="caret2" aria-hidden="true">\u25BE</span></button>'
+          +(ui.acct?'<div class="menu" role="menu"><p class="menuhead"><b>'+esc(myProfile().name)+(isEditor()?' \u00b7 admin':' \u00b7 view only')+'</b><br><span>Signs out by itself after '+esc(auth.idle||30)+' minutes without use.</span></p>'
             +'<button type="button" role="menuitem" data-act="logout" class="del"><b>Sign out</b><span>On this device</span></button></div>':'')+'</div>'
         :'<button type="button" class="btn ghost wide" data-act="login"><span aria-hidden="true">\uD83D\uDD12</span> Sign in</button>'):'');
     document.getElementById('stats').innerHTML+=signed?'<div class="mode">Signed in</div>':'';
@@ -1422,6 +1548,7 @@
     if(ui.view==='post'){renderPostKeep();return}
     var m=document.getElementById('main');
     if(ui.view==='admin'){m.innerHTML=renderAdmin();return}
+    if(ui.view==='me'){m.innerHTML=renderMe();return}
     m.innerHTML=renderRepeats()+(ui.view==='scenes'?renderScenes():renderDays());
   }
   function renderAll(){renderHeader();renderStatus();renderAnswer();renderControls();renderMain()}
@@ -1430,7 +1557,7 @@
     var b=ev.target.closest('button,tr.d');if(!b)return;
     if(b.matches('tr.d')){toggleDay(+b.dataset.day);return}
     if(b.dataset.ep){var e=+b.dataset.ep;ui.openEp=ui.openEp===e?null:e;var q=document.getElementById('q');if(q.value){q.value='';renderAnswer()}renderMain();return}
-    if(b.dataset.view){ui.view=b.dataset.view;try{localStorage.setItem('njw-view',ui.view)}catch(e){}if(ui.view==='post'||ui.view==='admin'){var qq=document.getElementById('q'),ll=document.getElementById('loc');if(qq.value||ll.value){qq.value='';ll.value='';renderAnswer()}}if(ui.view==='post')loadPost();if(ui.view==='admin')loadAdmin();renderControls();renderMain();return}
+    if(b.dataset.view){ui.view=b.dataset.view;try{localStorage.setItem('njw-view',ui.view)}catch(e){}if(ui.view==='post'||ui.view==='admin'||ui.view==='me'){var qq=document.getElementById('q'),ll=document.getElementById('loc');if(qq.value||ll.value){qq.value='';ll.value='';renderAnswer()}}if(ui.view==='post'||ui.view==='me')loadPost();if(ui.view==='admin')loadAdmin();renderControls();renderMain();return}
     if(b.dataset.actkey!=null){
       /* One day, week or month open at a time: opening one folds the others; tapping the open one folds it. */
       var ak=b.dataset.actkey,wasOpen=b.getAttribute('aria-expanded')==='true';
@@ -1443,7 +1570,10 @@
     if(b.dataset.move){var mn=+b.dataset.move;post.openMove=post.openMove===mn?null:mn;post.openDrop=null;renderMain();return}
     if(b.dataset.skip){var sn=+b.dataset.skip;moveTo(sn,isoAdd(txOf(sn),7));return}
     if(b.dataset.unmove){var un=+b.dataset.unmove;moveTo(un,isoAdd(txOf(un-1),7));return}
-    if(b.dataset.drop){var dn=+b.dataset.drop;post.openDrop=post.openDrop===dn?null:dn;post.openMove=null;renderMain();if(post.openDrop){var fi=document.querySelector('form.dropadd [name="sc"]');if(fi&&window.matchMedia('(min-width:561px)').matches)fi.focus()}return}
+    if(b.dataset.notes){var nn=+b.dataset.notes;post.openNotes=post.openNotes===nn?null:nn;post.openDrop=null;post.openMove=null;renderMain();return}
+    if(b.dataset.notedel){if(window.confirm('Delete this note? The editor will no longer see it.'))noteCall({action:'noteDel',id:b.dataset.notedel},'Note deleted');return}
+    if(b.dataset.noteseen){b.disabled=true;b.textContent='Saving\u2026';callScript({action:'noteSeen',id:b.dataset.noteseen}).then(function(r){if(r.ok&&r.me){post.me=r.me;cachePost();renderMain();toast('Marked as read')}else{toast(errText(r));renderMain()}});return}
+    if(b.dataset.drop){var dn=+b.dataset.drop;post.openDrop=post.openDrop===dn?null:dn;post.openMove=null;post.openNotes=null;renderMain();if(post.openDrop){var fi=document.querySelector('form.dropadd [name="sc"]');if(fi&&window.matchMedia('(min-width:561px)').matches)fi.focus()}return}
     if(b.dataset.dropdel){savePost({ep:+b.dataset.pep,set:{dropRemove:b.dataset.dropdel}},'');return}
     var act=b.dataset.act;
     if(act==='menu'){ui.menu=!ui.menu;ui.acct=false;renderHeader();return}
@@ -1464,7 +1594,7 @@
     if(act==='vo-add-save'){var vn=(document.getElementById('vo-name')||{}).value||'',vs=(document.getElementById('vo-sc')||{}).value;
       vn=vn.replace(/[^A-Za-z0-9 '\u2019.\-]/g,'').replace(/\s+/g,' ').trim();if(!vn){toast('Type the name of the voice');return}
       ui.voAdd=null;voFixSet(b.dataset.vep,vs,vn.toUpperCase(),'add');return}
-    if(act==='refresh'){refresh();if(ui.view==='post')loadPost();return}
+    if(act==='refresh'){refresh();if(ui.view==='post'||ui.view==='me')loadPost();return}
     if(act==='add-many'){openAdd('',null,true);return}
     if(act==='pick-edit'||act==='pick-del'){openPicker(act==='pick-del');return}
     if(act==='hide-hint'){try{localStorage.setItem('njw-ios-hint','1')}catch(e){}renderHeader();return}
@@ -1488,7 +1618,7 @@
     return Promise.resolve(legacyCopy(txt));
   }
   function legacyCopy(txt){try{var ta=document.createElement('textarea');ta.value=txt;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();var ok=document.execCommand('copy');ta.remove();return ok}catch(e){return false}}
-  var ERR={wrong_passcode:'That setup passcode is not right.',not_set_up:'The Google robot is not set up yet (no PASSCODE).',wrong_login:'That password is not right.',no_passcode:'No master password is set in Google yet (Script Property PASSCODE).',admin_only:'Only the admin can make changes. Your sign-in is view only.',locked:'Too many wrong passwords. Sign-in is paused on this device for 15 minutes.',too_long:'That report is too long (over 20,000 characters). Paste one day at a time.',signed_out:'You were signed out. Sign in again.',not_allowed:'Only an admin can do that.',bad_name:'Type a name of at least 2 letters.',weak_password:'The new password needs at least 8 characters.',wrong_current:'The current password is not right.',old_robot:'The Google robot is still an old version. Follow the install steps to update it to version 8.',no_day:'No shoot day number found in the report.',no_scenes:'No scenes found in the report. Scenes are written as episode/scene, like 7/4.',bad_link:'The log sheet link must be a Google Drive link.',busy:'Someone else is saving right now. Try again in a moment.',not_found:'That day is not in the tracker any more.',network:'No connection to Google. Check your signal and try again.',server:'Google had a problem saving. Try again in a moment.',bad_link_any:'The trailer link must be a full web link, like https://youtu.be/...',bad_scene:'Type a scene number, like 12 or 12A.',bad_move:'That date could not be saved. Pick a date after the episode before.'};
+  var ERR={wrong_passcode:'That setup passcode is not right.',not_set_up:'The Google robot is not set up yet (no PASSCODE).',wrong_login:'That password is not right.',no_passcode:'No master password is set in Google yet (Script Property PASSCODE).',note_long:'That note is too long (over 2,000 characters).',admin_only:'Only the admin can make changes. Your sign-in is view only.',locked:'Too many wrong passwords. Sign-in is paused on this device for 15 minutes.',too_long:'That report is too long (over 20,000 characters). Paste one day at a time.',signed_out:'You were signed out. Sign in again.',not_allowed:'Only an admin can do that.',bad_name:'Type a name of at least 2 letters.',weak_password:'The new password needs at least 8 characters.',wrong_current:'The current password is not right.',old_robot:'The Google robot is still an old version. Follow the install steps to update it to version 8.',no_day:'No shoot day number found in the report.',no_scenes:'No scenes found in the report. Scenes are written as episode/scene, like 7/4.',bad_link:'The log sheet link must be a Google Drive link.',busy:'Someone else is saving right now. Try again in a moment.',not_found:'That day is not in the tracker any more.',network:'No connection to Google. Check your signal and try again.',server:'Google had a problem saving. Try again in a moment.',bad_link_any:'The trailer link must be a full web link, like https://youtu.be/...',bad_scene:'Type a scene number, like 12 or 12A.',bad_move:'That date could not be saved. Pick a date after the episode before.'};
   function errText(r){return ERR[r&&r.error]||ERR.server}
   /* quiet: a background check that must not count as someone using the app. */
   function callScript(body,quiet){
@@ -1510,12 +1640,12 @@
   /* ---------- signing in and out ---------- */
   function saveAuth(){try{if(auth.token)localStorage.setItem('njw-auth',JSON.stringify(auth));else localStorage.removeItem('njw-auth')}catch(e){}}
   function signedIn(r){
-    auth={token:r.token,name:(r.user&&r.user.name)||'Team',idle:r.idle||30,role:r.role==='viewer'?'viewer':'admin'};saveAuth();
+    auth={token:r.token,name:(r.user&&r.user.name)||'Team',idle:r.idle||30,role:r.role==='viewer'?'viewer':'admin',profile:r.profile||null};saveAuth();
     lastAct=Date.now();lastPing=Date.now();try{localStorage.setItem('njw-last',String(lastAct))}catch(e){}
-    post.loaded=false;admin.activity=null;
-    /* Back to the tab they were on before signing in (Post production or Activity are hidden until then). */
-    try{var lv=localStorage.getItem('njw-view');if(lv==='post'||lv==='admin')ui.view=lv}catch(e){}
-    closeDlg();renderAll();loadPost();if(ui.view==='admin')loadAdmin();
+    post.loaded=false;post.me=null;admin.activity=null;
+    /* The admin lands on Post production, everyone else on their own page; both at the season on air. */
+    ui.view=auth.role==='viewer'?'me':'post';ui.autoSeason=true;try{localStorage.setItem('njw-view',ui.view)}catch(e){}
+    closeDlg();renderAll();loadPost();
     refresh(true);   /* fetches the log sheet and script links, which only a signed-in device gets */
     toast('Signed in');
   }
@@ -1526,12 +1656,12 @@
     var mins=auth.idle||30;
     auth={token:'',name:'',idle:mins};saveAuth();
     try{localStorage.removeItem('njw-post')}catch(e){}
-    post.tx='';post.eps={};post.loaded=false;post.err='';post.openDrop=null;post.openMove=null;
+    post.tx='';post.eps={};post.loaded=false;post.err='';post.openDrop=null;post.openMove=null;post.me=null;post.notes=[];post.logins=[];post.openNotes=null;
     /* Drive links stay off this device once it is signed out. */
     state.rows.forEach(function(r){if(r.log)r.log='linked'});state.days.forEach(function(d){if(d.log)d.log='linked'});
     Object.keys(state.scripts||{}).forEach(function(k){state.scripts[k].url=''});saveCache();
     admin.activity=null;ui.confirmDel=null;ui.menu=false;ui.acct=false;
-    if(ui.view==='post'||ui.view==='admin')ui.view='scenes';
+    if(ui.view==='post'||ui.view==='admin'||ui.view==='me')ui.view='scenes';
     closeDlg();renderAll();
     if(why==='idle'||why==='expired')openDlg('<div class="dlgbody"><h2 id="dlg-title">Signed out</h2><p>'+(why==='idle'?'You were signed out after '+esc(mins)+' minutes without using the app.':'Your sign-in ended. This happens after '+esc(mins)+' minutes without use, after 12 hours, or when the master password is changed.')+'</p><p class="muted">Anyone can still see scenes and daily reports. Sign in again to make changes.</p><div class="dlgacts"><button type="button" class="btn" data-dlg="close">OK</button><button type="button" class="btn primary" data-act="login" data-dlg="relogin">Sign in again</button></div></div>');
     else toast('Signed out on this device');
@@ -1576,7 +1706,7 @@
     openDlg('<form class="dlgbody" id="loginform"><div class="dlghead"><h2 id="dlg-title">Team sign-in</h2><button type="button" class="x" data-dlg="close" aria-label="Close">\u2715</button></div>'
       +'<p class="muted">Shows scripts, log sheets and Post production on this device. The admin can also make changes.</p>'
       +'<input type="text" autocomplete="username" value="team" hidden>'
-      +'<label class="fld">Password<input id="lpass" type="password" autocomplete="current-password" required></label>'
+      +'<label class="fld" for="lpass">Password</label><div class="pwrow"><input id="lpass" type="password" autocomplete="current-password" required><button type="button" class="btn small pwtoggle" data-dlg="pwshow" aria-pressed="false" aria-controls="lpass">Show</button></div>'
       +'<p class="muted">Your own password, or the team\u2019s master password.</p>'
       +'<p class="dlgerr" id="dlgerr" role="alert"></p>'
       +'<div class="dlgacts"><button type="button" class="btn" data-dlg="close">Cancel</button><button type="submit" class="btn primary" id="loginbtn">Sign in</button></div></form>');
@@ -1759,6 +1889,7 @@
     if(a==='close'){closeDlg();return}
     if(a==='editday'){var dd=dayByNum(+b.dataset.day);if(dd)openAdd(dd.raw,dd.day);return}
     if(a==='relogin'){openLogin();return}
+    if(a==='pwshow'){var pi=document.getElementById('lpass');if(!pi)return;var show=pi.type==='password';pi.type=show?'text':'password';b.textContent=show?'Hide':'Show';b.setAttribute('aria-pressed',String(show));pi.focus();return}
     if(a==='clear'){var ta=document.getElementById('rep');ta.value='';if(draftKey()){try{localStorage.removeItem(draftKey())}catch(e){}}preview();ta.focus();return}
     if(a==='paste'){navigator.clipboard.readText().then(function(t){var ta=document.getElementById('rep');ta.value=t;if(draftKey()){try{localStorage.setItem(draftKey(),t)}catch(e){}}preview()},function(){var ta=document.getElementById('rep');ta.focus();document.getElementById('dlgerr').textContent='Paste was blocked. Long-press in the box and choose Paste.'});return}
     if(a==='save'){saveReport();return}
@@ -1777,7 +1908,7 @@
   window.addEventListener('offline',function(){ui.offline=true;renderStatus()});
   /* Stay current while the app is open: check every 30 seconds, and straight away when it comes back to the front. */
   document.addEventListener('visibilitychange',function(){if(!document.hidden&&navigator.onLine&&Date.now()-(state.fetchedAt||0)>15000)refresh(true)});
-  setInterval(function(){if(!document.hidden&&navigator.onLine){refresh(true);if(ui.view==='post'&&!post.saving)loadPost(true)}},30000);
+  setInterval(function(){if(!document.hidden&&navigator.onLine){refresh(true);if((ui.view==='post'||ui.view==='me')&&!post.saving)loadPost(true)}},30000);
   document.addEventListener('click',function(e){if((ui.menu||ui.acct)&&!(e.target.closest&&e.target.closest('.menuwrap'))){ui.menu=false;ui.acct=false;renderHeader()}});
   document.addEventListener('keydown',function(e){if(e.key==='Escape'&&ui.menu){ui.menu=false;renderHeader()}});
 
@@ -1791,7 +1922,7 @@
   renderAll();
   idleCheck();
   refresh();
-  if(ui.view==='post')loadPost();
+  if(isSignedIn()){ui.autoSeason=true;loadPost(true)}
   if(ui.view==='admin')loadAdmin();
   if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').catch(function(){});
   window.__njw={state:state,buildDays:buildDays,parseReport:parseReport,refresh:refresh,reportWithContinued:reportWithContinued};

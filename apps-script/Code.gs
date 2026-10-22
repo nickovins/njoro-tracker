@@ -34,6 +34,9 @@
  *   ACT_RING       the last few activity entries (backup of the Activity tab)
  *   SESS_GEN       goes up when someone taps "Sign everyone out"
  *   DEV_KEYS       devices that signed in before: a stranger's wrong guesses cannot lock them out
+ *   ADMIN_NAME     optional: the admin's name in the app (default Nick)
+ *   ANIMALS        each person's animal and colour (Big 5 first), kept so it never changes
+ *   LAST_SEEN      when each person last opened the app
  * Run cleanUp() from the editor to remove anything else (older versions left extras).
  *
  * Tabs in the Sheet:
@@ -43,6 +46,8 @@
  *   Activity   who signed in and what they changed (written only while
  *              the Sheet is private, so names never sit in a public file)
  *   Deleted    daily reports taken out with "Delete a day", so they can be put back
+ *   Notes      producer / director notes per episode: written by the admin, read by that
+ *              episode's editor (who marks them read) and the admin
  * Post production and accounts live in Script Properties, never in the Sheet.
  */
 
@@ -54,7 +59,7 @@ var REPEATS_TAB = 'Repeats';
 var ACTIVITY_TAB = 'Activity';
 var DELETED_TAB = 'Deleted';
 var TZ = 'Africa/Nairobi';
-var VERSION = 17;
+var VERSION = 18;
 // Drive > 02. NJORO WA UBA SN 25-28 - 2026 > N.W.U Cycle 7 | SCENE TRACKER (holds this Sheet).
 var TRACKER_FOLDER_ID = '18qREQGQgviZBWPuh3e6BwEl8bBhYnRfY';
 var EXPORTS_FOLDER_NAME = 'POST PRODUCTION EXPORTS';
@@ -91,9 +96,12 @@ function route_(b) {
   var me = session_(b.token, b.touch !== false);
   if (!me) return { ok: false, error: 'signed_out' };
 
-  if (a === 'check' || a === 'touch') return { ok: true, user: { name: me.name }, role: me.role, idle: idleMinutes_() };
+  if (a === 'check' || a === 'touch' || a === 'read' || a === 'post') seen_(me.person);
+  if (a === 'check' || a === 'touch') return { ok: true, user: { name: me.name }, role: me.role, profile: profileOf_(me.person), idle: idleMinutes_() };
   if (a === 'read') return readAll_();             // signed in: with the log sheet and script links
-  if (a === 'post') return postAll_();
+  // Post production: the admin gets everything; anyone else only their own page (see mePage_).
+  if (a === 'post') return me.role === 'admin' ? postAll_(me) : { ok: true, me: mePage_(me.person, false) };
+  if (a === 'noteSeen') return noteSeen_(b, me);
   if (a === 'note') { if (String(b.what || '') === 'export') log_(me.name, 'Exported post production to Excel', ''); return { ok: true }; }
   // Everything below is for the admin (master password) only: changes, Activity, exports to Drive.
   if (me.role !== 'admin') return { ok: false, error: 'admin_only' };
@@ -146,6 +154,8 @@ function write_(a, b, me) {
     return withData_(out);
   }
   if (a === 'postSave') return postSave_(b, me);
+  if (a === 'noteAdd') return noteAdd_(b, me);
+  if (a === 'noteDel') return noteDel_(b, me);
   if (a === 'vofix') return withData_(voFix_(b, me));
   if (a === 'signoutAll') {
     props_().setProperty('SESS_GEN', String((Number(props_().getProperty('SESS_GEN')) || 0) + 1));
@@ -313,7 +323,7 @@ function gen_(key) {
  *  password needs at least 8 characters; a shorter one is ignored. */
 function passwords_() {
   var all = props_().getProperties(), out = [];
-  if (all.PASSCODE) out.push({ key: 'PASSCODE', pw: all.PASSCODE, name: 'Team' });
+  if (all.PASSCODE) out.push({ key: 'PASSCODE', pw: all.PASSCODE, name: adminName_() });
   Object.keys(all).sort().forEach(function (k) {
     var m = /^PASS_([A-Za-z0-9_]{1,30})$/.exec(k);
     if (!m || String(all[k]).length < 8) return;
@@ -368,12 +378,13 @@ function login_(b) {
   var out = startSession_(who, hit.key);
   out.dk = dk;
   out.role = hit.key === 'PASSCODE' ? 'admin' : 'viewer';
+  out.profile = profileOf_(hit.name);
   return out;
 }
 
 function startSession_(who, key) {
   var token = newKey_();
-  var s = { n: who, k: key, g: gen_(key), c: Date.now(), a: Date.now() };
+  var s = { n: who, k: key, p: personOfKey_(key), g: gen_(key), c: Date.now(), a: Date.now() };
   CacheService.getScriptCache().put('S_' + token, JSON.stringify(s), idleMinutes_() * 60);
   return { ok: true, token: token, user: { name: who }, idle: idleMinutes_() };
 }
@@ -387,7 +398,7 @@ function session_(token, touch) {
   var now = Date.now();
   if (now - s.a > idleMinutes_() * 60000 || now - s.c > SESSION_MAX_HOURS * 3600000 || s.g !== gen_(s.k)) { cache.remove('S_' + token); return null; }
   if (touch) { s.a = now; cache.put('S_' + token, JSON.stringify(s), idleMinutes_() * 60); }
-  return { name: s.n, role: !s.k || s.k === 'PASSCODE' ? 'admin' : 'viewer' };
+  return { name: s.n, person: s.p || personOfKey_(s.k || 'PASSCODE'), role: !s.k || s.k === 'PASSCODE' ? 'admin' : 'viewer' };
 }
 
 function endSession_(token) {
@@ -401,7 +412,7 @@ function endSession_(token) {
 /** Run from the editor: removes Script Properties the robot no longer uses and
  *  prints what is left. Never touches PASSCODE, IDLE_MINUTES or post production. */
 function cleanUp() {
-  var p = props_(), all = p.getProperties(), keep = /^(PASSCODE|PASS_.+|IDLE_MINUTES|POST_TX|POST_EP_\d+|ACT_RING|SESS_GEN|DEV_KEYS|EXPORT_ID|EXPORT_FOLDER|VO_FIX)$/, gone = [];
+  var p = props_(), all = p.getProperties(), keep = /^(PASSCODE|PASS_.+|IDLE_MINUTES|POST_TX|POST_EP_\d+|ACT_RING|SESS_GEN|DEV_KEYS|ADMIN_NAME|ANIMALS|LAST_SEEN|EXPORT_ID|EXPORT_FOLDER|VO_FIX)$/, gone = [];
   Object.keys(all).forEach(function (k) { if (!keep.test(k)) { p.deleteProperty(k); gone.push(k); } });
   var left = Object.keys(p.getProperties()).sort();
   console.log('Removed ' + gone.length + ' unused line' + (gone.length === 1 ? '' : 's') + (gone.length ? ': ' + gone.join(', ') : '') + '.');
@@ -475,7 +486,7 @@ function readActivity_() {
   } else {
     try { rows = JSON.parse(props_().getProperty('ACT_RING') || '[]'); } catch (e) { rows = []; }
   }
-  return { ok: true, private: priv, rows: rows, deleted: deletedList_() };
+  return { ok: true, private: priv, rows: rows, deleted: deletedList_(), people: peopleList_() };
 }
 
 /* ---------- repeated scenes: reshoot or duplicate ---------- */
@@ -1020,14 +1031,14 @@ function voices_(text, estab) {
  *  episode before, plus "shift" days when that episode was moved (a skipped week = 7). */
 var DROP_WHY_ = ['Length', 'Performance', 'Other'];
 
-function postAll_() {
+function postAll_(me) {
   var props = props_().getProperties(), eps = {};
   Object.keys(props).forEach(function (k) {
     var m = /^POST_EP_(\d+)$/.exec(k);
     if (!m) return;
     try { eps[m[1]] = JSON.parse(props[k]); } catch (e) {}
   });
-  return { ok: true, tx: props.POST_TX || '', eps: eps };
+  return { ok: true, tx: props.POST_TX || '', eps: eps, notes: notesAll_(), logins: loginsList_(), me: me ? mePage_(me.person, true) : null };
 }
 
 function clip_(v, n) { return String(v == null ? '' : v).replace(/[\u0000-\u001F]/g, ' ').trim().slice(0, n); }
@@ -1083,9 +1094,188 @@ function postSave_(b, me) {
     else props.setProperty(key, JSON.stringify(cur));
     if (notes.length) log_(who, 'Post production', 'Episode ' + ep + ' ' + notes.join(', '));
   }
-  return postAll_();
+  return postAll_(me);
 }
 
 function json_(o) {
   return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
 }
+
+/* ---------- people: names, animals, last seen ---------- */
+
+function adminName_() { return cleanName_(props_().getProperty('ADMIN_NAME') || 'Nick') || 'Nick'; }
+/** The person a password belongs to: the admin for PASSCODE, "Mary W" for PASS_MARY_W. */
+function personOfKey_(key) {
+  if (!key || key === 'PASSCODE') return adminName_();
+  var m = /^PASS_([A-Za-z0-9_]{1,30})$/.exec(key);
+  return m ? m[1].toLowerCase().replace(/_/g, ' ').replace(/\b[a-z]/g, function (c) { return c.toUpperCase(); }) : 'Team';
+}
+/** Names compared ignoring capitals, spaces and punctuation: "Mary W" = "MARY_W" = "mary  w". */
+function nkey_(name) { return String(name || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim(); }
+/** The names in an Editor box: "George & Ted", "George, Ted", "George and Ted". Same rule as the app. */
+function peopleIn_(v) {
+  return String(v || '').split(/\s*(?:[,\/&+;]|\band\b)\s*/i).map(function (x) { return x.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
+}
+
+/* Each person keeps one animal and colour for good. The Big 5 go to the first five people
+   (the app knows the colours); anyone after them gets another Kenyan animal. */
+var ANIMALS_DEFAULT = { 'NICK': 'lion', 'GEORGE': 'elephant', 'TED': 'leopard', 'SLEDGE': 'rhino', 'NGUGI': 'buffalo' };
+var ANIMALS_ORDER = ['lion', 'elephant', 'leopard', 'rhino', 'buffalo', 'cheetah', 'giraffe', 'zebra', 'hippo', 'crocodile', 'hyena', 'ostrich'];
+function animals_() {
+  var o = null; try { o = JSON.parse(props_().getProperty('ANIMALS') || 'null'); } catch (e) {}
+  if (!o || typeof o !== 'object') o = {};
+  Object.keys(ANIMALS_DEFAULT).forEach(function (k) { if (!o[k]) o[k] = ANIMALS_DEFAULT[k]; });
+  return o;
+}
+function profileOf_(name) {
+  var k = nkey_(name), all = animals_();
+  if (!k) return { name: name || '', animal: '' };
+  if (!all[k]) {
+    var used = {}; Object.keys(all).forEach(function (x) { used[all[x]] = 1; });
+    var free = ANIMALS_ORDER.filter(function (a) { return !used[a]; });
+    all[k] = free[0] || ANIMALS_ORDER[5 + Object.keys(all).length % (ANIMALS_ORDER.length - 5)];
+    props_().setProperty('ANIMALS', JSON.stringify(all));
+  }
+  return { name: name, animal: all[k] };
+}
+/** Everyone who can sign in, admin first: [{name, animal, role}]. */
+function loginsList_() {
+  return passwords_().map(function (x) {
+    var p = profileOf_(x.name); p.role = x.key === 'PASSCODE' ? 'admin' : 'viewer'; return p;
+  });
+}
+
+/** Remembers when a person last opened the app (at most one write every 5 minutes each). */
+function seen_(person) {
+  var k = nkey_(person), c = CacheService.getScriptCache();
+  if (!k || c.get('LS_' + k)) return;
+  c.put('LS_' + k, '1', 300);
+  try {
+    var all = {}; try { all = JSON.parse(props_().getProperty('LAST_SEEN') || '{}') || {}; } catch (e) {}
+    all[k] = now_();
+    props_().setProperty('LAST_SEEN', JSON.stringify(all));
+  } catch (e) {}
+}
+/** For Activity: each login with when they last opened the app and how many notes they have not read. */
+function peopleList_() {
+  var seen = {}; try { seen = JSON.parse(props_().getProperty('LAST_SEEN') || '{}') || {}; } catch (e) {}
+  var eps = postEpsOf_(), notes = notesAll_();
+  return loginsList_().map(function (p) {
+    var k = nkey_(p.name), mine = epsOfPerson_(k, eps);
+    p.lastSeen = seen[k] || '';
+    p.episodes = mine.length;
+    p.unread = notes.filter(function (n) { return mine.indexOf(n.ep) >= 0 && !(n.read || {})[k]; }).length;
+    return p;
+  });
+}
+
+/* ---------- a person's own page ---------- */
+
+function postEpsOf_() {
+  var props = props_().getProperties(), eps = {};
+  Object.keys(props).forEach(function (k) {
+    var m = /^POST_EP_(\d+)$/.exec(k);
+    if (m) { try { eps[m[1]] = JSON.parse(props[k]) || {}; } catch (e) {} }
+  });
+  return eps;
+}
+function epsOfPerson_(k, eps) {
+  var out = [];
+  for (var n = 1; n <= EPISODES; n++) {
+    if (peopleIn_((eps[n] || {}).editor).some(function (x) { return nkey_(x) === k; })) out.push(n);
+  }
+  return out;
+}
+function isoAdd_(iso, days) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+  if (!m) return '';
+  var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + days));
+  return d.getUTCFullYear() + '-' + ('0' + (d.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + d.getUTCDate()).slice(-2);
+}
+/** TX date of every episode, the same way the app works it out: Episode 1 on POST_TX, each
+ *  one after it a week later plus the days it was moved ("shift"). [1..52], '' = not set. */
+function txAll_(tx1, eps) {
+  var out = [''], d = tx1 || '';
+  for (var n = 1; n <= EPISODES; n++) {
+    if (n > 1 && d) d = isoAdd_(d, 7 + (Number((eps[n] || {}).shift) || 0));
+    out.push(d);
+  }
+  return out;
+}
+
+/** What one person sees on their own page: the next episode to air (date and editor), their
+ *  own episodes with TX dates, and the producer's notes on them. Nothing about anyone else's
+ *  episodes, sound, trailers or dropped scenes. */
+function mePage_(person, isAdmin) {
+  var eps = postEpsOf_(), tx = txAll_(props_().getProperty('POST_TX') || '', eps), k = nkey_(person);
+  var today = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'), mine = epsOfPerson_(k, eps);
+  var next = 0, airing = 0;
+  for (var n = 1; n <= EPISODES; n++) {
+    if (tx[n] && tx[n] <= today) airing = n;
+    if (!next && tx[n] && tx[n] >= today) next = n;
+  }
+  var upNext = next ? { ep: next, tx: tx[next], editors: peopleIn_((eps[next] || {}).editor).map(function (x) { return profileOf_(x); }) } : null;
+  var notes = notesAll_().filter(function (x) { return mine.indexOf(x.ep) >= 0; }).map(function (x) {
+    return { id: x.id, ep: x.ep, text: x.text, at: x.at, readAt: (x.read || {})[k] || '' };
+  });
+  return {
+    profile: profileOf_(person), admin: !!isAdmin, today: today,
+    upNext: upNext, airing: airing, season: Math.min(4, Math.max(1, Math.ceil((airing || next || 1) / 13))),
+    eps: mine.map(function (n) { return { ep: n, tx: tx[n], aired: !!(tx[n] && tx[n] <= today) }; }),
+    notes: notes
+  };
+}
+
+/* ---------- producer / director notes ---------- */
+
+var NOTES_TAB = 'Notes', NOTE_MAX = 2000;
+function notesTab_() {
+  var ss = SpreadsheetApp.getActive(), sh = ss.getSheetByName(NOTES_TAB);
+  if (!sh) {
+    sh = ss.insertSheet(NOTES_TAB);
+    sh.getRange(1, 1, 1, 5).setValues([['Id', 'Episode', 'Note', 'Written', 'Read by']]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+/** Every note, oldest first: [{row, id, ep, text, at, read: {NAME: when}}]. */
+function notesAll_() {
+  var sh = SpreadsheetApp.getActive().getSheetByName(NOTES_TAB);
+  return tabRows_(sh, 5).map(function (v, i) {
+    var read = {}; try { read = JSON.parse(v[4] || '{}') || {}; } catch (e) {}
+    return { row: i + 2, id: v[0], ep: Number(v[1]) || 0, text: v[2], at: v[3], read: read };
+  }).filter(function (x) { return x.id && x.ep; });
+}
+function noteAdd_(b, me) {
+  var ep = Number(b.ep), text = String(b.text || '').replace(/\r/g, '').replace(/[\u0000-\u0008\u000B-\u001F]/g, ' ').trim();
+  if (!(ep >= 1 && ep <= EPISODES && ep === Math.floor(ep)) || !text) return { ok: false, error: 'bad_request' };
+  if (text.length > NOTE_MAX) return { ok: false, error: 'note_long' };
+  var sh = notesTab_(), r = sh.getRange(sh.getLastRow() + 1, 1, 1, 5);
+  r.setNumberFormat('@');
+  r.setValues([[Utilities.getUuid().slice(0, 8), String(ep), text, now_(), '{}']]);
+  log_(me.name, 'Wrote a note', 'Episode ' + ep);
+  return postAll_(me);
+}
+function noteDel_(b, me) {
+  var hit = notesAll_().filter(function (x) { return x.id === String(b.id || ''); })[0];
+  if (!hit) return { ok: false, error: 'not_found' };
+  notesTab_().deleteRow(hit.row);
+  log_(me.name, 'Deleted a note', 'Episode ' + hit.ep);
+  return postAll_(me);
+}
+/** The editor of that episode marks a note as read. Nobody else can. */
+function noteSeen_(b, me) {
+  var k = nkey_(me.person), lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return { ok: false, error: 'busy' };
+  try {
+    var hit = notesAll_().filter(function (x) { return x.id === String(b.id || ''); })[0];
+    if (!hit || epsOfPerson_(k, postEpsOf_()).indexOf(hit.ep) < 0) return { ok: false, error: 'not_found' };
+    if (!hit.read[k]) {
+      hit.read[k] = now_();
+      var c = notesTab_().getRange(hit.row, 5); c.setNumberFormat('@'); c.setValue(JSON.stringify(hit.read));
+      log_(me.name, 'Read a note', 'Episode ' + hit.ep);
+    }
+  } finally { lock.releaseLock(); }
+  return { ok: true, me: mePage_(me.person, me.role === 'admin') };
+}
+

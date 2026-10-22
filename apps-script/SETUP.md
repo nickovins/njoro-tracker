@@ -1,10 +1,22 @@
-# Installing the tracker update (Google robot version 17)
+# Installing the tracker update (Google robot version 18)
 
 About 15 minutes, on a computer, signed in to the Google account that owns the
 "Njoro wa Uba Scene Tracker Data" Sheet (nicholaskibathi@gmail.com).
 
 Sheet: https://docs.google.com/spreadsheets/d/13mpLW2iFSSqDja--dwxXEEz_jVpjOeDudyWYy0fvT3I/edit
 App: https://nickovins.github.io/njoro-tracker/
+
+What changed in version 18:
+- Each person has their own page, **Signed in as <name>**, with their animal badge and colour
+  (Nick Lion, George Elephant, Ted Leopard, Sledge Rhino, Ngugi Buffalo; anyone added later gets a
+  cheetah, giraffe or zebra). It shows the next episode on air (date and editor), their own
+  episodes with TX dates (assigned and aired), and the producer's notes on their episodes.
+- Editors no longer see Post production or Activity. Only the admin does.
+- **Notes:** in Post production, open an episode and tap **Notes** to write one. Only that
+  episode's editor and you can read it. You see when they marked it read.
+- Activity > **Team** shows when each person last opened the app and how many notes they have not read.
+- Post production warns you when an Editor name matches nobody who can sign in.
+- After signing in, the admin lands on Post production at the season that is on air.
 
 What changed in version 17: personal passwords (`PASS_GEORGE` ...) are **view only**. They see the
 script and log sheet links, Post production (TX dates, editors) and the daily reports, but cannot
@@ -21,8 +33,9 @@ What changed in version 16 (security):
 - Remove day keeps a copy in a new **Deleted** tab; Activity > Recently deleted puts it back.
 - Reports over 20,000 characters are refused, and errors no longer show Google's internal messages.
 
-The app (the website) is already updated. Install version 17 **before** adding any `PASS_` line:
-older versions let every password make changes.
+The app (the website) is already updated. Until you install version 18, editors who sign in see
+"This page needs the Google script at version 18". Install version 17 or later **before** adding any
+`PASS_` line: older versions let every password make changes.
 
 ## Part A: update the Google robot
 
@@ -30,18 +43,18 @@ older versions let every password make changes.
 2. Open https://raw.githubusercontent.com/nickovins/njoro-tracker/main/apps-script/Code.gs
    Press Ctrl+A then Ctrl+C (Mac: Cmd+A, Cmd+C).
    In the editor click **Code.gs**, press Ctrl+A, then Ctrl+V. Press **Ctrl+S**.
-   Check: press Ctrl+F, search `VERSION`, it says `var VERSION = 17;`.
+   Check: press Ctrl+F, search `VERSION`, it says `var VERSION = 18;`.
    (appsscript.json did not change since version 7. If you skipped version 7,
    also paste https://raw.githubusercontent.com/nickovins/njoro-tracker/main/apps-script/appsscript.json
    into **appsscript.json**.)
 3. Choose **cleanUp** in the function list at the top and click **Run**.
    The log says how many unused lines it removed and lists what is left (step 6 explains them).
 4. Choose **setup** and click **Run**. If Google asks for permission, allow it as before.
-   The log shows `Version 17 ready. ... scene numbers read for 12.` and then the address of the POST PRODUCTION EXPORTS folder.
+   The log shows `Version 18 ready. ... scene numbers read for 12.` and then the address of the POST PRODUCTION EXPORTS folder.
 5. **Deploy > Manage deployments** > the Web app whose ID starts with `AKfycbzts4XJrONLd9`
    > **pencil** > Version: **New version** > **Deploy**.
-   Check https://script.google.com/macros/s/AKfycbzts4XJrONLd9LMRi_MgDsfK4_LqBLTRXAv7nuQpKHXOF88zw7x2-hbwTpZa8jZNFbk/exec?x=17
-   says `"version":17`.
+   Check https://script.google.com/macros/s/AKfycbzts4XJrONLd9LMRi_MgDsfK4_LqBLTRXAv7nuQpKHXOF88zw7x2-hbwTpZa8jZNFbk/exec?x=18
+   says `"version":18`.
 
 ## Part B: Script Properties
 
@@ -59,6 +72,9 @@ older versions let every password make changes.
    | `DEV_KEYS` | Devices that signed in before (only a short code each), so wrong guesses from strangers cannot lock them out | No |
    | `EXPORT_ID`, `EXPORT_FOLDER` | The newest Google Sheets export and its folder | No |
    | `VO_FIX` | The team's own VO corrections | No |
+   | `ANIMALS` | Each person's animal and colour (appears by itself) | No |
+   | `LAST_SEEN` | When each person last opened the app (appears by itself) | No |
+   | `ADMIN_NAME` | Optional. Your name in the app (default Nick) | Optional |
 
    The `POST_EP_` lines grow as the post team fills in episodes (up to 52). That is
    normal: they are the post production data. Export to Excel from the app keeps a backup.
