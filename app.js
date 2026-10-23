@@ -35,7 +35,7 @@
   function seasonEps(s){var a=[];for(var n=(s-1)*PER_SEASON+1;n<=s*PER_SEASON;n++)a.push(n);return a}
   function setSeason(s){ui.season=s;try{localStorage.setItem('njw-season',String(s))}catch(e){}}
   var post={tx:'',eps:{},loaded:false,loading:false,err:'',at:0,openDrop:null,openMove:null};
-  try{var pc=JSON.parse(localStorage.getItem('njw-post')||'null');if(pc&&pc.eps&&auth.token){post.tx=pc.tx||'';post.eps=pc.eps;post.me=pc.me||null;post.notes=pc.notes||[];post.logins=pc.logins||[];post.loaded=true;post.at=pc.at||0}}catch(e){}
+  try{var pc=JSON.parse(localStorage.getItem('njw-post')||'null');if(pc&&pc.eps&&auth.token){post.tx=pc.tx||'';post.eps=pc.eps;post.me=pc.me||null;post.notes=pc.notes||[];post.scenes=pc.scenes||[];post.logins=pc.logins||[];post.loaded=true;post.at=pc.at||0}}catch(e){}
   var admin={activity:null,private:null,err:''};
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function normSc(sc){return String(sc).toUpperCase().replace(/^0+(?=\d)/,'')}
@@ -597,6 +597,19 @@
       +mine.map(function(x){var st=x.aired?'<span class="st aired">Aired</span>':(x.tx&&nextMine&&x.ep===nextMine.ep?'<span class="st next">Next</span>':(x.tx?'<span class="st up">Coming</span>':''));
         return '<tr'+(x.aired?' class="past"':'')+'><td><b>'+esc(x.ep)+'</b></td><td class="hide-sm">'+seasonOf(x.ep)+'</td><td>'+txHtml(x.tx)+'</td><td>'+st+'</td></tr>'}).join('')+'</tbody></table>';
     html+='</section>';
+    var scs=(me.scenes||[]).slice().sort(function(a,b){return (a.doneAt?1:0)-(b.doneAt?1:0)||a.ep-b.ep||(a.at<b.at?1:-1)});
+    if(scs.length||!me.admin){
+      html+='<section class="tablewrap mesec"><div class="seasonhead"><b>Scene updates</b><span class="muted">Missing or newly added scenes in your episodes</span></div>';
+      if(!scs.length)html+='<p class="empty">None.</p>';
+      else html+='<ul class="notelist">'+scs.map(function(x){
+          return '<li class="'+(x.doneAt||me.admin?'':'unread')+'"><div class="nhead"><span><b>Episode '+esc(x.ep)+'</b> <span class="mono">'+esc(x.ep+'/'+x.sc)+'</span> <span class="tag kind'+esc(x.kind)+'">'+esc(KIND[x.kind]||x.kind)+'</span></span><span class="muted">From '+esc(x.by)+' \u00b7 '+esc(fmtStamp(x.at))+'</span></div>'
+            +(x.comment?'<p class="ntext">'+esc(x.comment)+'</p>':'')
+            +(me.admin?'':(x.doneAt?'<p class="nread">Done \u2713 '+esc(fmtStamp(x.doneAt))+' <button type="button" class="linkbtn" data-scenedone="'+esc(x.id)+'" data-undo="1">Undo</button></p>':'<button type="button" class="btn small primary" data-scenedone="'+esc(x.id)+'">Mark done</button>'))+'</li>'}).join('')+'</ul>';
+      html+='</section>';
+    }
+    var drops=[];mine.forEach(function(x){(x.dropped||[]).forEach(function(d){drops.push({ep:x.ep,sc:d.sc,why:d.why,note:d.note})})});
+    if(drops.length)html+='<section class="tablewrap mesec"><div class="seasonhead"><b>Dropped scenes</b><span class="muted">Shot, but not in the final episode</span></div><ul class="droplist">'
+      +drops.map(function(d){return '<li><span class="mono">'+esc(d.ep+'/'+d.sc)+'</span><span class="why '+esc(d.why)+'">'+esc(WHY[d.why]||d.why)+'</span>'+(d.note?'<span class="muted note">'+esc(d.note)+'</span>':'')+'</li>'}).join('')+'</ul></section>';
     var notes=(me.notes||[]).slice().sort(function(a,b){return a.ep-b.ep||(a.at<b.at?1:-1)});
     html+='<section class="tablewrap mesec"><div class="seasonhead"><b>Notes from the producer / director</b><span class="muted">On your episodes only</span></div>';
     if(!notes.length)html+='<p class="empty">No notes yet.</p>';
@@ -614,7 +627,9 @@
   function noteBtn(n){
     var list=(post.notes||[]).filter(function(x){return x.ep===n}),eds=peopleIn((post.eps[n]||{}).editor);
     var unread=list.filter(function(x){return eds.some(function(e){return !(x.read||{})[nkey(e)]})}).length;
-    return '<button type="button" class="dropbtn'+(list.length?' has':'')+'" data-notes="'+n+'" aria-expanded="'+(post.openNotes===n)+'"><span class="dlbl">Notes</span><span>'+(list.length?list.length+' note'+(list.length===1?'':'s')+(unread?' · '+unread+' unread':''):'None')+'</span><span class="chev" aria-hidden="true">›</span></button>';
+    var sc=(post.scenes||[]).filter(function(x){return x.ep===n}),open=sc.filter(function(x){return eds.some(function(e){return !(x.done||{})[nkey(e)]})}).length;
+    var parts=[];if(list.length)parts.push(list.length+' note'+(list.length===1?'':'s')+(unread?' ('+unread+' unread)':''));if(sc.length)parts.push(sc.length+' scene'+(sc.length===1?'':'s')+(open?' ('+open+' open)':''));
+    return '<button type="button" class="dropbtn'+(list.length||sc.length?' has':'')+'" data-notes="'+n+'" aria-expanded="'+(post.openNotes===n)+'"><span class="dlbl">Notes</span><span>'+(parts.length?parts.join(' \u00b7 '):'None')+'</span><span class="chev" aria-hidden="true">›</span></button>';
   }
   function notesPanel(n){
     var list=(post.notes||[]).filter(function(x){return x.ep===n}).sort(function(a,b){return a.at<b.at?1:-1}),eds=peopleIn((post.eps[n]||{}).editor);
@@ -624,12 +639,40 @@
           var mineN=isEditor()||nkey(x.by)===nkey(myProfile().name);
           return '<li><div class="nhead"><span class="muted">'+(x.by?'From <b>'+esc(x.by)+'</b> \u00b7 ':'')+esc(fmtStamp(x.at))+'</span>'+(mineN?'<button type="button" class="rm" data-notedel="'+esc(x.id)+'" aria-label="Delete this note">\u2715</button>':'')+'</div><p class="ntext">'+esc(x.text)+'</p>'+(reads?'<p class="nstat">'+reads+'</p>':'')+'</li>'}).join('')+'</ul>'
         :'<p class="muted nodrop">No notes yet.</p>')
-      +'<form class="noteadd" data-pep="'+n+'"><textarea name="text" rows="3" maxlength="2000" placeholder="Note for the editor of Episode '+n+'" aria-label="New note" required></textarea><button type="submit" class="btn small primary">Add note</button></form>';
+      +'<form class="noteadd" data-pep="'+n+'"><textarea name="text" rows="3" maxlength="2000" placeholder="Note for the editor of Episode '+n+'" aria-label="New note" required></textarea><button type="submit" class="btn small primary">Add note</button></form>'
+      +scenesPanel(n,eds);
   }
   function noteCall(body,done){
     return callScript(body).then(function(r){
-      if(!r.ok){toast(r.error==='bad_request'?'Notes need the Google script at version 18.':r.error==='not_yours'?'You can only delete your own notes.':errText(r));return r}
+      if(!r.ok){toast(r.error==='bad_request'?(body.action.indexOf('scene')===0?'Scene updates need the Google script at version 20.':'Notes need the Google script at version 18.'):r.error==='not_yours'?'You can only delete your own notes.':errText(r));return r}
       applyPost(r);renderPostKeep('',true);toast(done);return r;
+    });
+  }
+  /* Scene updates on one episode: a missing scene or a newly added one, for its editor to tick done. */
+  var KIND={Missing:'Missing scene',New:'New scene added'};
+  function scenesPanel(n,eds){
+    var list=(post.scenes||[]).filter(function(x){return x.ep===n}).sort(function(a,b){return a.at<b.at?1:-1});
+    return '<div class="drophead scenehead"><b>Scene updates</b><span class="muted">A scene that is missing, or was added after the script went out. The editor ticks it done.</span></div>'
+      +(list.length?'<ul class="notelist">'+list.map(function(x){
+          var mineS=isEditor()||nkey(x.by)===nkey(myProfile().name);
+          var st=eds.map(function(e){var w=(x.done||{})[nkey(e)];return '<span class="'+(w?'nread':'nunread')+'">'+(w?'Done by '+esc(e)+' \u00b7 '+esc(fmtStamp(w)):'Not done by '+esc(e)+' yet')+'</span>'}).join(' ');
+          return '<li><div class="nhead"><span><span class="mono">'+esc(n+'/'+x.sc)+'</span> <span class="tag kind'+esc(x.kind)+'">'+esc(KIND[x.kind]||x.kind)+'</span></span><span class="muted">From <b>'+esc(x.by)+'</b> \u00b7 '+esc(fmtStamp(x.at))+'</span>'
+            +(mineS?'<button type="button" class="rm" data-scenedel="'+esc(x.id)+'" aria-label="Delete this scene update">\u2715</button>':'')+'</div>'
+            +(x.comment?'<p class="ntext">'+esc(x.comment)+'</p>':'')+(st?'<p class="nstat">'+st+'</p>':'')+'</li>'}).join('')+'</ul>'
+        :'<p class="muted nodrop">No scene updates yet.</p>')
+      +'<form class="sceneadd" data-pep="'+n+'"><input name="sc" class="mono" placeholder="Scene" maxlength="4" autocomplete="off" aria-label="Scene number" required>'
+      +'<select name="kind" aria-label="What changed"><option value="Missing">Missing scene</option><option value="New">New scene added</option></select>'
+      +'<input name="comment" placeholder="Comment (optional)" maxlength="500" autocomplete="off" aria-label="Comment">'
+      +'<button type="submit" class="btn small primary">Send</button></form>';
+  }
+  function onSceneAdd(form){
+    var sc=normSc(form.sc.value.trim()),btn=form.querySelector('button');
+    if(!/^\d{1,3}[A-Z]?$/.test(sc)){toast(ERR.bad_scene);return}
+    btn.disabled=true;btn.textContent='Sending\u2026';
+    noteCall({action:'sceneAdd',ep:+form.dataset.pep,sc:sc,kind:form.kind.value,comment:form.comment.value.trim()},'Scene '+form.dataset.pep+'/'+sc+' sent to the editor.').then(function(r){
+      var f=document.querySelector('form.sceneadd[data-pep="'+form.dataset.pep+'"]');if(!f)return;
+      var b2=f.querySelector('button');b2.disabled=false;b2.textContent='Send';
+      if(r&&r.ok){f.sc.value='';f.comment.value='';f.sc.blur();f.comment.blur()}
     });
   }
   function onNoteAdd(form){
@@ -654,14 +697,14 @@
   function teamHtml(people){
     return '<section class="tablewrap adm admsec"><div class="seasonhead"><b>Team</b><span class="muted">Everyone who can sign in. Last seen: when they last opened the app.</span></div>'
       +'<table class="teamtbl"><thead><tr><th>Person</th><th>Last seen</th><th class="num">Eps</th><th class="num">Unread</th></tr></thead><tbody>'
-      +people.map(function(p){return '<tr><td><span class="who2">'+badge(p.animal,'md')+'<span><b>'+esc(p.name)+'</b><br><span class="muted"><span class="anl">'+esc(animalLabel(p.animal))+' · </span>'+(p.role==='admin'?'Admin':p.role==='producer'?'Producer':'View only')+'</span></span></span></td>'
+      +people.map(function(p){return '<tr><td><span class="who2">'+badge(p.animal,'md')+'<span><b>'+esc(p.name)+'</b><br><span class="muted"><span class="anl">'+esc(animalLabel(p.animal))+' · </span>'+(p.role==='admin'?'Admin':p.role==='producer'?'Producer, view only':'View only')+'</span></span></span></td>'
         +'<td class="seen">'+(p.lastSeen?esc(fmtStamp(p.lastSeen)):'<span class="muted">Never</span>')+'</td><td class="num">'+esc(p.episodes)+'</td><td class="num">'+(p.unread?'<span class="bad">'+esc(p.unread)+'</span>':'0')+'</td></tr>'}).join('')
       +'</tbody></table></section>';
   }
 
   function renderPost(){
     if(!isSignedIn())return '';
-    var ed=isEditor(),pr=!ed,cols=pr?4:7;   /* pr: producer, who edits what and TX only, read only */
+    var ed=isEditor(),pr=!ed,cols=7;   /* pr: a producer, who sees it all read only */
     if(!post.loaded){
       if(post.err)return '<div class="tablewrap"><p class="empty">'+esc(postErrText(post.err))+'</p></div>';
       return '<div class="tablewrap"><p class="empty">Loading post production…</p></div>';
@@ -669,31 +712,31 @@
     var s=curSeason(),a=(s-1)*PER_SEASON+1,b=s*PER_SEASON,t=todayIso(),air=airingEp(),nx=upNextEp();
     if(post.openEp==null)post.openEp=air||nx||0;
     var html='<div class="txbar"><div class="txfld"><label for="tx">Episode 1 TX</label>'+(ed?'<input id="tx" type="date" value="'+esc(post.tx)+'">':'<span class="cellro">'+(post.tx?txHtml(post.tx):'TBC')+'</span>')+'</div>'
-      +(ed?'<button type="button" class="btn small exportbtn" data-act="export"><span aria-hidden="true">\u2913</span> Export</button>':'')
+      +'<button type="button" class="btn small exportbtn" data-act="export"><span aria-hidden="true">\u2913</span> Export</button>'
       +'<p class="muted">'+(post.tx?'One episode a week, every '+esc(weekday(post.tx))+(movedCount()?', with '+movedCount()+' episode'+(movedCount()===1?'':'s')+' moved':'')+'. Episode 52 airs '+esc(weekday(txOf(EPISODES)).slice(0,3)+' '+fmtDate(txOf(EPISODES)))+'.'
         :'Not confirmed by the broadcaster yet.'+(ed?' Set it here and all 52 dates fill in, one week apart.':''))+'</p>'
       +(air||nx?'<button type="button" class="onairnow" data-act="goto-air"><span class="st onair">'+(air?(txOf(air)===t?'On air today':'On air'):'Airs next')+'</span> Episode '+(air||nx)+' \u00b7 '+esc(weekday(txOf(air||nx)).slice(0,3)+' '+fmtDate(txOf(air||nx)))+(air&&nx?'<span class="muted"> \u00b7 next: Episode '+nx+', '+esc(fmtDate(txOf(nx)))+'</span>':'')+'</button>':'')
-      +(ed?'<p class="savestate" id="savestate" role="status">'+saveStateHtml()+'</p>':'<p class="muted">Read only. Tap an episode, then Notes, to write to its editor.</p>')+'</div>';
+      +(ed?'<p class="savestate" id="savestate" role="status">'+saveStateHtml()+'</p>':'<p class="muted">Read only. Open an episode, then Notes, to write to its editor or send a missing or new scene.</p>')+'</div>';
     if(post.err)html+='<p class="sync err">'+esc(postErrText(post.err))+'</p>';
     if(ed)html+=nameCheckHtml();
     for(var q0=1;q0<s;q0++)html+=seasonFold(q0);
     html+='<div class="tablewrap seasonopen"><div class="seasonhead"><b>Season '+s+'</b><span class="muted">Episodes '+a+' to '+b+(post.tx?' · '+esc(fmtDate(txOf(a)))+' to '+esc(fmtDate(txOf(b))):'')+'</span></div><table class="posttbl">'
-      +'<thead><tr><th>Ep</th><th>Editor</th>'+(pr?'':'<th>Sound</th>')+'<th>TX</th>'+(pr?'':'<th>Trailer</th><th>Dropped</th>')+'<th>Notes</th></tr></thead><tbody>';
+      +'<thead><tr><th>Ep</th><th>Editor</th><th>Sound</th><th>TX</th><th>Trailer</th><th>Dropped</th><th>Notes</th></tr></thead><tbody>';
     for(var n=a;n<=b;n++){
       var e=post.eps[n]||{},tx=txOf(n),drop=e.dropped||[],open=post.openDrop===n,mv=post.openMove===n,sh=shiftOf(n),tl=trailerUrl(e.trailer);
       var st=n===air?'<span class="st onair">'+(tx===t?'On air today':'On air')+'</span>':(tx?(tx<t?'<span class="st aired">Aired</span>':(n===nx?'<span class="st next">Next</span>':'')):'');
       var exp=post.openEp===n,ed0=pendingOr(n,'editor',e.editor),sd0=pendingOr(n,'sound',e.sound);
-      var sum=pr?[ed0?'Editor: '+esc(ed0):'No editor yet'].concat(noteCount(n)?[noteCount(n)+' note'+(noteCount(n)===1?'':'s')]:[]).join(' \u00b7 '):[ed0?'Editor: '+esc(ed0):'No editor yet',sd0?'Sound: '+esc(sd0):'No sound yet'].concat(drop.length?[drop.length+' dropped']:[]).concat(trailerUrl(pendingOr(n,'trailer',e.trailer))?['Trailer \u2713']:[]).join(' \u00b7 ');
+      var sum=[ed0?'Editor: '+esc(ed0):'No editor yet',sd0?'Sound: '+esc(sd0):'No sound yet'].concat(drop.length?[drop.length+' dropped']:[]).concat(trailerUrl(pendingOr(n,'trailer',e.trailer))?['Trailer \u2713']:[]).join(' \u00b7 ');
       html+='<tr class="pe'+(open?' open':'')+(exp?' expanded':' collapsed')+(n===air?' airing':'')+(n===nx?' nextup':'')+(tx&&tx<t&&n!==air?' past':'')+'" id="pe'+n+'">'
         +'<td class="epn"><button type="button" class="pexp" data-pexp="'+n+'" aria-expanded="'+exp+'"><b>'+n+'</b>'+st+'</button></td>'
         +'<td class="sum"><button type="button" class="pexp sumbtn" data-pexp="'+n+'" aria-expanded="'+exp+'"><span>'+sum+'</span><span class="chev" aria-hidden="true">\u203A</span></button></td>'
         +'<td data-l="Editor">'+(pr?editorsRO(e.editor):cellInput(n,'editor',e.editor,'Who is editing'))+'</td>'
-        +(pr?'':'<td data-l="Sound">'+cellInput(n,'sound',e.sound,'Who is on sound')+'</td>')
+        +'<td data-l="Sound">'+cellInput(n,'sound',e.sound,'Who is on sound')+'</td>'
         +'<td class="txd" data-l="TX"><div class="txcell">'+(ed&&tx&&n>1?'<button type="button" class="datebtn" data-move="'+n+'" title="Move this episode\u2019s TX date" aria-label="'+esc(weekday(tx)+' '+fmtDate(tx))+', move Episode '+n+' TX">'+txHtml(tx)+'</button>':txHtml(tx))+(ed&&tx&&n>1?'<button type="button" class="movebtn'+(sh?' moved':'')+'" data-move="'+n+'" aria-expanded="'+mv+'" title="Move this episode\u2019s TX date">'+(sh?esc(shiftLabel(sh)):'Move')+'</button>':'')+'</div></td>'
-        +(pr?'':'<td data-l="Trailer" class="trl"><div class="trlwrap">'+cellInput(n,'trailer',e.trailer,'Paste link')+(tl?'<a class="go" href="'+esc(tl)+'" target="_blank" rel="noopener" aria-label="Open Episode '+n+' trailer">↗</a>':'')+'</div></td>'
-        +'<td data-l="Dropped" class="drp"><button type="button" class="dropbtn'+(drop.length?' has':'')+'" data-drop="'+n+'" aria-expanded="'+open+'"><span class="dlbl">Dropped scenes</span><span>'+(drop.length?drop.length+' dropped':'None')+'</span><span class="chev" aria-hidden="true">\u203a</span></button></td>')
+        +'<td data-l="Trailer" class="trl"><div class="trlwrap">'+cellInput(n,'trailer',e.trailer,'Paste link')+(tl?'<a class="go" href="'+esc(tl)+'" target="_blank" rel="noopener" aria-label="Open Episode '+n+' trailer">↗</a>':'')+'</div></td>'
+        +'<td data-l="Dropped" class="drp"><button type="button" class="dropbtn'+(drop.length?' has':'')+'" data-drop="'+n+'" aria-expanded="'+open+'"><span class="dlbl">Dropped scenes</span><span>'+(drop.length?drop.length+' dropped':'None')+'</span><span class="chev" aria-hidden="true">\u203a</span></button></td>'
         +'<td data-l="Notes" class="drp">'+noteBtn(n)+'</td></tr>';
-      if(ed&&open)html+='<tr class="dropdet"><td colspan="'+cols+'">'+dropPanel(n,drop)+'</td></tr>';
+      if(open)html+='<tr class="dropdet"><td colspan="'+cols+'">'+dropPanel(n,drop)+'</td></tr>';
       if(ed&&mv&&tx)html+='<tr class="dropdet movedet"><td colspan="'+cols+'">'+movePanel(n)+'</td></tr>';
       if(post.openNotes===n)html+='<tr class="dropdet notedet"><td colspan="'+cols+'">'+notesPanel(n)+'</td></tr>';
     }
@@ -710,7 +753,7 @@
     return '<div class="tablewrap seasonfold"><button type="button" class="foldbtn" data-season="'+q+'" aria-expanded="false">'
       +'<span class="fh"><b>Season '+q+'</b>'+(hasAir?'<span class="st onair">'+(air?'On air':'Airs next')+'</span>':'')+'</span>'
       +'<span class="fm muted">Episodes '+a+' to '+b+(post.tx?' \u00b7 '+esc(fmtDate(txOf(a)))+' to '+esc(fmtDate(txOf(b))):'')+'</span>'
-      +'<span class="fa"><span class="'+(ed===eps.length?'ok':'')+'">Editors '+ed+'/'+eps.length+'</span>'+(isEditor()?'<span class="'+(sd===eps.length?'ok':'')+'">Sound '+sd+'/'+eps.length+'</span>':'')+'</span>'
+      +'<span class="fa"><span class="'+(ed===eps.length?'ok':'')+'">Editors '+ed+'/'+eps.length+'</span><span class="'+(sd===eps.length?'ok':'')+'">Sound '+sd+'/'+eps.length+'</span></span>'
       +'<span class="chev" aria-hidden="true">\u203A</span></button></div>';
   }
   /* Who edits and who does sound in this season, with each person's episodes. */
@@ -724,8 +767,8 @@
         +(list.length?'<ul class="crewlist">'+list.map(function(p){return '<li><span class="cn">'+esc(p.name)+'</span><span class="cc">'+p.eps.length+' ep'+(p.eps.length===1?'':'s')+'</span><span class="ce muted">'+esc(epList(p.eps))+'</span></li>'}).join('')+'</ul>':'<p class="muted">Nobody assigned yet.</p>')
         +(none.length?'<p class="crewnone">Not assigned: '+esc(epList(none))+'</p>':'<p class="crewall">Every episode assigned \u2713</p>')+'</div>';
     }
-    return '<section class="crew"><div class="crewhead"><b>Season '+s+' crew</b><span class="muted">Episodes per person this season.'+(isEditor()?' Export for all four seasons side by side.':'')+'</span></div>'
-      +'<div class="crewgrid">'+block('Editors','editor')+(isEditor()?block('Sound','sound'):'')+'</div></section>';
+    return '<section class="crew"><div class="crewhead"><b>Season '+s+' crew</b><span class="muted">Episodes per person this season. Export for all four seasons side by side.</span></div>'
+      +'<div class="crewgrid">'+block('Editors','editor')+block('Sound','sound')+'</div></section>';
   }
   function cellInput(n,f,v,ph){
     if(!isEditor())return f==='trailer'?(trailerUrl(v)?'':'<span class="cellro muted">None</span>'):'<span class="cellro">'+(v?esc(v):'<span class="muted">Not set</span>')+'</span>';
@@ -764,7 +807,7 @@
     if(code==='old'||code==='old_robot')return ERR.old_robot;
     return ERR[code]||ERR.server;
   }
-  function cachePost(){try{localStorage.setItem('njw-post',JSON.stringify({tx:post.tx,eps:post.eps,at:post.at,me:post.me,notes:post.notes,logins:post.logins}))}catch(e){}}
+  function cachePost(){try{localStorage.setItem('njw-post',JSON.stringify({tx:post.tx,eps:post.eps,at:post.at,me:post.me,notes:post.notes,scenes:post.scenes,logins:post.logins}))}catch(e){}}
   /* Redraw without losing what someone is typing, or where the cursor is. */
   /* ---------- post production: nothing typed is ever lost ----------
      Every keystroke in Editor, Sound or Trailer is kept on this device until Google confirms
@@ -818,7 +861,7 @@
       try{fetch(SCRIPT_URL,{method:'POST',keepalive:true,headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'postSave',token:auth.token,ep:+p[0],set:set})})}catch(e){}
     });
   }
-  function typingInPost(){var a=document.activeElement;return !!(a&&a.matches&&a.matches('input.cell, form.noteadd textarea')&&document.getElementById('main').contains(a))}
+  function typingInPost(){var a=document.activeElement;return !!(a&&a.matches&&a.matches('input.cell, form.noteadd textarea, form.sceneadd input')&&document.getElementById('main').contains(a))}
 
   function renderPostKeep(clearForm,force){
     if(ui.view==='me'){renderMain();return}
@@ -827,7 +870,7 @@
     if(!force&&typingInPost()){post.deferRender=true;return}
     post.deferRender=false;
     var main=document.getElementById('main'),keep={},act=document.activeElement,fk='',sel=null;
-    function keyOf2(el){if(el.dataset&&el.dataset.pf)return el.dataset.pep+':'+el.dataset.pf;var fm=el.closest&&el.closest('form.dropadd');if(fm)return 'd'+fm.dataset.pep+':'+el.name;var fn=el.closest&&el.closest('form.noteadd');return fn?'n'+fn.dataset.pep+':'+el.name:''}
+    function keyOf2(el){if(el.dataset&&el.dataset.pf)return el.dataset.pep+':'+el.dataset.pf;var fm=el.closest&&el.closest('form.dropadd');if(fm)return 'd'+fm.dataset.pep+':'+el.name;var fn=el.closest&&el.closest('form.noteadd,form.sceneadd');return fn?(fn.classList.contains('sceneadd')?'s':'n')+fn.dataset.pep+':'+el.name:''}
     main.querySelectorAll('input,select,textarea').forEach(function(el){var k=keyOf2(el);if(k&&(el.value!==el.defaultValue||el===act||el.tagName==='SELECT'))keep[k]=el.value});
     if(act&&main.contains(act)){fk=keyOf2(act);try{sel=[act.selectionStart,act.selectionEnd]}catch(e){}}
     if(clearForm)Object.keys(keep).forEach(function(k){if(k.indexOf('d'+clearForm+':')===0)delete keep[k]});
@@ -837,7 +880,7 @@
     if(clearForm){var f=main.querySelector('form.dropadd [name="sc"]');if(f)f.focus()}
   }
   function applyPost(r){
-    post.tx=r.tx||'';post.eps=r.eps||{};post.notes=Array.isArray(r.notes)?r.notes:[];post.logins=Array.isArray(r.logins)?r.logins:[];
+    post.tx=r.tx||'';post.eps=r.eps||{};post.notes=Array.isArray(r.notes)?r.notes:[];post.scenes=Array.isArray(r.scenes)?r.scenes:[];post.logins=Array.isArray(r.logins)?r.logins:[];
     if(r.me){post.me=r.me;if(r.me.profile&&r.me.profile.name){auth.profile=r.me.profile;saveAuth()}}
     post.loaded=true;post.err='';post.at=Date.now();cachePost();
     /* Opening the app or signing in: show the season that is on air now (Season 2 from Episode 14's TX, and so on). */
@@ -1503,12 +1546,12 @@
     });
     app.addEventListener('input',function(e){if(ui.view==='post'&&e.target.matches&&e.target.matches('input.cell'))onCellInput(e.target)});
     app.addEventListener('focusout',function(e){
-      if(e.target.matches&&e.target.matches('form.noteadd textarea')){setTimeout(function(){if(post.deferRender&&!typingInPost())renderPostKeep()},0);return}
+      if(e.target.matches&&e.target.matches('form.noteadd textarea, form.sceneadd input')){setTimeout(function(){if(post.deferRender&&!typingInPost())renderPostKeep()},0);return}
       if(!(e.target.matches&&e.target.matches('input.cell')))return;
       flushKey(e.target.dataset.pep+':'+e.target.dataset.pf);
       setTimeout(function(){if(post.deferRender&&!typingInPost())renderPostKeep()},0);
     });
-    app.addEventListener('submit',function(e){var f=e.target.closest&&e.target.closest('form.dropadd');if(f){e.preventDefault();onDropAdd(f);return}var fn=e.target.closest&&e.target.closest('form.noteadd');if(fn){e.preventDefault();onNoteAdd(fn)}});
+    app.addEventListener('submit',function(e){var f=e.target.closest&&e.target.closest('form.dropadd');if(f){e.preventDefault();onDropAdd(f);return}var fn=e.target.closest&&e.target.closest('form.noteadd');if(fn){e.preventDefault();onNoteAdd(fn);return}var fs=e.target.closest&&e.target.closest('form.sceneadd');if(fs){e.preventDefault();onSceneAdd(fs)}});
     app.addEventListener('keydown',function(e){if(e.key==='Enter'&&e.target.matches&&e.target.matches('input.cell')){e.preventDefault();e.target.blur();return}var r=e.target.closest&&e.target.closest('tr.d');if(r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();toggleDay(+r.dataset.day)}});
   }
 
@@ -1579,6 +1622,8 @@
     if(b.dataset.unmove){var un=+b.dataset.unmove;moveTo(un,isoAdd(txOf(un-1),7));return}
     if(b.dataset.notes){var nn=+b.dataset.notes;post.openNotes=post.openNotes===nn?null:nn;post.openDrop=null;post.openMove=null;renderMain();return}
     if(b.dataset.notedel){if(window.confirm('Delete this note? The editor will no longer see it.'))noteCall({action:'noteDel',id:b.dataset.notedel},'Note deleted');return}
+    if(b.dataset.scenedel){if(window.confirm('Delete this scene update? The editor will no longer see it.'))noteCall({action:'sceneDel',id:b.dataset.scenedel},'Scene update deleted');return}
+    if(b.dataset.scenedone){var undo=b.dataset.undo==='1';b.disabled=true;callScript({action:'sceneDone',id:b.dataset.scenedone,undo:undo}).then(function(r){if(r.ok&&r.me){post.me=r.me;cachePost();renderMain();toast(undo?'Back to not done':'Marked done')}else{toast(errText(r));renderMain()}});return}
     if(b.dataset.noteseen){b.disabled=true;b.textContent='Saving\u2026';callScript({action:'noteSeen',id:b.dataset.noteseen}).then(function(r){if(r.ok&&r.me){post.me=r.me;cachePost();renderMain();toast('Marked as read')}else{toast(errText(r));renderMain()}});return}
     if(b.dataset.drop){var dn=+b.dataset.drop;post.openDrop=post.openDrop===dn?null:dn;post.openMove=null;post.openNotes=null;renderMain();if(post.openDrop){var fi=document.querySelector('form.dropadd [name="sc"]');if(fi&&window.matchMedia('(min-width:561px)').matches)fi.focus()}return}
     if(b.dataset.dropdel){savePost({ep:+b.dataset.pep,set:{dropRemove:b.dataset.dropdel}},'');return}
@@ -1663,7 +1708,7 @@
     var mins=auth.idle||30;
     auth={token:'',name:'',idle:mins};saveAuth();
     try{localStorage.removeItem('njw-post')}catch(e){}
-    post.tx='';post.eps={};post.loaded=false;post.err='';post.openDrop=null;post.openMove=null;post.me=null;post.notes=[];post.logins=[];post.openNotes=null;
+    post.tx='';post.eps={};post.loaded=false;post.err='';post.openDrop=null;post.openMove=null;post.me=null;post.notes=[];post.scenes=[];post.logins=[];post.openNotes=null;
     /* Drive links stay off this device once it is signed out. */
     state.rows.forEach(function(r){if(r.log)r.log='linked'});state.days.forEach(function(d){if(d.log)d.log='linked'});
     Object.keys(state.scripts||{}).forEach(function(k){state.scripts[k].url=''});saveCache();

@@ -1,10 +1,19 @@
-# Installing the tracker update (Google robot version 19)
+# Installing the tracker update (Google robot version 20)
 
 About 15 minutes, on a computer, signed in to the Google account that owns the
 "Njoro wa Uba Scene Tracker Data" Sheet (nicholaskibathi@gmail.com).
 
 Sheet: https://docs.google.com/spreadsheets/d/13mpLW2iFSSqDja--dwxXEEz_jVpjOeDudyWYy0fvT3I/edit
 App: https://nickovins.github.io/njoro-tracker/
+
+What changed in version 20:
+- A producer (`PROD_GRACE`) now sees **everything the admin sees except Activity**, read only: all of
+  Post production (editors, sound, TX, trailers, dropped scenes) and Export > Download Excel.
+- **Scene updates:** in Post production, open an episode, tap **Notes**, and under **Scene updates**
+  send a scene that is **missing** or a **new scene added** (scene number, optional comment). It goes
+  to that episode's editor, who taps **Mark done**; you and the producers see "Done by George".
+  The admin and producers send them; a producer deletes only their own. Kept in a "Scene updates" tab.
+- Editors also see the dropped scenes of their own episodes.
 
 What changed in version 19:
 - A **producer / director** sign-in: a Script Property `PROD_<NAME>` (like `PROD_GRACE`, 8+ characters).
@@ -50,18 +59,18 @@ The app (the website) is already updated. Until you install version 18, editors 
 2. Open https://raw.githubusercontent.com/nickovins/njoro-tracker/main/apps-script/Code.gs
    Press Ctrl+A then Ctrl+C (Mac: Cmd+A, Cmd+C).
    In the editor click **Code.gs**, press Ctrl+A, then Ctrl+V. Press **Ctrl+S**.
-   Check: press Ctrl+F, search `VERSION`, it says `var VERSION = 19;`.
+   Check: press Ctrl+F, search `VERSION`, it says `var VERSION = 20;`.
    (appsscript.json did not change since version 7. If you skipped version 7,
    also paste https://raw.githubusercontent.com/nickovins/njoro-tracker/main/apps-script/appsscript.json
    into **appsscript.json**.)
 3. Choose **cleanUp** in the function list at the top and click **Run**.
    The log says how many unused lines it removed and lists what is left (step 6 explains them).
 4. Choose **setup** and click **Run**. If Google asks for permission, allow it as before.
-   The log shows `Version 19 ready. ... scene numbers read for 12.` and then the address of the POST PRODUCTION EXPORTS folder.
+   The log shows `Version 20 ready. ... scene numbers read for 12.` and then the address of the POST PRODUCTION EXPORTS folder.
 5. **Deploy > Manage deployments** > the Web app whose ID starts with `AKfycbzts4XJrONLd9`
    > **pencil** > Version: **New version** > **Deploy**.
-   Check https://script.google.com/macros/s/AKfycbzts4XJrONLd9LMRi_MgDsfK4_LqBLTRXAv7nuQpKHXOF88zw7x2-hbwTpZa8jZNFbk/exec?x=19
-   says `"version":19`.
+   Check https://script.google.com/macros/s/AKfycbzts4XJrONLd9LMRi_MgDsfK4_LqBLTRXAv7nuQpKHXOF88zw7x2-hbwTpZa8jZNFbk/exec?x=20
+   says `"version":20`.
 
 ## Part B: Script Properties
 
@@ -71,7 +80,7 @@ The app (the website) is already updated. Until you install version 18, editors 
    |---|---|---|
    | `PASSCODE` | The **master password**: the admin, the only sign-in that can make changes | Yes: this is where you change it. Keep it to yourself |
    | `PASS_GEORGE`, `PASS_MARY_W` ... | Optional. One person's own **view-only** password (at least 8 characters) | Yes: add one per person, delete it to take their access away |
-   | `PROD_GRACE` ... | Optional. A **producer / director** password (at least 8 characters): sees who edits what, writes notes | Yes: add one per producer, delete it to take their access away |
+   | `PROD_GRACE` ... | Optional. A **producer / director** password (at least 8 characters): sees everything except Activity, read only; writes notes and scene updates | Yes: add one per producer, delete it to take their access away |
    | `IDLE_MINUTES` | Optional. Minutes without use before sign-out (default 30) | Optional |
    | `POST_TX` | Post production: Episode 1 TX date | No |
    | `POST_EP_1`, `POST_EP_2` ... | Post production: one line per episode with anything filled in (editor, sound, trailer, dropped scenes, moved TX) | **No: deleting one deletes that episode's post data** |

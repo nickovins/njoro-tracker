@@ -27,8 +27,9 @@
  * Script Properties, all of them:
  *   PASSCODE       the master password: the admin, the only sign-in that can make changes
  *   PASS_<NAME>    optional: one person's own VIEW-ONLY password (at least 8 characters), like PASS_GEORGE.
- *   PROD_<NAME>    optional: a producer / director's password, like PROD_GRACE. Sees what an editor
- *                  sees, plus who edits which episode (read only), and writes notes to the editors.
+ *   PROD_<NAME>    optional: a producer / director's password, like PROD_GRACE. Sees everything the
+ *                  admin sees except Activity, read only. The only changes: notes and scene updates
+ *                  (a missing or newly added scene) to the editors.
  *                  Delete the line to take that person's access away.
  *   IDLE_MINUTES   optional: minutes without use before sign-out (default 30)
  *   POST_TX        post production: Episode 1 TX date
@@ -50,6 +51,7 @@
  *   Deleted    daily reports taken out with "Delete a day", so they can be put back
  *   Notes      producer / director notes per episode: written by the admin or a producer
  *              (PROD_), read by that episode's editor (who marks them read), the admin and producers
+ *   Scene updates  a missing or newly added scene, sent the same way; the editor ticks it done
  * Post production and accounts live in Script Properties, never in the Sheet.
  */
 
@@ -61,7 +63,7 @@ var REPEATS_TAB = 'Repeats';
 var ACTIVITY_TAB = 'Activity';
 var DELETED_TAB = 'Deleted';
 var TZ = 'Africa/Nairobi';
-var VERSION = 19;
+var VERSION = 20;
 // Drive > 02. NJORO WA UBA SN 25-28 - 2026 > N.W.U Cycle 7 | SCENE TRACKER (holds this Sheet).
 var TRACKER_FOLDER_ID = '18qREQGQgviZBWPuh3e6BwEl8bBhYnRfY';
 var EXPORTS_FOLDER_NAME = 'POST PRODUCTION EXPORTS';
@@ -104,11 +106,13 @@ function route_(b) {
   // Post production: the admin gets everything; anyone else only their own page (see mePage_).
   if (a === 'post') return postFor_(me);
   if (a === 'noteSeen') return noteSeen_(b, me);
-  // Notes: the admin and producers write them; a producer deletes only their own.
-  if ((a === 'noteAdd' || a === 'noteDel') && me.role === 'producer') {
+  if (a === 'sceneDone') return sceneDone_(b, me);
+  // Notes and scene updates: the admin and producers write them; a producer deletes only their own.
+  if (/^(noteAdd|noteDel|sceneAdd|sceneDel)$/.test(a) && me.role === 'producer') {
     var nl = LockService.getScriptLock();
     if (!nl.tryLock(20000)) return { ok: false, error: 'busy' };
-    try { return a === 'noteAdd' ? noteAdd_(b, me) : noteDel_(b, me); } finally { nl.releaseLock(); }
+    try { return a === 'noteAdd' ? noteAdd_(b, me) : a === 'noteDel' ? noteDel_(b, me) : a === 'sceneAdd' ? sceneAdd_(b, me) : sceneDel_(b, me); }
+    finally { nl.releaseLock(); }
   }
   if (a === 'note') { if (String(b.what || '') === 'export') log_(me.name, 'Exported post production to Excel', ''); return { ok: true }; }
   // Everything below is for the admin (master password) only: changes, Activity, exports to Drive.
@@ -164,6 +168,8 @@ function write_(a, b, me) {
   if (a === 'postSave') return postSave_(b, me);
   if (a === 'noteAdd') return noteAdd_(b, me);
   if (a === 'noteDel') return noteDel_(b, me);
+  if (a === 'sceneAdd') return sceneAdd_(b, me);
+  if (a === 'sceneDel') return sceneDel_(b, me);
   if (a === 'vofix') return withData_(voFix_(b, me));
   if (a === 'signoutAll') {
     props_().setProperty('SESS_GEN', String((Number(props_().getProperty('SESS_GEN')) || 0) + 1));
@@ -1045,23 +1051,14 @@ function postAll_(me) {
     if (!m) return;
     try { eps[m[1]] = JSON.parse(props[k]); } catch (e) {}
   });
-  return { ok: true, tx: props.POST_TX || '', eps: eps, notes: notesAll_(), logins: loginsList_(), me: me ? mePage_(me.person, true) : null };
+  return { ok: true, tx: props.POST_TX || '', eps: eps, notes: notesAll_(), scenes: scenesAll_(), logins: loginsList_(), me: me ? mePage_(me.person, me.role === 'admin') : null };
 }
 
-/** Post production for whoever asks: the admin gets everything. A producer gets who edits
- *  which episode and the TX dates (no sound, trailers or dropped scenes), every note, and
- *  their own page. An editor gets only their own page. */
+/** Post production for whoever asks: the admin and producers get everything (producers read
+ *  only). An editor gets only their own page. */
 function postFor_(me) {
-  if (me.role === 'admin') return postAll_(me);
-  if (me.role !== 'producer') return { ok: true, me: mePage_(me.person, false) };
-  var all = postEpsOf_(), eps = {};
-  Object.keys(all).forEach(function (n) {
-    var e = all[n] || {}, o = {};
-    if (e.editor) o.editor = e.editor;
-    if (e.shift) o.shift = e.shift;
-    if (o.editor || o.shift) eps[n] = o;
-  });
-  return { ok: true, role: 'producer', tx: props_().getProperty('POST_TX') || '', eps: eps, notes: notesAll_(), logins: loginsList_(), me: mePage_(me.person, false) };
+  if (me.role === 'admin' || me.role === 'producer') { var out = postAll_(me); out.role = me.role; return out; }
+  return { ok: true, me: mePage_(me.person, false) };
 }
 
 function clip_(v, n) { return String(v == null ? '' : v).replace(/[\u0000-\u001F]/g, ' ').trim().slice(0, n); }
@@ -1189,7 +1186,8 @@ function peopleList_() {
     var k = nkey_(p.name), mine = epsOfPerson_(k, eps);
     p.lastSeen = seen[k] || '';
     p.episodes = mine.length;
-    p.unread = notes.filter(function (n) { return mine.indexOf(n.ep) >= 0 && !(n.read || {})[k]; }).length;
+    p.unread = notes.filter(function (n) { return mine.indexOf(n.ep) >= 0 && !(n.read || {})[k]; }).length
+      + scenesAll_().filter(function (x) { return mine.indexOf(x.ep) >= 0 && !(x.done || {})[k]; }).length;
     return p;
   });
 }
@@ -1248,7 +1246,13 @@ function mePage_(person, isAdmin) {
   return {
     profile: profileOf_(person), admin: !!isAdmin, today: today,
     upNext: upNext, airing: airing, season: Math.min(4, Math.max(1, Math.ceil((airing || next || last || 1) / 13))),
-    eps: mine.map(function (n) { return { ep: n, tx: tx[n], aired: !!(tx[n] && tx[n] <= today) }; }),
+    eps: mine.map(function (n) {
+      var dr = ((eps[n] || {}).dropped || []).map(function (d) { return { sc: d.sc, why: d.why, note: d.note || '' }; });
+      return { ep: n, tx: tx[n], aired: !!(tx[n] && tx[n] <= today), dropped: dr };
+    }),
+    scenes: scenesAll_().filter(function (x) { return mine.indexOf(x.ep) >= 0; }).map(function (x) {
+      return { id: x.id, ep: x.ep, sc: x.sc, kind: x.kind, comment: x.comment, at: x.at, by: x.by, doneAt: (x.done || {})[k] || '' };
+    }),
     notes: notes
   };
 }
@@ -1304,6 +1308,61 @@ function noteSeen_(b, me) {
       var c = notesTab_().getRange(hit.row, 5); c.setNumberFormat('@'); c.setValue(JSON.stringify(hit.read));
       log_(me.name, 'Read a note', 'Episode ' + hit.ep);
     }
+  } finally { lock.releaseLock(); }
+  return { ok: true, me: mePage_(me.person, me.role === 'admin') };
+}
+
+/* ---------- scene updates: a missing or newly added scene, for the editor ---------- */
+
+var SCENES_TAB = 'Scene updates', SCENE_KINDS = ['Missing', 'New'];
+function scenesTab_() {
+  var ss = SpreadsheetApp.getActive(), sh = ss.getSheetByName(SCENES_TAB);
+  if (!sh) {
+    sh = ss.insertSheet(SCENES_TAB);
+    sh.getRange(1, 1, 1, 8).setValues([['Id', 'Episode', 'Scene', 'Kind', 'Comment', 'Written', 'By', 'Done by']]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+/** Every scene update, oldest first: [{row, id, ep, sc, kind, comment, at, by, done: {NAME: when}}]. */
+function scenesAll_() {
+  var sh = SpreadsheetApp.getActive().getSheetByName(SCENES_TAB);
+  return tabRows_(sh, 8).map(function (v, i) {
+    var done = {}; try { done = JSON.parse(v[7] || '{}') || {}; } catch (e) {}
+    return { row: i + 2, id: v[0], ep: Number(v[1]) || 0, sc: v[2], kind: v[3], comment: v[4], at: v[5], by: v[6] || adminName_(), done: done };
+  }).filter(function (x) { return x.id && x.ep; });
+}
+function sceneAdd_(b, me) {
+  var ep = Number(b.ep), sc = String(b.sc || '').trim().toUpperCase().replace(/^0+(?=\d)/, '');
+  var kind = SCENE_KINDS.indexOf(b.kind) >= 0 ? b.kind : '';
+  var comment = String(b.comment || '').replace(/\r/g, '').replace(/[\u0000-\u0008\u000B-\u001F]/g, ' ').trim();
+  if (!(ep >= 1 && ep <= EPISODES && ep === Math.floor(ep)) || !kind) return { ok: false, error: 'bad_request' };
+  if (!/^\d{1,3}[A-Z]?$/.test(sc)) return { ok: false, error: 'bad_scene' };
+  if (comment.length > 500) return { ok: false, error: 'note_long' };
+  var sh = scenesTab_(), r = sh.getRange(sh.getLastRow() + 1, 1, 1, 8);
+  r.setNumberFormat('@');
+  r.setValues([[Utilities.getUuid().slice(0, 8), String(ep), sc, kind, comment, now_(), me.person, '{}']]);
+  log_(me.name, kind === 'New' ? 'Sent a new scene' : 'Sent a missing scene', ep + '/' + sc);
+  return postFor_(me);
+}
+function sceneDel_(b, me) {
+  var hit = scenesAll_().filter(function (x) { return x.id === String(b.id || ''); })[0];
+  if (!hit) return { ok: false, error: 'not_found' };
+  if (me.role !== 'admin' && nkey_(hit.by) !== nkey_(me.person)) return { ok: false, error: 'not_yours' };
+  scenesTab_().deleteRow(hit.row);
+  log_(me.name, 'Deleted a scene update', hit.ep + '/' + hit.sc);
+  return postFor_(me);
+}
+/** The editor of that episode ticks a scene update done (or back to not done). Nobody else can. */
+function sceneDone_(b, me) {
+  var k = nkey_(me.person), lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return { ok: false, error: 'busy' };
+  try {
+    var hit = scenesAll_().filter(function (x) { return x.id === String(b.id || ''); })[0];
+    if (!hit || epsOfPerson_(k, postEpsOf_()).indexOf(hit.ep) < 0) return { ok: false, error: 'not_found' };
+    if (b.undo) delete hit.done[k]; else if (!hit.done[k]) hit.done[k] = now_();
+    var c = scenesTab_().getRange(hit.row, 8); c.setNumberFormat('@'); c.setValue(JSON.stringify(hit.done));
+    log_(me.name, b.undo ? 'Undid a scene update' : 'Did a scene update', hit.ep + '/' + hit.sc);
   } finally { lock.releaseLock(); }
   return { ok: true, me: mePage_(me.person, me.role === 'admin') };
 }
