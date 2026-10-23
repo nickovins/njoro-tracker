@@ -1,10 +1,17 @@
-# Installing the tracker update (Google robot version 18)
+# Installing the tracker update (Google robot version 19)
 
 About 15 minutes, on a computer, signed in to the Google account that owns the
 "Njoro wa Uba Scene Tracker Data" Sheet (nicholaskibathi@gmail.com).
 
 Sheet: https://docs.google.com/spreadsheets/d/13mpLW2iFSSqDja--dwxXEEz_jVpjOeDudyWYy0fvT3I/edit
 App: https://nickovins.github.io/njoro-tracker/
+
+What changed in version 19:
+- A **producer / director** sign-in: a Script Property `PROD_<NAME>` (like `PROD_GRACE`, 8+ characters).
+  She sees everything an editor sees, plus Post production **read only**: who edits which episode,
+  the TX dates and each season's editors (no sound, trailers, dropped scenes or Export). She writes
+  notes to the editor of any episode and can delete only her own notes. No Activity.
+- Every note shows who wrote it ("From Grace", "From Nick").
 
 What changed in version 18:
 - Each person has their own page, **Signed in as <name>**, with their animal badge and colour
@@ -43,18 +50,18 @@ The app (the website) is already updated. Until you install version 18, editors 
 2. Open https://raw.githubusercontent.com/nickovins/njoro-tracker/main/apps-script/Code.gs
    Press Ctrl+A then Ctrl+C (Mac: Cmd+A, Cmd+C).
    In the editor click **Code.gs**, press Ctrl+A, then Ctrl+V. Press **Ctrl+S**.
-   Check: press Ctrl+F, search `VERSION`, it says `var VERSION = 18;`.
+   Check: press Ctrl+F, search `VERSION`, it says `var VERSION = 19;`.
    (appsscript.json did not change since version 7. If you skipped version 7,
    also paste https://raw.githubusercontent.com/nickovins/njoro-tracker/main/apps-script/appsscript.json
    into **appsscript.json**.)
 3. Choose **cleanUp** in the function list at the top and click **Run**.
    The log says how many unused lines it removed and lists what is left (step 6 explains them).
 4. Choose **setup** and click **Run**. If Google asks for permission, allow it as before.
-   The log shows `Version 18 ready. ... scene numbers read for 12.` and then the address of the POST PRODUCTION EXPORTS folder.
+   The log shows `Version 19 ready. ... scene numbers read for 12.` and then the address of the POST PRODUCTION EXPORTS folder.
 5. **Deploy > Manage deployments** > the Web app whose ID starts with `AKfycbzts4XJrONLd9`
    > **pencil** > Version: **New version** > **Deploy**.
-   Check https://script.google.com/macros/s/AKfycbzts4XJrONLd9LMRi_MgDsfK4_LqBLTRXAv7nuQpKHXOF88zw7x2-hbwTpZa8jZNFbk/exec?x=18
-   says `"version":18`.
+   Check https://script.google.com/macros/s/AKfycbzts4XJrONLd9LMRi_MgDsfK4_LqBLTRXAv7nuQpKHXOF88zw7x2-hbwTpZa8jZNFbk/exec?x=19
+   says `"version":19`.
 
 ## Part B: Script Properties
 
@@ -64,6 +71,7 @@ The app (the website) is already updated. Until you install version 18, editors 
    |---|---|---|
    | `PASSCODE` | The **master password**: the admin, the only sign-in that can make changes | Yes: this is where you change it. Keep it to yourself |
    | `PASS_GEORGE`, `PASS_MARY_W` ... | Optional. One person's own **view-only** password (at least 8 characters) | Yes: add one per person, delete it to take their access away |
+   | `PROD_GRACE` ... | Optional. A **producer / director** password (at least 8 characters): sees who edits what, writes notes | Yes: add one per producer, delete it to take their access away |
    | `IDLE_MINUTES` | Optional. Minutes without use before sign-out (default 30) | Optional |
    | `POST_TX` | Post production: Episode 1 TX date | No |
    | `POST_EP_1`, `POST_EP_2` ... | Post production: one line per episode with anything filled in (editor, sound, trailer, dropped scenes, moved TX) | **No: deleting one deletes that episode's post data** |

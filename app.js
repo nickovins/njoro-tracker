@@ -20,7 +20,10 @@
   /* Signed in: sees Drive links and Post production. Editor (the admin, master password):
      also makes changes. A personal password (PASS_<NAME>) signs in as a viewer. */
   function isSignedIn(){return !!(SCRIPT_URL&&auth.token)}
-  function isEditor(){return isSignedIn()&&auth.role!=='viewer'}
+  function isEditor(){return isSignedIn()&&(!auth.role||auth.role==='admin')}
+  /* A producer / director (PROD_<NAME>): reads Post production (who edits what, TX) and writes notes. */
+  function isProducer(){return isSignedIn()&&auth.role==='producer'}
+  function canNote(){return isEditor()||isProducer()}
   function isAdmin(){return isEditor()}
   var installPrompt=null;
   try{var v=localStorage.getItem('njw-view');if(v==='scenes'||v==='days'||v==='post'||v==='admin'||v==='me')ui.view=v}catch(e){}
@@ -316,12 +319,12 @@
     return '<div class="seg" role="group" aria-label="Season">'+[1,2,3,4].map(function(n){return '<button type="button" data-season="'+n+'" aria-pressed="'+(ui.season===n)+'"><span class="hide-xs">Season </span><span class="show-xs">S</span>'+n+'</button>'}).join('')+'</div>';
   }
   function renderControls(){
-    if((ui.view==='post'&&!isEditor())||(ui.view==='admin'&&!isAdmin()))ui.view=isSignedIn()?'me':'scenes';
+    if((ui.view==='post'&&!canNote())||(ui.view==='admin'&&!isAdmin()))ui.view=isSignedIn()?'me':'scenes';
     if(ui.view==='me'&&!isSignedIn())ui.view='scenes';
     try{document.body.setAttribute('data-view',ui.view)}catch(e){}
     var vs=[['scenes','Scenes'],['days','Daily reports']];
     if(isSignedIn())vs.push(['me',badge(myProfile().animal,'sm')+'<span class="metxt">Signed in as </span>'+esc(myProfile().name)]);
-    if(isEditor())vs.push(['post','Post production']);if(isAdmin())vs.push(['admin','Activity']);
+    if(canNote())vs.push(['post','Post production']);if(isAdmin())vs.push(['admin','Activity']);
     document.getElementById('views').innerHTML=vs.map(function(v){return '<button type="button" data-view="'+v[0]+'" aria-pressed="'+(ui.view===v[0])+'"'+(v[0]==='me'?' class="metab"':'')+'>'+v[1]+'</button>'}).join('');
     var srch=document.querySelector('.search');if(srch)srch.hidden=ui.view==='post'||ui.view==='admin'||ui.view==='me';
     var f=document.getElementById('filters');
@@ -580,7 +583,7 @@
     var t=me.today||todayIso(),mine=me.eps||[],aired=mine.filter(function(x){return x.aired}).length;
     var nextMine=mine.filter(function(x){return x.tx&&x.tx>=t})[0];
     var html='<section class="mecard an-'+esc(p.animal||'none')+'">'+badge(p.animal,'lg')
-      +'<div class="mewho"><p class="kick">Signed in as</p><h2>'+esc(p.name)+'</h2><p class="muted">'+esc(animalLabel(p.animal)||'Team')+' · '+(me.admin?'Admin':'Editor, view only')+'</p></div>'
+      +'<div class="mewho"><p class="kick">Signed in as</p><h2>'+esc(p.name)+'</h2><p class="muted">'+esc(animalLabel(p.animal)||'Team')+' · '+(me.admin?'Admin':isProducer()?'Producer / director':'Editor, view only')+'</p></div>'
       +'<dl class="mestats"><div><dt>Assigned</dt><dd>'+mine.length+'</dd></div><div><dt>Aired</dt><dd>'+aired+'</dd></div>'
       +'<div><dt>Your next TX</dt><dd>'+(nextMine?'Ep '+nextMine.ep+' · '+txHtml(nextMine.tx):'<span class="muted">None</span>')+'</dd></div></dl></section>';
     var u=me.upNext;
@@ -598,12 +601,16 @@
     html+='<section class="tablewrap mesec"><div class="seasonhead"><b>Notes from the producer / director</b><span class="muted">On your episodes only</span></div>';
     if(!notes.length)html+='<p class="empty">No notes yet.</p>';
     else html+='<ul class="notelist">'+notes.map(function(x){
-        return '<li class="'+(x.readAt||me.admin?'':'unread')+'"><div class="nhead"><b>Episode '+esc(x.ep)+'</b><span class="muted">'+esc(fmtStamp(x.at))+'</span></div><p class="ntext">'+esc(x.text)+'</p>'
+        return '<li class="'+(x.readAt||me.admin?'':'unread')+'"><div class="nhead"><b>Episode '+esc(x.ep)+'</b><span class="muted">'+(x.by?'From '+esc(x.by)+' \u00b7 ':'')+esc(fmtStamp(x.at))+'</span></div><p class="ntext">'+esc(x.text)+'</p>'
           +(me.admin?'':(x.readAt?'<p class="nread">Read ✓ '+esc(fmtStamp(x.readAt))+'</p>':'<button type="button" class="btn small primary" data-noteseen="'+esc(x.id)+'">Mark as read</button>'))+'</li>'}).join('')+'</ul>';
     return html+'</section>';
   }
 
-  /* Admin, Post production: the Notes button and panel of one episode. */
+  function noteCount(n){return (post.notes||[]).filter(function(x){return x.ep===n}).length}
+  /* Producer: an episode's editors with their badges, read only. */
+  function editorsRO(v){var L=peopleIn(v);if(!L.length)return '<span class="cellro muted">No editor yet</span>';
+    return '<span class="cellro">'+L.map(function(x){var p=(post.logins||[]).filter(function(q){return nkey(q.name)===nkey(x)})[0];return '<span class="who2">'+badge(p&&p.animal,'sm')+esc(x)+'</span>'}).join('')+'</span>'}
+  /* Post production (admin and producers): the Notes button and panel of one episode. */
   function noteBtn(n){
     var list=(post.notes||[]).filter(function(x){return x.ep===n}),eds=peopleIn((post.eps[n]||{}).editor);
     var unread=list.filter(function(x){return eds.some(function(e){return !(x.read||{})[nkey(e)]})}).length;
@@ -611,23 +618,24 @@
   }
   function notesPanel(n){
     var list=(post.notes||[]).filter(function(x){return x.ep===n}).sort(function(a,b){return a.at<b.at?1:-1}),eds=peopleIn((post.eps[n]||{}).editor);
-    return '<div class="drophead"><b>Notes on Episode '+n+'</b><span class="muted">Only '+(eds.length?esc(eds.join(' and ')):'the editor (none yet)')+' and you can read these.</span></div>'
+    return '<div class="drophead"><b>Notes on Episode '+n+'</b><span class="muted">Only '+(eds.length?esc(eds.join(' and ')):'the editor (none yet)')+', the producers and the admin can read these.</span></div>'
       +(list.length?'<ul class="notelist">'+list.map(function(x){
           var reads=eds.map(function(e){var w=(x.read||{})[nkey(e)];return '<span class="'+(w?'nread':'nunread')+'">'+(w?'Read by '+esc(e)+' · '+esc(fmtStamp(w)):'Not read by '+esc(e)+' yet')+'</span>'}).join(' ');
-          return '<li><div class="nhead"><span class="muted">'+esc(fmtStamp(x.at))+'</span><button type="button" class="rm" data-notedel="'+esc(x.id)+'" aria-label="Delete this note">✕</button></div><p class="ntext">'+esc(x.text)+'</p>'+(reads?'<p class="nstat">'+reads+'</p>':'')+'</li>'}).join('')+'</ul>'
+          var mineN=isEditor()||nkey(x.by)===nkey(myProfile().name);
+          return '<li><div class="nhead"><span class="muted">'+(x.by?'From <b>'+esc(x.by)+'</b> \u00b7 ':'')+esc(fmtStamp(x.at))+'</span>'+(mineN?'<button type="button" class="rm" data-notedel="'+esc(x.id)+'" aria-label="Delete this note">\u2715</button>':'')+'</div><p class="ntext">'+esc(x.text)+'</p>'+(reads?'<p class="nstat">'+reads+'</p>':'')+'</li>'}).join('')+'</ul>'
         :'<p class="muted nodrop">No notes yet.</p>')
       +'<form class="noteadd" data-pep="'+n+'"><textarea name="text" rows="3" maxlength="2000" placeholder="Note for the editor of Episode '+n+'" aria-label="New note" required></textarea><button type="submit" class="btn small primary">Add note</button></form>';
   }
   function noteCall(body,done){
     return callScript(body).then(function(r){
-      if(!r.ok){toast(r.error==='bad_request'?'Notes need the Google script at version 18.':errText(r));return r}
+      if(!r.ok){toast(r.error==='bad_request'?'Notes need the Google script at version 18.':r.error==='not_yours'?'You can only delete your own notes.':errText(r));return r}
       applyPost(r);renderPostKeep('',true);toast(done);return r;
     });
   }
   function onNoteAdd(form){
     var ta=form.querySelector('textarea'),btn=form.querySelector('button'),text=ta.value.trim();if(!text)return;
     btn.disabled=true;btn.textContent='Saving…';
-    noteCall({action:'noteAdd',ep:+form.dataset.pep,text:text},'Note added. Only that episode’s editor sees it.').then(function(r){
+    noteCall({action:'noteAdd',ep:+form.dataset.pep,text:text},'Note added. The editor of Episode '+form.dataset.pep+' will see it.').then(function(r){
       var f=document.querySelector('form.noteadd[data-pep="'+form.dataset.pep+'"]');if(!f)return;
       var t2=f.querySelector('textarea'),b2=f.querySelector('button');b2.disabled=false;b2.textContent='Add note';
       if(r&&r.ok){t2.value='';t2.blur()}
@@ -646,14 +654,14 @@
   function teamHtml(people){
     return '<section class="tablewrap adm admsec"><div class="seasonhead"><b>Team</b><span class="muted">Everyone who can sign in. Last seen: when they last opened the app.</span></div>'
       +'<table class="teamtbl"><thead><tr><th>Person</th><th>Last seen</th><th class="num">Eps</th><th class="num">Unread</th></tr></thead><tbody>'
-      +people.map(function(p){return '<tr><td><span class="who2">'+badge(p.animal,'md')+'<span><b>'+esc(p.name)+'</b><br><span class="muted"><span class="anl">'+esc(animalLabel(p.animal))+' · </span>'+(p.role==='admin'?'Admin':'View only')+'</span></span></span></td>'
+      +people.map(function(p){return '<tr><td><span class="who2">'+badge(p.animal,'md')+'<span><b>'+esc(p.name)+'</b><br><span class="muted"><span class="anl">'+esc(animalLabel(p.animal))+' · </span>'+(p.role==='admin'?'Admin':p.role==='producer'?'Producer':'View only')+'</span></span></span></td>'
         +'<td class="seen">'+(p.lastSeen?esc(fmtStamp(p.lastSeen)):'<span class="muted">Never</span>')+'</td><td class="num">'+esc(p.episodes)+'</td><td class="num">'+(p.unread?'<span class="bad">'+esc(p.unread)+'</span>':'0')+'</td></tr>'}).join('')
       +'</tbody></table></section>';
   }
 
   function renderPost(){
     if(!isSignedIn())return '';
-    var ed=isEditor();
+    var ed=isEditor(),pr=!ed,cols=pr?4:7;   /* pr: producer, who edits what and TX only, read only */
     if(!post.loaded){
       if(post.err)return '<div class="tablewrap"><p class="empty">'+esc(postErrText(post.err))+'</p></div>';
       return '<div class="tablewrap"><p class="empty">Loading post production…</p></div>';
@@ -661,33 +669,33 @@
     var s=curSeason(),a=(s-1)*PER_SEASON+1,b=s*PER_SEASON,t=todayIso(),air=airingEp(),nx=upNextEp();
     if(post.openEp==null)post.openEp=air||nx||0;
     var html='<div class="txbar"><div class="txfld"><label for="tx">Episode 1 TX</label>'+(ed?'<input id="tx" type="date" value="'+esc(post.tx)+'">':'<span class="cellro">'+(post.tx?txHtml(post.tx):'TBC')+'</span>')+'</div>'
-      +'<button type="button" class="btn small exportbtn" data-act="export"><span aria-hidden="true">\u2913</span> Export</button>'
+      +(ed?'<button type="button" class="btn small exportbtn" data-act="export"><span aria-hidden="true">\u2913</span> Export</button>':'')
       +'<p class="muted">'+(post.tx?'One episode a week, every '+esc(weekday(post.tx))+(movedCount()?', with '+movedCount()+' episode'+(movedCount()===1?'':'s')+' moved':'')+'. Episode 52 airs '+esc(weekday(txOf(EPISODES)).slice(0,3)+' '+fmtDate(txOf(EPISODES)))+'.'
-        :'Not confirmed by the broadcaster yet. Set it here and all 52 dates fill in, one week apart.')+'</p>'
+        :'Not confirmed by the broadcaster yet.'+(ed?' Set it here and all 52 dates fill in, one week apart.':''))+'</p>'
       +(air||nx?'<button type="button" class="onairnow" data-act="goto-air"><span class="st onair">'+(air?(txOf(air)===t?'On air today':'On air'):'Airs next')+'</span> Episode '+(air||nx)+' \u00b7 '+esc(weekday(txOf(air||nx)).slice(0,3)+' '+fmtDate(txOf(air||nx)))+(air&&nx?'<span class="muted"> \u00b7 next: Episode '+nx+', '+esc(fmtDate(txOf(nx)))+'</span>':'')+'</button>':'')
-      +'<p class="savestate" id="savestate" role="status">'+saveStateHtml()+'</p></div>';
+      +(ed?'<p class="savestate" id="savestate" role="status">'+saveStateHtml()+'</p>':'<p class="muted">Read only. Tap an episode, then Notes, to write to its editor.</p>')+'</div>';
     if(post.err)html+='<p class="sync err">'+esc(postErrText(post.err))+'</p>';
-    html+=nameCheckHtml();
+    if(ed)html+=nameCheckHtml();
     for(var q0=1;q0<s;q0++)html+=seasonFold(q0);
     html+='<div class="tablewrap seasonopen"><div class="seasonhead"><b>Season '+s+'</b><span class="muted">Episodes '+a+' to '+b+(post.tx?' · '+esc(fmtDate(txOf(a)))+' to '+esc(fmtDate(txOf(b))):'')+'</span></div><table class="posttbl">'
-      +'<thead><tr><th>Ep</th><th>Editor</th><th>Sound</th><th>TX</th><th>Trailer</th><th>Dropped</th><th>Notes</th></tr></thead><tbody>';
+      +'<thead><tr><th>Ep</th><th>Editor</th>'+(pr?'':'<th>Sound</th>')+'<th>TX</th>'+(pr?'':'<th>Trailer</th><th>Dropped</th>')+'<th>Notes</th></tr></thead><tbody>';
     for(var n=a;n<=b;n++){
       var e=post.eps[n]||{},tx=txOf(n),drop=e.dropped||[],open=post.openDrop===n,mv=post.openMove===n,sh=shiftOf(n),tl=trailerUrl(e.trailer);
       var st=n===air?'<span class="st onair">'+(tx===t?'On air today':'On air')+'</span>':(tx?(tx<t?'<span class="st aired">Aired</span>':(n===nx?'<span class="st next">Next</span>':'')):'');
       var exp=post.openEp===n,ed0=pendingOr(n,'editor',e.editor),sd0=pendingOr(n,'sound',e.sound);
-      var sum=[ed0?'Editor: '+esc(ed0):'No editor yet',sd0?'Sound: '+esc(sd0):'No sound yet'].concat(drop.length?[drop.length+' dropped']:[]).concat(trailerUrl(pendingOr(n,'trailer',e.trailer))?['Trailer \u2713']:[]).join(' \u00b7 ');
+      var sum=pr?[ed0?'Editor: '+esc(ed0):'No editor yet'].concat(noteCount(n)?[noteCount(n)+' note'+(noteCount(n)===1?'':'s')]:[]).join(' \u00b7 '):[ed0?'Editor: '+esc(ed0):'No editor yet',sd0?'Sound: '+esc(sd0):'No sound yet'].concat(drop.length?[drop.length+' dropped']:[]).concat(trailerUrl(pendingOr(n,'trailer',e.trailer))?['Trailer \u2713']:[]).join(' \u00b7 ');
       html+='<tr class="pe'+(open?' open':'')+(exp?' expanded':' collapsed')+(n===air?' airing':'')+(n===nx?' nextup':'')+(tx&&tx<t&&n!==air?' past':'')+'" id="pe'+n+'">'
         +'<td class="epn"><button type="button" class="pexp" data-pexp="'+n+'" aria-expanded="'+exp+'"><b>'+n+'</b>'+st+'</button></td>'
         +'<td class="sum"><button type="button" class="pexp sumbtn" data-pexp="'+n+'" aria-expanded="'+exp+'"><span>'+sum+'</span><span class="chev" aria-hidden="true">\u203A</span></button></td>'
-        +'<td data-l="Editor">'+cellInput(n,'editor',e.editor,'Who is editing')+'</td>'
-        +'<td data-l="Sound">'+cellInput(n,'sound',e.sound,'Who is on sound')+'</td>'
+        +'<td data-l="Editor">'+(pr?editorsRO(e.editor):cellInput(n,'editor',e.editor,'Who is editing'))+'</td>'
+        +(pr?'':'<td data-l="Sound">'+cellInput(n,'sound',e.sound,'Who is on sound')+'</td>')
         +'<td class="txd" data-l="TX"><div class="txcell">'+(ed&&tx&&n>1?'<button type="button" class="datebtn" data-move="'+n+'" title="Move this episode\u2019s TX date" aria-label="'+esc(weekday(tx)+' '+fmtDate(tx))+', move Episode '+n+' TX">'+txHtml(tx)+'</button>':txHtml(tx))+(ed&&tx&&n>1?'<button type="button" class="movebtn'+(sh?' moved':'')+'" data-move="'+n+'" aria-expanded="'+mv+'" title="Move this episode\u2019s TX date">'+(sh?esc(shiftLabel(sh)):'Move')+'</button>':'')+'</div></td>'
-        +'<td data-l="Trailer" class="trl"><div class="trlwrap">'+cellInput(n,'trailer',e.trailer,'Paste link')+(tl?'<a class="go" href="'+esc(tl)+'" target="_blank" rel="noopener" aria-label="Open Episode '+n+' trailer">↗</a>':'')+'</div></td>'
-        +'<td data-l="Dropped" class="drp"><button type="button" class="dropbtn'+(drop.length?' has':'')+'" data-drop="'+n+'" aria-expanded="'+open+'"><span class="dlbl">Dropped scenes</span><span>'+(drop.length?drop.length+' dropped':'None')+'</span><span class="chev" aria-hidden="true">›</span></button></td>'
+        +(pr?'':'<td data-l="Trailer" class="trl"><div class="trlwrap">'+cellInput(n,'trailer',e.trailer,'Paste link')+(tl?'<a class="go" href="'+esc(tl)+'" target="_blank" rel="noopener" aria-label="Open Episode '+n+' trailer">↗</a>':'')+'</div></td>'
+        +'<td data-l="Dropped" class="drp"><button type="button" class="dropbtn'+(drop.length?' has':'')+'" data-drop="'+n+'" aria-expanded="'+open+'"><span class="dlbl">Dropped scenes</span><span>'+(drop.length?drop.length+' dropped':'None')+'</span><span class="chev" aria-hidden="true">\u203a</span></button></td>')
         +'<td data-l="Notes" class="drp">'+noteBtn(n)+'</td></tr>';
-      if(open)html+='<tr class="dropdet"><td colspan="7">'+dropPanel(n,drop)+'</td></tr>';
-      if(ed&&mv&&tx)html+='<tr class="dropdet movedet"><td colspan="7">'+movePanel(n)+'</td></tr>';
-      if(post.openNotes===n)html+='<tr class="dropdet notedet"><td colspan="7">'+notesPanel(n)+'</td></tr>';
+      if(ed&&open)html+='<tr class="dropdet"><td colspan="'+cols+'">'+dropPanel(n,drop)+'</td></tr>';
+      if(ed&&mv&&tx)html+='<tr class="dropdet movedet"><td colspan="'+cols+'">'+movePanel(n)+'</td></tr>';
+      if(post.openNotes===n)html+='<tr class="dropdet notedet"><td colspan="'+cols+'">'+notesPanel(n)+'</td></tr>';
     }
     html+='</tbody></table>'+seasonCrewHtml(s)+'</div>';
     for(var q1=s+1;q1<=SEASONS;q1++)html+=seasonFold(q1);
@@ -702,7 +710,7 @@
     return '<div class="tablewrap seasonfold"><button type="button" class="foldbtn" data-season="'+q+'" aria-expanded="false">'
       +'<span class="fh"><b>Season '+q+'</b>'+(hasAir?'<span class="st onair">'+(air?'On air':'Airs next')+'</span>':'')+'</span>'
       +'<span class="fm muted">Episodes '+a+' to '+b+(post.tx?' \u00b7 '+esc(fmtDate(txOf(a)))+' to '+esc(fmtDate(txOf(b))):'')+'</span>'
-      +'<span class="fa"><span class="'+(ed===eps.length?'ok':'')+'">Editors '+ed+'/'+eps.length+'</span><span class="'+(sd===eps.length?'ok':'')+'">Sound '+sd+'/'+eps.length+'</span></span>'
+      +'<span class="fa"><span class="'+(ed===eps.length?'ok':'')+'">Editors '+ed+'/'+eps.length+'</span>'+(isEditor()?'<span class="'+(sd===eps.length?'ok':'')+'">Sound '+sd+'/'+eps.length+'</span>':'')+'</span>'
       +'<span class="chev" aria-hidden="true">\u203A</span></button></div>';
   }
   /* Who edits and who does sound in this season, with each person's episodes. */
@@ -716,8 +724,8 @@
         +(list.length?'<ul class="crewlist">'+list.map(function(p){return '<li><span class="cn">'+esc(p.name)+'</span><span class="cc">'+p.eps.length+' ep'+(p.eps.length===1?'':'s')+'</span><span class="ce muted">'+esc(epList(p.eps))+'</span></li>'}).join('')+'</ul>':'<p class="muted">Nobody assigned yet.</p>')
         +(none.length?'<p class="crewnone">Not assigned: '+esc(epList(none))+'</p>':'<p class="crewall">Every episode assigned \u2713</p>')+'</div>';
     }
-    return '<section class="crew"><div class="crewhead"><b>Season '+s+' crew</b><span class="muted">Episodes per person this season. Export for all four seasons side by side.</span></div>'
-      +'<div class="crewgrid">'+block('Editors','editor')+block('Sound','sound')+'</div></section>';
+    return '<section class="crew"><div class="crewhead"><b>Season '+s+' crew</b><span class="muted">Episodes per person this season.'+(isEditor()?' Export for all four seasons side by side.':'')+'</span></div>'
+      +'<div class="crewgrid">'+block('Editors','editor')+(isEditor()?block('Sound','sound'):'')+'</div></section>';
   }
   function cellInput(n,f,v,ph){
     if(!isEditor())return f==='trailer'?(trailerUrl(v)?'':'<span class="cellro muted">None</span>'):'<span class="cellro">'+(v?esc(v):'<span class="muted">Not set</span>')+'</span>';
@@ -1521,7 +1529,7 @@
       +folderLink(LOG_FOLDER,'Log sheets ↗','btn')
       +(SCRIPTS_FOLDER?folderLink(SCRIPTS_FOLDER,'Scripts ↗','btn'):'')
       +(SCRIPT_URL?(signed?'<div class="menuwrap wide"><button type="button" class="btn ghost acct" data-act="acct" aria-haspopup="true" aria-expanded="'+!!ui.acct+'">'+badge(myProfile().animal,'sm')+'<span class="who">Signed in as '+esc(myProfile().name)+'</span> <span class="caret2" aria-hidden="true">\u25BE</span></button>'
-          +(ui.acct?'<div class="menu" role="menu"><p class="menuhead"><b>'+esc(myProfile().name)+(isEditor()?' \u00b7 admin':' \u00b7 view only')+'</b><br><span>Signs out by itself after '+esc(auth.idle||30)+' minutes without use.</span></p>'
+          +(ui.acct?'<div class="menu" role="menu"><p class="menuhead"><b>'+esc(myProfile().name)+(isEditor()?' \u00b7 admin':isProducer()?' \u00b7 producer':' \u00b7 view only')+'</b><br><span>Signs out by itself after '+esc(auth.idle||30)+' minutes without use.</span></p>'
             +'<button type="button" role="menuitem" data-act="logout" class="del"><b>Sign out</b><span>On this device</span></button></div>':'')+'</div>'
         :'<button type="button" class="btn ghost wide" data-act="login"><span aria-hidden="true">\uD83D\uDD12</span> Sign in</button>'):'');
     document.getElementById('stats').innerHTML+=signed?'<div class="mode">Signed in</div>':'';
@@ -1639,7 +1647,7 @@
   /* ---------- signing in and out ---------- */
   function saveAuth(){try{if(auth.token)localStorage.setItem('njw-auth',JSON.stringify(auth));else localStorage.removeItem('njw-auth')}catch(e){}}
   function signedIn(r){
-    auth={token:r.token,name:(r.user&&r.user.name)||'Team',idle:r.idle||30,role:r.role==='viewer'?'viewer':'admin',profile:r.profile||null};saveAuth();
+    auth={token:r.token,name:(r.user&&r.user.name)||'Team',idle:r.idle||30,role:r.role==='viewer'||r.role==='producer'?r.role:'admin',profile:r.profile||null};saveAuth();
     lastAct=Date.now();lastPing=Date.now();try{localStorage.setItem('njw-last',String(lastAct))}catch(e){}
     post.loaded=false;post.me=null;admin.activity=null;
     /* The admin lands on Post production, everyone else on their own page; both at the season on air. */
